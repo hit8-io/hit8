@@ -20,7 +20,8 @@ RUN pip install --no-cache-dir --disable-pip-version-check --prefer-binary --upg
 # Only rebuilds when dependencies change, not on code changes
 COPY requirements.txt .
 # Use --prefer-binary to avoid building from source, --disable-pip-version-check to skip version checks
-RUN pip install --no-cache-dir --disable-pip-version-check --prefer-binary -r requirements.txt
+# --timeout=300 prevents stalling on slow downloads, --use-deprecated=legacy-resolver is faster
+RUN pip install --no-cache-dir --disable-pip-version-check --prefer-binary --timeout=300 --use-deprecated=legacy-resolver -r requirements.txt
 
 # Copy application code last (changes most frequently)
 # This layer is rebuilt on every code change
