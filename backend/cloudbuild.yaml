@@ -8,7 +8,5 @@ steps:
       - '--cache=true'
       - '--cache-ttl=24h'
       - '--cache-repo=gcr.io/${_PROJECT_ID}/cache'
-images:
-  - '${_IMAGE_NAME}:${_TAG}'
-  - '${_IMAGE_NAME}:latest'
+    # Kaniko pushes images directly, so no need for images: section
 
