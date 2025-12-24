@@ -1,16 +1,13 @@
 """
 Authentication dependencies for Google Identity Platform (Firebase Auth) token verification.
 """
-import os
-from typing import Optional
+import json
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import firebase_admin
 from firebase_admin import credentials, auth
 
-# Firebase/Identity Platform configuration
-_gcp_project = os.getenv("GCP_PROJECT")
-GCP_PROJECT = _gcp_project.strip() if _gcp_project else None
+from app.config import settings
 
 # Lazy initialization flag
 _firebase_initialized = False
@@ -28,31 +25,23 @@ def _initialize_firebase():
         _firebase_initialized = True
         return
     
-    # Validate GCP_PROJECT is set
-    if not GCP_PROJECT:
-        _firebase_init_error = ValueError("GCP_PROJECT must be set")
-        print(f"Error: {_firebase_init_error}")
-        return
-    
-    # Use service account from env. Primary: VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM; fallback: GOOGLE_TEST_SERVICE_ACCOUNT
-    service_account_json = (
-        os.getenv("VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM", "").strip()
-        or os.getenv("GOOGLE_TEST_SERVICE_ACCOUNT", "").strip()
-    )
+    # Get service account JSON from settings (with fallback support)
+    service_account_json = settings.get_firebase_service_account()
     
     if not service_account_json:
-        _firebase_init_error = ValueError("VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM or GOOGLE_TEST_SERVICE_ACCOUNT must be set")
+        _firebase_init_error = ValueError(
+            "Firebase service account must be set via VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM environment variable"
+        )
         print(f"Error: {_firebase_init_error}")
         return
     
     try:
-        import json
         service_account_info = json.loads(service_account_json)
         cred = credentials.Certificate(service_account_info)
         firebase_admin.initialize_app(cred, {
-            'projectId': GCP_PROJECT,
+            'projectId': settings.gcp_project,
         })
-        print(f"Initialized Firebase Admin SDK with service account for project: {GCP_PROJECT}")
+        print(f"Initialized Firebase Admin SDK with service account for project: {settings.gcp_project}")
         
         _firebase_initialized = True
         _firebase_init_error = None

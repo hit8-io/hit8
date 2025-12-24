@@ -6,17 +6,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from langchain_core.messages import HumanMessage
 
+from app.config import settings
 from app.deps import verify_google_token
 from app.graph import create_graph, AgentState
 
 # Initialize FastAPI app
-app = FastAPI(title="Hit8 Chat API", version="1.0.0")
+app = FastAPI(title=settings.app_name, version=settings.app_version)
 
 # Setup CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-    allow_credentials=True,
+    allow_origins=settings.cors_allow_origins,
+    allow_credentials=settings.cors_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )

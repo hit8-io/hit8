@@ -3,12 +3,15 @@ LangGraph state machine for chat orchestration.
 """
 from __future__ import annotations
 
-import os
+import json
 from typing import TypedDict, Annotated
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langgraph.graph import StateGraph, END
 from typing import Any
 from langchain_google_vertexai import ChatVertexAI
+from google.oauth2 import service_account
+
+from app.config import settings
 
 # Define the agent state
 class AgentState(TypedDict):
@@ -31,21 +34,17 @@ def generate_node(state: AgentState) -> AgentState:
     """
     Generate response using Google Vertex AI (Gemini Pro).
     """
-    import json
-    from google.oauth2 import service_account
-    
-    # Initialize Vertex AI client
-    # Note: VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM should contain the service account JSON
-    service_account_json = os.getenv("VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM")
+    # Get service account JSON from settings (with fallback support)
+    service_account_json = settings.get_vertex_service_account()
     
     if not service_account_json:
-        raise ValueError("VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM must be set")
+        raise ValueError("Vertex AI service account must be set via VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM environment variable")
     
-    # Parse the service account JSON (assuming it's a JSON string)
+    # Parse the service account JSON
     service_account_info = json.loads(service_account_json)
     
     # Create credentials from service account info
-    credentials = service_account.Credentials.from_service_account_info(
+    creds = service_account.Credentials.from_service_account_info(
         service_account_info
     )
     
@@ -60,10 +59,10 @@ def generate_node(state: AgentState) -> AgentState:
     # 2. Your service account has Vertex AI User permissions
     
     model = ChatVertexAI(
-        model_name="gemini-3-pro-preview",
-        project=service_account_info.get("project_id"),
-        location="global",  # Gemini 3 Pro preview requires global location
-        credentials=credentials,
+        model_name=settings.vertex_ai_model_name,
+        project=service_account_info.get("project_id") or settings.gcp_project,
+        location=settings.vertex_ai_location,
+        credentials=creds,
         # Do not set temperature - use default 1.0 for Gemini 3 Pro
     )
     
