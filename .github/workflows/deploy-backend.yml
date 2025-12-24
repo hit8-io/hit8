@@ -7,7 +7,6 @@ on:
     paths:
       - 'backend/**'
       - '.github/workflows/deploy-backend.yml'
-  workflow_dispatch:  # Allows manual triggering from GitHub UI
 
 env:
   PROJECT_ID: hit8-poc
