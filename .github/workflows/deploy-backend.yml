@@ -63,15 +63,36 @@ jobs:
           
           echo "Build ID: $BUILD_ID"
           echo "Waiting for build to complete..."
-          gcloud builds wait $BUILD_ID --region=europe-west1
           
-          # Check build status
+          # Poll build status until complete (max 30 minutes = 60 iterations * 30 seconds)
+          MAX_ITERATIONS=60
+          ITERATION=0
+          while [ $ITERATION -lt $MAX_ITERATIONS ]; do
+            BUILD_STATUS=$(gcloud builds describe $BUILD_ID --region=europe-west1 --format="value(status)" 2>/dev/null || echo "UNKNOWN")
+            
+            if [ "$BUILD_STATUS" = "SUCCESS" ]; then
+              echo "Build completed successfully!"
+              break
+            elif [ "$BUILD_STATUS" = "FAILURE" ] || [ "$BUILD_STATUS" = "CANCELLED" ] || [ "$BUILD_STATUS" = "EXPIRED" ]; then
+              echo "Build failed with status: $BUILD_STATUS"
+              exit 1
+            elif [ "$BUILD_STATUS" = "WORKING" ] || [ "$BUILD_STATUS" = "QUEUED" ]; then
+              echo "Build status: $BUILD_STATUS (iteration $((ITERATION + 1))/$MAX_ITERATIONS)"
+              sleep 30
+            else
+              echo "Unknown build status: $BUILD_STATUS, waiting..."
+              sleep 30
+            fi
+            
+            ITERATION=$((ITERATION + 1))
+          done
+          
+          # Final status check
           BUILD_STATUS=$(gcloud builds describe $BUILD_ID --region=europe-west1 --format="value(status)")
           if [ "$BUILD_STATUS" != "SUCCESS" ]; then
-            echo "Build failed with status: $BUILD_STATUS"
+            echo "Build did not complete successfully. Final status: $BUILD_STATUS"
             exit 1
           fi
-          echo "Build completed successfully"
 
       - name: Deploy to Cloud Run
         run: |-
