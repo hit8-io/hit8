@@ -44,6 +44,7 @@ jobs:
         run: |-
           gcloud builds submit \
             --config cloudbuild.yaml \
+            --region=europe-west1 \
             --machine-type=e2-medium \
             --substitutions=_IMAGE_NAME=gcr.io/$PROJECT_ID/$SERVICE_NAME,_TAG=$GITHUB_SHA,_PROJECT_ID=$PROJECT_ID \
             .
