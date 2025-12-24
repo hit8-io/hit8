@@ -1,6 +1,7 @@
 FROM python:3.11-slim
 
 # Install system dependencies for building cryptography and other packages
+# This layer is cached unless the base image changes
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     gcc \
@@ -10,15 +11,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Upgrade pip and install wheel for faster installs
+# Upgrade pip first (cached unless Python version changes)
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
 # Copy requirements and install dependencies
+# This layer is cached unless requirements.txt changes
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# Copy application code last (changes most frequently)
+# This layer is rebuilt on every code change
 COPY . .
 
 # Use port 8080 for Cloud Run (can be overridden by PORT env var)
