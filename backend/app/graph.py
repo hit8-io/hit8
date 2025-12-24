@@ -1,6 +1,8 @@
 """
 LangGraph state machine for chat orchestration.
 """
+from __future__ import annotations
+
 import os
 from typing import TypedDict, Annotated
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
