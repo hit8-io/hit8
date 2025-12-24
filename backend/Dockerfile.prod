@@ -12,14 +12,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Upgrade pip first (cached unless Python version changes)
-# Separated from requirements install for better caching
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+# Disable version check and prefer binary wheels for speed
+RUN pip install --no-cache-dir --disable-pip-version-check --prefer-binary --upgrade pip setuptools wheel
 
 # Copy requirements and install dependencies
 # This layer is cached unless requirements.txt changes
 # Only rebuilds when dependencies change, not on code changes
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Use --prefer-binary to avoid building from source, --disable-pip-version-check to skip version checks
+RUN pip install --no-cache-dir --disable-pip-version-check --prefer-binary -r requirements.txt
 
 # Copy application code last (changes most frequently)
 # This layer is rebuilt on every code change
