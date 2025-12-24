@@ -18,6 +18,7 @@ services:
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
       - GCP_PROJECT=${GCP_PROJECT}
+      - GOOGLE_IDENTITY_PLATFORM_DOMAIN=${GOOGLE_IDENTITY_PLATFORM_DOMAIN}
       - FIREBASE_PROJECT_ID=${GCP_PROJECT}
 
   # 2. Supabase (Local Postgres wrapper)
@@ -33,7 +34,7 @@ services:
   web:
     build:
       context: ./frontend
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile
     volumes:
       - ./frontend:/app
       - /app/node_modules

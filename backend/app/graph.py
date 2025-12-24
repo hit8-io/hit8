@@ -4,11 +4,12 @@ LangGraph state machine for chat orchestration.
 from __future__ import annotations
 
 import json
+import os
 from typing import TypedDict, Annotated
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
 from langgraph.graph import StateGraph, END
 from typing import Any
-from langchain_google_vertexai import ChatVertexAI
+from langchain_google_genai import ChatGoogleGenerativeAI
 from google.oauth2 import service_account
 
 from app.config import settings
@@ -33,36 +34,59 @@ def retrieve_node(state: AgentState) -> AgentState:
 def generate_node(state: AgentState) -> AgentState:
     """
     Generate response using Google Vertex AI (Gemini Pro).
+    
+    Uses the unified ChatGoogleGenerativeAI class with provider="vertexai"
+    to target Vertex AI backend. Handles authentication for both environments:
+    - Cloud Run: Uses Application Default Credentials (ADC) automatically
+    - Local/Doppler: Uses explicit service account JSON credentials
     """
-    # Get service account JSON from settings (with fallback support)
-    service_account_json = settings.get_vertex_service_account()
+    # Check if we're running on Cloud Run (ADC will be used automatically)
+    is_cloud_run = os.environ.get("K_SERVICE") is not None
     
-    if not service_account_json:
-        raise ValueError("Vertex AI service account must be set via VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM environment variable")
+    creds = None
+    project_id = settings.gcp_project
     
-    # Parse the service account JSON
-    service_account_info = json.loads(service_account_json)
+    if not is_cloud_run:
+        # Local/Doppler: Get service account JSON from settings
+        service_account_json = settings.get_vertex_service_account()
+        
+        if not service_account_json:
+            raise ValueError(
+                "Vertex AI service account must be set via "
+                "VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM environment variable"
+            )
+        
+        # Parse the service account JSON
+        service_account_info = json.loads(service_account_json)
+        
+        # Create credentials from service account info with Vertex AI scopes
+        creds = service_account.Credentials.from_service_account_info(
+            service_account_info,
+            scopes=['https://www.googleapis.com/auth/cloud-platform']
+        )
+        
+        # Extract project ID from service account if available
+        project_id = service_account_info.get("project_id") or settings.gcp_project
     
-    # Create credentials from service account info
-    creds = service_account.Credentials.from_service_account_info(
-        service_account_info
-    )
-    
-    # Initialize the Vertex AI model
-    # Using Gemini 3 Pro with global location (required for gemini-3-pro-preview)
-    # Model name: gemini-3-pro-preview (official Vertex AI name)
+    # Initialize the unified ChatGoogleGenerativeAI model with Vertex AI provider
+    # Using Gemini 3 Pro/Flash with location (e.g., europe-west1, global)
+    # Model name: gemini-3-pro-preview or gemini-3-flash-preview
     # Temperature should NOT be set for Gemini 3 Pro (use default 1.0)
     # 
-    # Note: Gemini 3 Pro preview requires global location access
+    # Note: The provider="vertexai" flag switches backend to Vertex AI (GCP)
+    # - On Cloud Run: credentials=None uses ADC (Application Default Credentials)
+    # - Local/Doppler: credentials=creds uses explicit service account
     # If you get 404 errors, ensure:
     # 1. Gemini 3 Pro is enabled in your GCP project
     # 2. Your service account has Vertex AI User permissions
+    # 3. The location matches your project's Vertex AI region
     
-    model = ChatVertexAI(
-        model_name=settings.vertex_ai_model_name,
-        project=service_account_info.get("project_id") or settings.gcp_project,
+    model = ChatGoogleGenerativeAI(
+        model=settings.vertex_ai_model_name,  # Note: 'model' not 'model_name'
+        provider="vertexai",  # CRITICAL: Switches backend to Vertex AI
+        project=project_id,
         location=settings.vertex_ai_location,
-        credentials=creds,
+        credentials=creds,  # None on Cloud Run (uses ADC), explicit creds on local/Doppler
         # Do not set temperature - use default 1.0 for Gemini 3 Pro
     )
     

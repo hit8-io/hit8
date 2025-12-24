@@ -7,7 +7,6 @@ types-PyYAML==6.0.12.20250915
 langchain==1.2.0
 langgraph==1.0.5
 langchain-core==1.2.5
-langchain-google-vertexai==3.2.0
 langchain-google-genai==4.1.2
 supabase==2.27.0
 python-dotenv==1.2.1

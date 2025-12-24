@@ -22,16 +22,16 @@ export default defineConfig(({ mode }) => {
       },
     },
     define: {
-      // Map Doppler secrets to VITE_ prefixed variables for the client
-      // Only use exact environment variable names from Doppler, no fallbacks
+      // Map environment variables to VITE_ prefixed ones for the client
+      // Check both VITE_ prefixed (from docker-compose) and non-prefixed (from Doppler) versions
       'import.meta.env.VITE_GOOGLE_IDENTITY_PLATFORM_KEY': JSON.stringify(
-        env.GOOGLE_IDENTITY_PLATFORM_KEY || ''
+        env.VITE_GOOGLE_IDENTITY_PLATFORM_KEY || env.GOOGLE_IDENTITY_PLATFORM_KEY || ''
       ),
       'import.meta.env.VITE_GOOGLE_IDENTITY_PLATFORM_DOMAIN': JSON.stringify(
-        env.GOOGLE_IDENTITY_PLATFORM_DOMAIN || ''
+        env.VITE_GOOGLE_IDENTITY_PLATFORM_DOMAIN || env.GOOGLE_IDENTITY_PLATFORM_DOMAIN || ''
       ),
       'import.meta.env.VITE_GCP_PROJECT': JSON.stringify(
-        env.GCP_PROJECT || ''
+        env.VITE_GCP_PROJECT || env.GCP_PROJECT || ''
       ),
       'import.meta.env.VITE_API_URL': JSON.stringify(
         env.VITE_API_URL || ''
