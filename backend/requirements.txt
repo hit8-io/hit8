@@ -1,0 +1,16 @@
+fastapi>=0.127.0
+uvicorn[standard]>=0.40.0
+pydantic>=2.12.5
+langchain>=1.2.0
+langgraph>=1.0.5
+langchain-core>=1.2.5
+langchain-google-vertexai>=3.2.0
+langchain-google-genai>=4.1.2
+supabase>=2.27.0
+python-dotenv>=1.2.1
+cryptography>=46.0.3
+requests>=2.32.5
+google-auth>=2.45.0
+google-auth-oauthlib>=1.2.3
+firebase-admin>=7.1.0
+

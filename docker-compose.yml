@@ -1,0 +1,45 @@
+services:
+  # 1. Backend API
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - supabase
+    environment:
+      - VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM=${VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - GCP_PROJECT=${GCP_PROJECT}
+      - FIREBASE_PROJECT_ID=${GCP_PROJECT}
+
+  # 2. Supabase (Local Postgres wrapper)
+  supabase:
+    image: supabase/postgres:15.1.0.147
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+
+  # 3. Frontend (React)
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    environment:
+      - API_URL=http://localhost:8000
+      - VITE_GOOGLE_IDENTITY_PLATFORM_KEY=${GOOGLE_IDENTITY_PLATFORM_KEY}
+      - VITE_GOOGLE_IDENTITY_PLATFORM_DOMAIN=${GOOGLE_IDENTITY_PLATFORM_DOMAIN}
+      - VITE_GCP_PROJECT=${GCP_PROJECT}
+

@@ -1,0 +1,10 @@
+{
+  "include": ["backend/app"],
+  "exclude": ["**/__pycache__", "**/node_modules"],
+  "reportMissingImports": false,
+  "reportMissingTypeStubs": false,
+  "typeCheckingMode": "basic"
+}
+
+
+
