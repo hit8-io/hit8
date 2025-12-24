@@ -11,7 +11,4 @@ steps:
 images:
   - '${_IMAGE_NAME}:${_TAG}'
   - '${_IMAGE_NAME}:latest'
-options:
-  machineType: 'E2_STANDARD_2'  # Entry-level: 2 vCPUs, 8GB RAM (cost-effective)
-  logging: CLOUD_LOGGING_ONLY
 
