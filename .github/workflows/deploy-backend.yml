@@ -42,12 +42,25 @@ jobs:
       - name: Build and Push Docker Image
         working-directory: ./backend
         run: |-
-          gcloud builds submit \
+          BUILD_ID=$(gcloud builds submit \
             --config cloudbuild.yaml \
             --region=europe-west1 \
             --machine-type=e2-medium \
+            --async \
             --substitutions=_IMAGE_NAME=gcr.io/$PROJECT_ID/$SERVICE_NAME,_TAG=$GITHUB_SHA,_PROJECT_ID=$PROJECT_ID \
-            .
+            . 2>&1 | grep -oP 'builds/\K[^ ]+' | head -1)
+          
+          echo "Build ID: $BUILD_ID"
+          echo "Waiting for build to complete..."
+          gcloud builds wait $BUILD_ID --region=europe-west1 || true
+          
+          # Check build status
+          BUILD_STATUS=$(gcloud builds describe $BUILD_ID --region=europe-west1 --format="value(status)")
+          if [ "$BUILD_STATUS" != "SUCCESS" ]; then
+            echo "Build failed with status: $BUILD_STATUS"
+            exit 1
+          fi
+          echo "Build completed successfully"
 
       - name: Deploy to Cloud Run
         run: |-
