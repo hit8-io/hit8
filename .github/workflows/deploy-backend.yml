@@ -42,17 +42,28 @@ jobs:
       - name: Build and Push Docker Image
         working-directory: ./backend
         run: |-
-          BUILD_ID=$(gcloud builds submit \
+          # Submit build and extract build ID
+          BUILD_OUTPUT=$(gcloud builds submit \
             --config cloudbuild.yaml \
             --region=europe-west1 \
             --machine-type=e2-medium \
             --async \
             --substitutions=_IMAGE_NAME=gcr.io/$PROJECT_ID/$SERVICE_NAME,_TAG=$GITHUB_SHA,_PROJECT_ID=$PROJECT_ID \
-            . 2>&1 | grep -oP 'builds/\K[^ ]+' | head -1)
+            . 2>&1)
+          
+          echo "$BUILD_OUTPUT"
+          
+          # Extract build ID from output (format: projects/.../locations/.../builds/BUILD_ID)
+          BUILD_ID=$(echo "$BUILD_OUTPUT" | grep -oE 'builds/[a-f0-9-]+' | head -1 | cut -d'/' -f2)
+          
+          if [ -z "$BUILD_ID" ]; then
+            echo "ERROR: Could not extract build ID"
+            exit 1
+          fi
           
           echo "Build ID: $BUILD_ID"
           echo "Waiting for build to complete..."
-          gcloud builds wait $BUILD_ID --region=europe-west1 || true
+          gcloud builds wait $BUILD_ID --region=europe-west1
           
           # Check build status
           BUILD_STATUS=$(gcloud builds describe $BUILD_ID --region=europe-west1 --format="value(status)")
