@@ -3,7 +3,7 @@ steps:
     args:
       - 'build'
       - '-f'
-      - '${_DOCKERFILE}'
+      - 'Dockerfile.prod'
       - '-t'
       - '${_IMAGE_NAME}:${_TAG}'
       - '-t'
