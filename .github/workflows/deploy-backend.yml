@@ -53,7 +53,7 @@ jobs:
             --platform managed \
             --region $REGION \
             --allow-unauthenticated \
-            --set-env-vars="ENVIRONMENT=production" \
+            --set-env-vars="ENVIRONMENT=prod" \
             --set-secrets="DOPPLER_SECRETS_JSON=projects/$PROJECT_NUMBER/secrets/$SECRET_NAME:latest" \
             --memory=2Gi \
             --cpu=2 \

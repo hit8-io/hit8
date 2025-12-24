@@ -24,7 +24,7 @@ interface ChatInterfaceProps {
   onLogout: () => void
 }
 
-const API_URL = import.meta.env.API_URL || 'http://localhost:8000'
+const API_URL = import.meta.env.VITE_API_URL || import.meta.env.API_URL || 'http://localhost:8000'
 
 export default function ChatInterface({ token, user, onLogout }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([])

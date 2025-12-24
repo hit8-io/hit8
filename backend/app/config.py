@@ -32,8 +32,8 @@ class YamlConfigSettingsSource(PydanticBaseSettingsSource):
             config_data = yaml.safe_load(f) or {}
         
         # Determine environment
-        # Cloud Run sets K_SERVICE, production deployments should set ENVIRONMENT=production
-        if os.getenv("K_SERVICE") or os.getenv("ENVIRONMENT") == "production":
+        # Cloud Run sets K_SERVICE, production deployments should set ENVIRONMENT=prod
+        if os.getenv("K_SERVICE") or os.getenv("ENVIRONMENT") == "prod":
             env = "prod"
         else:
             env = "dev"

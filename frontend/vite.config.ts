@@ -20,14 +20,23 @@ export default defineConfig({
     'import.meta.env.API_URL': JSON.stringify(
       process.env.VITE_API_URL || process.env.API_URL || 'http://localhost:8000'
     ),
-    'import.meta.env.GOOGLE_IDENTITY_PLATFORM_KEY': JSON.stringify(
-      process.env.VITE_GOOGLE_IDENTITY_PLATFORM_KEY || process.env.GOOGLE_IDENTITY_PLATFORM_KEY
+    // Map from Doppler secrets (without VITE_ prefix) to VITE_ prefixed variables
+    // Doppler syncs GOOGLE_IDENTITY_PLATFORM_KEY -> Cloudflare Pages
+    // We map it to VITE_GOOGLE_IDENTITY_PLATFORM_KEY for Vite to expose it
+    'import.meta.env.VITE_GOOGLE_IDENTITY_PLATFORM_KEY': JSON.stringify(
+      process.env.VITE_GOOGLE_IDENTITY_PLATFORM_KEY || 
+      process.env.GOOGLE_IDENTITY_PLATFORM_KEY || 
+      ''
     ),
-    'import.meta.env.GOOGLE_IDENTITY_PLATFORM_DOMAIN': JSON.stringify(
-      process.env.VITE_GOOGLE_IDENTITY_PLATFORM_DOMAIN || process.env.GOOGLE_IDENTITY_PLATFORM_DOMAIN
+    'import.meta.env.VITE_GOOGLE_IDENTITY_PLATFORM_DOMAIN': JSON.stringify(
+      process.env.VITE_GOOGLE_IDENTITY_PLATFORM_DOMAIN || 
+      process.env.GOOGLE_IDENTITY_PLATFORM_DOMAIN || 
+      ''
     ),
-    'import.meta.env.GCP_PROJECT': JSON.stringify(
-      process.env.VITE_GCP_PROJECT || process.env.GCP_PROJECT
+    'import.meta.env.VITE_GCP_PROJECT': JSON.stringify(
+      process.env.VITE_GCP_PROJECT || 
+      process.env.GCP_PROJECT || 
+      ''
     ),
   },
 })
