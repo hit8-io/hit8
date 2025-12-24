@@ -22,12 +22,30 @@ class YamlConfigSettingsSource(PydanticBaseSettingsSource):
         return super().get_field_value(field, field_name)
 
     def __call__(self) -> dict[str, Any]:
-        """Load config.yaml from the same directory as this file."""
+        """Load environment-specific config.yaml from the same directory as this file."""
+        import os
         yaml_file = Path(__file__).parent / "config.yaml"
         if not yaml_file.exists():
             return {}
+        
         with open(yaml_file) as f:
-            return yaml.safe_load(f) or {}
+            config_data = yaml.safe_load(f) or {}
+        
+        # Determine environment
+        # Cloud Run sets K_SERVICE, production deployments should set ENVIRONMENT=production
+        if os.getenv("K_SERVICE") or os.getenv("ENVIRONMENT") == "production":
+            env = "prod"
+        else:
+            env = "dev"
+        
+        # Merge: defaults + environment-specific config
+        defaults = config_data.get("defaults", {})
+        env_config = config_data.get(env, {})
+        
+        # Environment config overrides defaults
+        merged_config = {**defaults, **env_config}
+        
+        return merged_config
 
 
 class Settings(BaseSettings):

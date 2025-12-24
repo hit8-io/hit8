@@ -1,0 +1,63 @@
+name: Deploy Backend to Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy-backend.yml'
+
+env:
+  PROJECT_ID: hit8-poc
+  PROJECT_NUMBER: 617962194338
+  SERVICE_NAME: hit8-api
+  REGION: us-central1
+  SECRET_NAME: doppler-hit8-prod
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for GCR
+        run: gcloud auth configure-docker
+
+      - name: Build and Push Docker Image
+        run: |-
+          gcloud builds submit \
+            --tag gcr.io/$PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA \
+            --tag gcr.io/$PROJECT_ID/$SERVICE_NAME:latest \
+            --file backend/Dockerfile.prod \
+            ./backend
+
+      - name: Deploy to Cloud Run
+        run: |-
+          gcloud run deploy $SERVICE_NAME \
+            --image gcr.io/$PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA \
+            --platform managed \
+            --region $REGION \
+            --allow-unauthenticated \
+            --set-env-vars="ENVIRONMENT=production" \
+            --set-secrets="DOPPLER_SECRETS_JSON=projects/$PROJECT_NUMBER/secrets/$SECRET_NAME:latest" \
+            --memory=2Gi \
+            --cpu=2 \
+            --timeout=300 \
+            --max-instances=10 \
+            --min-instances=0
+

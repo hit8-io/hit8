@@ -1,22 +1,27 @@
-# Application settings
-app_name: "Hit8 Chat API"
-app_version: "1.0.0"
-debug_mode: false
+# Base configuration (defaults for all environments)
+defaults:
+  app_name: "Hit8 Chat API"
+  app_version: "1.0.0"
+  debug_mode: false
+  vertex_ai_model_name: "gemini-3-flash-preview"
+  vertex_ai_location: "global"
+  gcp_project: "hit8-poc"
+  google_identity_platform_domain: "hit8-poc.firebaseapp.com"
+  cors_allow_credentials: true
 
-# CORS configuration
-cors_allow_origins:
-  - "http://localhost:5173"
-  - "http://127.0.0.1:5173"
-cors_allow_credentials: true
+# Development configuration
+dev:
+  debug_mode: true
+  cors_allow_origins:
+    - "http://localhost:5173"
+    - "http://127.0.0.1:5173"
+  supabase_url: "http://localhost:5432"
 
-# Vertex AI configuration
-vertex_ai_model_name: "gemini-3-flash-preview"
-vertex_ai_location: "global"
-
-# GCP configuration
-gcp_project: "hit8-poc"
-google_identity_platform_domain: "hit8-poc.firebaseapp.com"
-
-# Supabase configuration
-supabase_url: "http://localhost:5432"
-
+# Production configuration
+prod:
+  debug_mode: false
+  cors_allow_origins:
+    - "https://www.hit8.io"
+    - "https://hit8.io"
+    - "https://hit8.pages.dev"  # Cloudflare Pages default URL (fallback)
+  supabase_url: "https://dxwwmmhfhsljkhftnzke.supabase.co"
