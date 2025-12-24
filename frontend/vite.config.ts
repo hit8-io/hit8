@@ -22,26 +22,19 @@ export default defineConfig(({ mode }) => {
       },
     },
     define: {
-      // Map from Doppler secrets (without VITE_ prefix) to VITE_ prefixed variables
-      // Doppler syncs GOOGLE_IDENTITY_PLATFORM_KEY -> Cloudflare Pages
-      // We map it to VITE_GOOGLE_IDENTITY_PLATFORM_KEY for Vite to expose it
-      'import.meta.env.API_URL': JSON.stringify(
-        env.VITE_API_URL || env.API_URL || 'http://localhost:8000'
-      ),
+      // Map Doppler secrets to VITE_ prefixed variables for the client
+      // Only use exact environment variable names from Doppler, no fallbacks
       'import.meta.env.VITE_GOOGLE_IDENTITY_PLATFORM_KEY': JSON.stringify(
-        env.VITE_GOOGLE_IDENTITY_PLATFORM_KEY || 
-        env.GOOGLE_IDENTITY_PLATFORM_KEY || 
-        ''
+        env.GOOGLE_IDENTITY_PLATFORM_KEY || ''
       ),
       'import.meta.env.VITE_GOOGLE_IDENTITY_PLATFORM_DOMAIN': JSON.stringify(
-        env.VITE_GOOGLE_IDENTITY_PLATFORM_DOMAIN || 
-        env.GOOGLE_IDENTITY_PLATFORM_DOMAIN || 
-        ''
+        env.GOOGLE_IDENTITY_PLATFORM_DOMAIN || ''
       ),
       'import.meta.env.VITE_GCP_PROJECT': JSON.stringify(
-        env.VITE_GCP_PROJECT || 
-        env.GCP_PROJECT || 
-        ''
+        env.GCP_PROJECT || ''
+      ),
+      'import.meta.env.VITE_API_URL': JSON.stringify(
+        env.VITE_API_URL || ''
       ),
     },
   }

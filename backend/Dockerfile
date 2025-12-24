@@ -1,7 +1,10 @@
 FROM python:3.11-slim
 
+# Build argument to control production optimizations
+ARG PRODUCTION=false
+
 # Install system dependencies for building cryptography and other packages
-# Install in one layer to reduce image size
+# This layer is cached unless the base image changes
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     gcc \
@@ -11,22 +14,30 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Upgrade pip and install wheel for faster installs
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+# Upgrade pip first (cached unless Python version changes)
+# Use production optimizations if PRODUCTION=true
+RUN if [ "$PRODUCTION" = "true" ]; then \
+      pip install --no-cache-dir --disable-pip-version-check --prefer-binary --upgrade pip setuptools wheel; \
+    else \
+      pip install --no-cache-dir --upgrade pip setuptools wheel; \
+    fi
 
 # Copy requirements and install dependencies
-# This layer will be cached if requirements.txt doesn't change
-# Use --prefer-binary to use pre-built wheels when available (much faster)
+# This layer is cached unless requirements.txt changes
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir --use-deprecated=legacy-resolver -r requirements.txt
+# Use production optimizations if PRODUCTION=true
+RUN if [ "$PRODUCTION" = "true" ]; then \
+      pip install --no-cache-dir --disable-pip-version-check --prefer-binary --timeout=300 --use-deprecated=legacy-resolver -r requirements.txt; \
+    else \
+      pip install --no-cache-dir --use-deprecated=legacy-resolver -r requirements.txt; \
+    fi
 
-# Copy application code (this changes frequently, so it's last)
+# Copy application code last (changes most frequently)
+# This layer is rebuilt on every code change
 COPY . .
 
-# Expose port
-EXPOSE 8000
-
-# Default command (can be overridden in docker-compose)
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
-
+# Set port (Cloud Run uses 8080, dev uses 8000)
+# Production uses exec for better signal handling, no reload
+# Development command is overridden by docker-compose.yml
+ENV PORT=8080
+CMD exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}

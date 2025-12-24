@@ -42,57 +42,12 @@ jobs:
       - name: Build and Push Docker Image
         working-directory: ./backend
         run: |-
-          # Submit build and extract build ID
-          BUILD_OUTPUT=$(gcloud builds submit \
+          gcloud builds submit \
             --config cloudbuild.yaml \
             --region=europe-west1 \
             --machine-type=e2-medium \
-            --async \
             --substitutions=_IMAGE_NAME=gcr.io/$PROJECT_ID/$SERVICE_NAME,_TAG=$GITHUB_SHA,_PROJECT_ID=$PROJECT_ID \
-            . 2>&1)
-          
-          echo "$BUILD_OUTPUT"
-          
-          # Extract build ID from output (format: projects/.../locations/.../builds/BUILD_ID)
-          BUILD_ID=$(echo "$BUILD_OUTPUT" | grep -oE 'builds/[a-f0-9-]+' | head -1 | cut -d'/' -f2)
-          
-          if [ -z "$BUILD_ID" ]; then
-            echo "ERROR: Could not extract build ID"
-            exit 1
-          fi
-          
-          echo "Build ID: $BUILD_ID"
-          echo "Waiting for build to complete..."
-          
-          # Poll build status until complete (max 30 minutes = 60 iterations * 30 seconds)
-          MAX_ITERATIONS=60
-          ITERATION=0
-          while [ $ITERATION -lt $MAX_ITERATIONS ]; do
-            BUILD_STATUS=$(gcloud builds describe $BUILD_ID --region=europe-west1 --format="value(status)" 2>/dev/null || echo "UNKNOWN")
-            
-            if [ "$BUILD_STATUS" = "SUCCESS" ]; then
-              echo "Build completed successfully!"
-              break
-            elif [ "$BUILD_STATUS" = "FAILURE" ] || [ "$BUILD_STATUS" = "CANCELLED" ] || [ "$BUILD_STATUS" = "EXPIRED" ]; then
-              echo "Build failed with status: $BUILD_STATUS"
-              exit 1
-            elif [ "$BUILD_STATUS" = "WORKING" ] || [ "$BUILD_STATUS" = "QUEUED" ]; then
-              echo "Build status: $BUILD_STATUS (iteration $((ITERATION + 1))/$MAX_ITERATIONS)"
-              sleep 30
-            else
-              echo "Unknown build status: $BUILD_STATUS, waiting..."
-              sleep 30
-            fi
-            
-            ITERATION=$((ITERATION + 1))
-          done
-          
-          # Final status check
-          BUILD_STATUS=$(gcloud builds describe $BUILD_ID --region=europe-west1 --format="value(status)")
-          if [ "$BUILD_STATUS" != "SUCCESS" ]; then
-            echo "Build did not complete successfully. Final status: $BUILD_STATUS"
-            exit 1
-          fi
+            .
 
       - name: Deploy to Cloud Run
         run: |-

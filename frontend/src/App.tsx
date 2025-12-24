@@ -369,7 +369,7 @@ function App() {
                       ← Back to sign-in options
                     </button>
                   </div>
-                </div>
+        </div>
               </form>
             )}
           </CardContent>
