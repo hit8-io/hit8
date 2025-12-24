@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any
 from pathlib import Path
 import yaml
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict, PydanticBaseSettingsSource
 
 
@@ -72,10 +72,18 @@ class Settings(BaseSettings):
     vertex_ai_model_name: str = Field(..., description="Vertex AI model name")
     vertex_ai_location: str = Field(..., description="Vertex AI location")
     
-    # --- GCP Configuration (Non-Secrets) ---
-    # Values loaded from config.yaml
-    gcp_project: str = Field(..., description="GCP project ID")
-    google_identity_platform_domain: str = Field(..., description="Google Identity Platform domain")
+    # --- GCP Configuration (From Env Vars) ---
+    # Values loaded from environment variables (GCP_PROJECT, GOOGLE_IDENTITY_PLATFORM_DOMAIN)
+    gcp_project: str = Field(
+        ...,
+        validation_alias="GCP_PROJECT",
+        description="GCP project ID (from GCP_PROJECT env var)"
+    )
+    google_identity_platform_domain: str = Field(
+        ...,
+        validation_alias="GOOGLE_IDENTITY_PLATFORM_DOMAIN",
+        description="Google Identity Platform domain (from GOOGLE_IDENTITY_PLATFORM_DOMAIN env var)"
+    )
     
     # --- Supabase Configuration (Non-Secrets) ---
     # Values loaded from config.yaml
