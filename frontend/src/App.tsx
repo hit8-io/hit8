@@ -34,6 +34,14 @@ function App() {
   }
 
   useEffect(() => {
+    // Check Firebase config immediately
+    if (!firebaseConfig.apiKey || !firebaseConfig.authDomain || !firebaseConfig.projectId) {
+      console.error('Firebase configuration is missing. Please set VITE_GOOGLE_IDENTITY_PLATFORM_KEY, VITE_GOOGLE_IDENTITY_PLATFORM_DOMAIN, and VITE_GCP_PROJECT')
+      setLoading(false)
+      return
+    }
+
+    // Initialize Firebase if not already initialized
     const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0]
     setFirebaseApp(app)
 
