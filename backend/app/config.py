@@ -1,29 +1,21 @@
 """
 Configuration management using Pydantic Settings with YAML and environment variable support.
-
-This module implements a layered configuration strategy:
-- Non-secrets: Stored in config.yaml (version-controlled)
-- Secrets: Managed via environment variables
-- Priority: Init args > Env Vars > YAML File > Defaults
 """
 from __future__ import annotations
 
 from typing import Any
 from pathlib import Path
+import os
 import yaml
-from pydantic import Field, field_validator
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict, PydanticBaseSettingsSource
 
 
 class YamlConfigSettingsSource(PydanticBaseSettingsSource):
-    """Custom settings source to load configuration from config.yaml file."""
-    
     def get_field_value(self, field: Any, field_name: str) -> tuple[Any, str, bool]:
         return super().get_field_value(field, field_name)
 
     def __call__(self) -> dict[str, Any]:
-        """Load environment-specific config.yaml from the same directory as this file."""
-        import os
         yaml_file = Path(__file__).parent / "config.yaml"
         if not yaml_file.exists():
             return {}
@@ -31,79 +23,30 @@ class YamlConfigSettingsSource(PydanticBaseSettingsSource):
         with open(yaml_file) as f:
             config_data = yaml.safe_load(f) or {}
         
-        # Determine environment
-        # Cloud Run sets K_SERVICE, production deployments should set ENVIRONMENT=prod
-        if os.getenv("K_SERVICE") or os.getenv("ENVIRONMENT") == "prod":
-            env = "prod"
-        else:
-            env = "dev"
-        
-        # Merge: defaults + environment-specific config
+        env = "prod" if (os.getenv("K_SERVICE") or os.getenv("ENVIRONMENT") == "prod") else "dev"
         defaults = config_data.get("defaults", {})
         env_config = config_data.get(env, {})
-        
-        # Environment config overrides defaults
-        merged_config = {**defaults, **env_config}
-        
-        return merged_config
+        return {**defaults, **env_config}
 
 
 class Settings(BaseSettings):
-    """
-    Application settings with layered configuration support.
-    
-    Non-secrets are loaded from config.yaml.
-    Secrets must be provided via environment variables.
-    """
-    
-    # --- Application Config (Non-Secrets) ---
-    # Values loaded from config.yaml
-    app_name: str = Field(..., description="Application name")
-    app_version: str = Field(..., description="Application version")
-    debug_mode: bool = Field(..., description="Debug mode flag")
-    
-    # --- CORS Configuration (Non-Secrets) ---
-    # Values loaded from config.yaml
-    cors_allow_origins: list[str] = Field(..., description="CORS allowed origins")
-    cors_allow_credentials: bool = Field(..., description="CORS allow credentials")
-    
-    # --- Vertex AI Configuration (Non-Secrets) ---
-    # Values loaded from config.yaml
-    vertex_ai_model_name: str = Field(..., description="Vertex AI model name")
-    vertex_ai_location: str = Field(..., description="Vertex AI location")
-    
-    # --- GCP Configuration (From Env Vars) ---
-    # Values loaded from environment variables (GCP_PROJECT, GOOGLE_IDENTITY_PLATFORM_DOMAIN)
-    gcp_project: str = Field(
-        ...,
-        validation_alias="GCP_PROJECT",
-        description="GCP project ID (from GCP_PROJECT env var)"
-    )
-    google_identity_platform_domain: str = Field(
-        ...,
-        validation_alias="GOOGLE_IDENTITY_PLATFORM_DOMAIN",
-        description="Google Identity Platform domain (from GOOGLE_IDENTITY_PLATFORM_DOMAIN env var)"
-    )
-    
-    # --- Supabase Configuration (Non-Secrets) ---
-    # Values loaded from config.yaml
-    supabase_url: str = Field(..., description="Supabase URL")
-    
-    # --- Secrets (From Env Vars) ---
-    # Required - must be provided via environment variables
-    # Using validation_alias to match exact environment variable name
-    vertex_service_account_json: str = Field(
-        ...,
-        validation_alias="VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM",
-        description="Vertex AI and Firebase service account JSON",
-        exclude=True  # Keep it out of logs/repr
-    )
+    app_name: str = Field(...)
+    app_version: str = Field(...)
+    debug_mode: bool = Field(...)
+    cors_allow_origins: list[str] = Field(...)
+    cors_allow_credentials: bool = Field(...)
+    vertex_ai_model_name: str = Field(...)
+    vertex_ai_location: str = Field(...)
+    gcp_project: str = Field(..., validation_alias="GCP_PROJECT")
+    google_identity_platform_domain: str = Field(..., validation_alias="GOOGLE_IDENTITY_PLATFORM_DOMAIN")
+    supabase_url: str = Field(...)
+    vertex_service_account_json: str = Field(..., validation_alias="VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM", exclude=True)
 
     model_config = SettingsConfigDict(
-        env_prefix="",  # Match env vars exactly (no prefix)
-        case_sensitive=True,  # Match exact case for env vars
-        populate_by_name=True,  # Allow both field name and alias
-        env_file=None,  # Don't use .env files, rely on environment variables
+        env_prefix="",
+        case_sensitive=True,
+        populate_by_name=True,
+        env_file=None,
     )
 
     @classmethod
@@ -115,27 +58,13 @@ class Settings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        """
-        Customize settings sources priority order.
-        
-        Priority: Init args > Env Vars > YAML File
-        """
         return (
-            init_settings,  # Highest priority: explicit init args
-            env_settings,  # Environment variables
-            YamlConfigSettingsSource(settings_cls),  # YAML file
+            init_settings,
+            env_settings,
+            YamlConfigSettingsSource(settings_cls),
             file_secret_settings,
         )
-    
-    def get_vertex_service_account(self) -> str:
-        """Get Vertex AI service account JSON."""
-        return self.vertex_service_account_json
-    
-    def get_firebase_service_account(self) -> str:
-        """Get Firebase service account JSON."""
-        return self.vertex_service_account_json
 
 
-# Global settings instance
 settings = Settings()
 

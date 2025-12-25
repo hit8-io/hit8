@@ -34,205 +34,64 @@ function App() {
   }
 
   useEffect(() => {
-    // Check Firebase config immediately
-    if (!firebaseConfig.apiKey || !firebaseConfig.authDomain || !firebaseConfig.projectId) {
-      console.error('Firebase configuration is missing. Please set VITE_GOOGLE_IDENTITY_PLATFORM_KEY, VITE_GOOGLE_IDENTITY_PLATFORM_DOMAIN, and VITE_GCP_PROJECT')
-      setLoading(false)
-      return
-    }
+    const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0]
+    setFirebaseApp(app)
 
-    // Set a timeout to prevent infinite loading
-    const timeoutId = setTimeout(() => {
-      console.warn('Firebase initialization taking longer than expected')
-      setLoading(false)
-    }, 5000) // 5 second timeout
-
-    // Initialize Firebase if not already initialized
-    let app: FirebaseApp
-    try {
-      if (getApps().length === 0) {
-        app = initializeApp(firebaseConfig)
-        setFirebaseApp(app)
+    const auth = getAuth(app)
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: User | null) => {
+      if (firebaseUser) {
+        const token = await firebaseUser.getIdToken(false)
+        setIdToken(token)
+        setUser({
+          id: firebaseUser.uid,
+          email: firebaseUser.email || '',
+          name: firebaseUser.displayName || '',
+          picture: firebaseUser.photoURL || '',
+        })
       } else {
-        app = getApps()[0]
-        setFirebaseApp(app)
+        setUser(null)
+        setIdToken(null)
       }
-
-      const auth = getAuth(app)
-      
-      // Log current URL for debugging
-      console.log('Current URL:', window.location.href)
-      
-      // Listen for auth state changes
-      const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: User | null) => {
-        clearTimeout(timeoutId) // Clear timeout once we get a response
-        
-        console.log('Auth state changed:', firebaseUser ? `User: ${firebaseUser.email}` : 'No user')
-        
-        if (firebaseUser) {
-          try {
-            // Get the ID token (don't force refresh for faster response)
-            console.log('Getting ID token for user:', firebaseUser.email)
-            const token = await firebaseUser.getIdToken(false)
-            setIdToken(token)
-            
-            // Extract user info
-            const userInfo: IdentityUser = {
-              id: firebaseUser.uid,
-              email: firebaseUser.email || '',
-              name: firebaseUser.displayName || '',
-              picture: firebaseUser.photoURL || '',
-            }
-            setUser(userInfo)
-            console.log('✅ User logged in successfully:', userInfo.email)
-          } catch (error) {
-            console.error('❌ Error getting ID token:', error)
-            setUser(null)
-            setIdToken(null)
-          }
-        } else {
-          // No user - set loading to false immediately
-          console.log('No user authenticated')
-          setUser(null)
-          setIdToken(null)
-        }
-        setLoading(false)
-      })
-
-      return () => {
-        clearTimeout(timeoutId)
-        unsubscribe()
-      }
-    } catch (error) {
-      clearTimeout(timeoutId)
-      console.error('Error initializing Firebase:', error)
       setLoading(false)
-    }
+    })
+
+    return unsubscribe
   }, [])
 
   const handleLogin = async () => {
-    if (!firebaseApp) {
-      console.error('Firebase not initialized')
-      return
-    }
-
-    const auth = getAuth(firebaseApp)
-    
-    // Configure Google Auth Provider for popup mode
+    const auth = getAuth(firebaseApp!)
     const provider = new GoogleAuthProvider()
-    provider.addScope('email')
-    provider.addScope('profile')
-    
-    // Set custom parameters - prompt select_account ensures account picker
-    provider.setCustomParameters({
-      prompt: 'select_account'
-    })
-
-    try {
-      console.log('Initiating sign in with popup...')
-      console.log('Auth domain:', auth.config.authDomain)
-      
-      // Use signInWithPopup - Firebase will open a popup window
-      // Note: Some browsers may convert popups to tabs based on user settings
-      // This is normal behavior and the authentication will still work
-      const result = await signInWithPopup(auth, provider)
-      console.log('✅ Signed in successfully:', result.user.email)
-      console.log('User:', result.user.displayName)
-      // onAuthStateChanged will handle updating state
-    } catch (error: unknown) {
-      const err = error as { code?: string; message?: string; customData?: { email?: string } }
-      console.error('Error initiating sign in:', err)
-      console.error('Error code:', err.code)
-      console.error('Error message:', err.message)
-      
-      // Handle specific popup errors
-      if (err.code === 'auth/popup-blocked') {
-        alert('Popup blocked by browser. Please allow popups for this site and try again.')
-      } else if (err.code === 'auth/popup-closed-by-user') {
-        console.log('User closed the popup/tab')
-        // Don't show error for user closing popup
-      } else if (err.code === 'auth/cancelled-popup-request') {
-        console.log('Only one popup request is allowed at a time')
-        // This usually resolves itself, just log it
-      } else if (err.code === 'auth/account-exists-with-different-credential') {
-        alert('An account already exists with the same email address but different sign-in credentials.')
-      } else {
-        alert(`Sign in error: ${err.message || 'Unknown error'}`)
-      }
-    }
+    provider.setCustomParameters({ prompt: 'select_account' })
+    await signInWithPopup(auth, provider)
   }
 
   const handleLogout = async () => {
-    if (!firebaseApp) {
-      return
-    }
-
-    const auth = getAuth(firebaseApp)
-    try {
-      await signOut(auth)
-      setAuthMode('select')
-      setEmail('')
-      setPassword('')
-      setAuthError(null)
-      // User state is automatically handled by onAuthStateChanged
-    } catch (error) {
-      console.error('Error signing out:', error)
-    }
+    await signOut(getAuth(firebaseApp!))
+    setAuthMode('select')
+    setEmail('')
+    setPassword('')
+    setAuthError(null)
   }
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!firebaseApp) {
-      console.error('Firebase not initialized')
-      return
-    }
-
     setAuthError(null)
     setAuthLoading(true)
 
-    const auth = getAuth(firebaseApp)
-
+    const auth = getAuth(firebaseApp!)
     try {
       if (isSignUp) {
-        // Sign up with email and password
-        const userCredential = await createUserWithEmailAndPassword(auth, email, password)
-        console.log('✅ Signed up successfully:', userCredential.user.email)
-        // onAuthStateChanged will handle updating state
+        await createUserWithEmailAndPassword(auth, email, password)
       } else {
-        // Sign in with email and password
-        const userCredential = await signInWithEmailAndPassword(auth, email, password)
-        console.log('✅ Signed in successfully:', userCredential.user.email)
-        // onAuthStateChanged will handle updating state
+        await signInWithEmailAndPassword(auth, email, password)
       }
     } catch (error: unknown) {
       const err = error as { code?: string; message?: string }
-      console.error('Email auth error:', err)
-      
-      let errorMessage = 'An error occurred during authentication'
-      if (err.code === 'auth/email-already-in-use') {
-        errorMessage = 'This email is already registered. Please sign in instead.'
-      } else if (err.code === 'auth/invalid-email') {
-        errorMessage = 'Invalid email address.'
-      } else if (err.code === 'auth/weak-password') {
-        errorMessage = 'Password should be at least 6 characters.'
-      } else if (err.code === 'auth/user-not-found') {
-        errorMessage = 'No account found with this email. Please sign up first.'
-      } else if (err.code === 'auth/wrong-password') {
-        errorMessage = 'Incorrect password.'
-      } else if (err.code === 'auth/invalid-credential') {
-        errorMessage = 'Invalid email or password.'
-      } else if (err.code === 'auth/internal-error') {
-        // Check if it's a 403 Forbidden (user not approved)
-        if (err.message?.includes('403') || err.message?.includes('Forbidden')) {
-          errorMessage = 'Sign up is not available. Please contact an administrator.'
-        } else {
-          errorMessage = 'An internal error occurred. Please try again later.'
-        }
-      } else if (err.message) {
-        errorMessage = err.message
+      if (err.code === 'auth/internal-error' && (err.message?.includes('403') || err.message?.includes('Forbidden'))) {
+        setAuthError('Sign up is not available. Please contact an administrator.')
+      } else {
+        setAuthError(err.message || 'An error occurred during authentication')
       }
-      
-      setAuthError(errorMessage)
     } finally {
       setAuthLoading(false)
     }

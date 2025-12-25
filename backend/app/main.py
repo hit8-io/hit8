@@ -1,27 +1,10 @@
 """
 FastAPI application entrypoint.
 """
-import os
-import json
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from langchain_core.messages import HumanMessage
-
-# Parse Doppler secret from Secret Manager (production only)
-# Cloud Run sets K_SERVICE environment variable
-if os.getenv("K_SERVICE"):  # Running on Cloud Run (production)
-    doppler_secrets_json = os.getenv("DOPPLER_SECRETS_JSON")
-    if doppler_secrets_json:
-        try:
-            secrets = json.loads(doppler_secrets_json)
-            # Set environment variables from parsed JSON
-            for key, value in secrets.items():
-                if key not in os.environ:  # Don't override existing env vars
-                    os.environ[key] = str(value)
-        except json.JSONDecodeError as e:
-            print(f"Warning: Failed to parse DOPPLER_SECRETS_JSON: {e}")
-# Local/Dev: Secrets should be injected via Doppler CLI or environment variables
 
 from app.config import settings
 from app.deps import verify_google_token
@@ -63,52 +46,29 @@ async def chat(
     request: ChatRequest,
     user_payload: dict = Depends(verify_google_token)
 ):
-    """
-    Chat endpoint that processes user messages through LangGraph.
-
-    Requires valid Google Identity Platform (Firebase Auth) ID token in Authorization header.
-    """
-    try:
-        # Extract user ID from token payload
-        user_id = user_payload.get("sub") or user_payload.get("user_id", "unknown")
-        
-        # Initialize state with user message
-        initial_state: AgentState = {
-            "messages": [HumanMessage(content=request.message)],
-            "context": ""
-        }
-        
-        # Run the graph
-        result = graph.invoke(initial_state)
-        
-        # Extract the last AI message
-        messages = result.get("messages", [])
-        ai_messages = [msg for msg in messages if hasattr(msg, "content") and not isinstance(msg, HumanMessage)]
-        
-        if ai_messages:
-            content = ai_messages[-1].content
-            # Gemini 3 Pro returns content as a list of dicts with 'text' field
-            if isinstance(content, list) and len(content) > 0:
-                # Extract text from the first item in the list
-                if isinstance(content[0], dict) and 'text' in content[0]:
-                    response_text = content[0]['text']
-                else:
-                    response_text = str(content[0])
-            elif isinstance(content, str):
-                response_text = content
-            else:
-                response_text = str(content)
-        else:
-            response_text = "I apologize, but I couldn't generate a response."
-        
-        return ChatResponse(response=response_text, user_id=user_id)
+    """Chat endpoint that processes user messages through LangGraph."""
+    user_id = user_payload["sub"]
     
-    except Exception as e:
-        import traceback
-        error_detail = f"{str(e)}\n{traceback.format_exc()}"
-        print(f"Chat error: {error_detail}")  # Log to console for debugging
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error processing chat request: {str(e)}"
-        )
+    initial_state: AgentState = {
+        "messages": [HumanMessage(content=request.message)]
+    }
+    
+    result = graph.invoke(initial_state)
+    messages = result["messages"]
+    ai_messages = [msg for msg in messages if not isinstance(msg, HumanMessage)]
+    
+    if not ai_messages:
+        return ChatResponse(response="I apologize, but I couldn't generate a response.", user_id=user_id)
+    
+    ai_message = ai_messages[-1]
+    
+    # Extract content - handle both string and list formats
+    content = ai_message.content
+    if isinstance(content, list):
+        # Gemini returns content as list of dicts with 'text' field
+        content = content[0].get('text', '') if content and isinstance(content[0], dict) else str(content[0])
+    elif not isinstance(content, str):
+        content = str(content)
+    
+    return ChatResponse(response=content, user_id=user_id)
 

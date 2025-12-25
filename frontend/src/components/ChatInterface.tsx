@@ -24,7 +24,7 @@ interface ChatInterfaceProps {
   onLogout: () => void
 }
 
-const API_URL = import.meta.env.VITE_API_URL || import.meta.env.API_URL || 'http://localhost:8000'
+const API_URL = import.meta.env.VITE_API_URL
 
 export default function ChatInterface({ token, user, onLogout }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([])
@@ -59,30 +59,11 @@ export default function ChatInterface({ token, user, onLogout }: ChatInterfacePr
       }
       setMessages((prev) => [...prev, assistantMessage])
     } catch (error) {
-      console.error('Error sending message:', error)
-      let errorMessage = 'Sorry, I encountered an error. Please try again.'
-      
-      if (axios.isAxiosError(error)) {
-        if (error.response) {
-          // Server responded with error
-          const status = error.response.status
-          const detail = error.response.data?.detail || error.response.data?.message || 'Unknown error'
-          
-          if (status === 401) {
-            errorMessage = 'Authentication failed. Please sign in again.'
-          } else if (status === 500) {
-            errorMessage = `Server error: ${detail}`
-          } else {
-            errorMessage = `Error (${status}): ${detail}`
-          }
-        } else if (error.request) {
-          errorMessage = 'Unable to reach the server. Is the backend running?'
-        }
-      }
-      
       const errorMsg: Message = {
         role: 'assistant',
-        content: errorMessage,
+        content: axios.isAxiosError(error) && error.response?.data?.detail 
+          ? error.response.data.detail 
+          : 'Sorry, I encountered an error. Please try again.',
       }
       setMessages((prev) => [...prev, errorMsg])
     } finally {
@@ -108,10 +89,6 @@ export default function ChatInterface({ token, user, onLogout }: ChatInterfacePr
                 src={user.picture} 
                 alt={user.name || 'User'} 
                 className="w-8 h-8 rounded-full object-cover border border-border"
-                onError={(e) => {
-                  // Hide image if it fails to load
-                  e.currentTarget.style.display = 'none'
-                }}
               />
             )}
             <span className="text-sm text-muted-foreground">{user?.name || user?.email}</span>
