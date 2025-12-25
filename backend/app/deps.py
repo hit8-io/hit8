@@ -2,6 +2,7 @@
 Authentication dependencies for Google Identity Platform (Firebase Auth) token verification.
 """
 import json
+import sys
 from fastapi import Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import firebase_admin
@@ -9,10 +10,11 @@ from firebase_admin import credentials, auth
 
 from app.config import settings
 
-# Initialize Firebase Admin SDK
-service_account_info = json.loads(settings.vertex_service_account_json)
-cred = credentials.Certificate(service_account_info)
-firebase_admin.initialize_app(cred, {'projectId': settings.gcp_project})
+# Initialize Firebase Admin SDK (skip during tests)
+if "pytest" not in sys.modules:
+    service_account_info = json.loads(settings.vertex_service_account_json)
+    cred = credentials.Certificate(service_account_info)
+    firebase_admin.initialize_app(cred, {'projectId': settings.gcp_project})
 
 security = HTTPBearer()
 
