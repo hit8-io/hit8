@@ -61,6 +61,14 @@ jobs:
 
       - name: Deploy to Cloud Run
         run: |-
+          # Extract metadata from config.yaml for labels
+          CUSTOMER=$(grep "^  customer:" backend/app/config.yaml | head -1 | sed 's/^  customer: *"\(.*\)"$/\1/' | sed 's/^  customer: *\(.*\)$/\1/')
+          PROJECT=$(grep "^  project:" backend/app/config.yaml | head -1 | sed 's/^  project: *"\(.*\)"$/\1/' | sed 's/^  project: *\(.*\)$/\1/')
+          
+          # Set defaults if empty
+          CUSTOMER=${CUSTOMER:-""}
+          PROJECT=${PROJECT:-""}
+          
           gcloud run deploy $SERVICE_NAME \
             --image gcr.io/$PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA \
             --platform managed \
@@ -68,6 +76,7 @@ jobs:
             --allow-unauthenticated \
             --set-env-vars="ENVIRONMENT=prd" \
             --set-secrets="DOPPLER_SECRETS_JSON=projects/$PROJECT_NUMBER/secrets/$SECRET_NAME:latest" \
+            --update-labels="environment=prd,customer=$CUSTOMER,project=$PROJECT" \
             --memory=2Gi \
             --cpu=2 \
             --timeout=300 \

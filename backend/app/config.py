@@ -53,8 +53,9 @@ class Settings(BaseSettings):
     langfuse_public_key: str | None = Field(None, validation_alias="LANGFUSE_PUBLIC_KEY")
     langfuse_secret_key: str | None = Field(None, validation_alias="LANGFUSE_SECRET_KEY")
     langfuse_base_url: str | None = Field(None, validation_alias="LANGFUSE_BASE_URL")
-    langfuse_customer: str | None = Field(None, validation_alias="LANGFUSE_CUSTOMER")
-    langfuse_project: str | None = Field(None, validation_alias="LANGFUSE_PROJECT")
+    # Centralized metadata
+    customer: str = Field(...)
+    project: str = Field(...)
 
     @model_validator(mode="after")
     def validate_langfuse_config(self) -> "Settings":
@@ -93,4 +94,20 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def get_metadata() -> dict[str, str]:
+    """
+    Get centralized metadata (environment, customer, project).
+    
+    Returns:
+        dict with keys: environment, customer, project
+    """
+    import os
+    environment = "prd" if os.getenv("ENVIRONMENT") == "prd" else "dev"
+    return {
+        "environment": environment,
+        "customer": settings.customer,
+        "project": settings.project,
+    }
 

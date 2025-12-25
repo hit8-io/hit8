@@ -7,6 +7,8 @@ defaults:
   langfuse_enabled: true
   log_level: INFO
   log_format: json
+  customer: "hit8"
+  project: "hit8-poc"
   logging:
     version: 1
     disable_existing_loggers: false

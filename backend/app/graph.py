@@ -13,7 +13,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from google.oauth2 import service_account
 import structlog
 
-from app.config import settings
+from app.config import settings, get_metadata
 
 logger = structlog.get_logger(__name__)
 
@@ -102,28 +102,40 @@ def _get_langfuse_handler() -> Any | None:
         return None
 
 
-def generate_node(state: AgentState, config: RunnableConfig | dict[str, Any] | None = None) -> AgentState:
+def generate_node(state: AgentState, config: RunnableConfig | None = None) -> AgentState:
     """Generate response using Google Vertex AI."""
     model = _get_model()
     last_message = state["messages"][-1]
     
-    # Debug: Log config to verify callbacks are passed
-    if config:
-        callbacks = config.get("callbacks") if isinstance(config, dict) else getattr(config, "callbacks", None)
-        if callbacks:
-            logger.debug(
-                "callbacks_found_in_config",
-                callback_count=len(callbacks),
-            )
-        else:
-            logger.debug("no_callbacks_in_config")
+    # Convert config to dict for metadata injection
+    # RunnableConfig is a TypedDict, so we can safely convert it
+    config_dict: dict[str, Any] = {}
+    if config is not None:
+        # RunnableConfig is a TypedDict, convert to regular dict
+        config_dict = dict(config) if isinstance(config, dict) else {}
+    
+    # Inject centralized metadata into config for Vertex AI
+    metadata = get_metadata()
+    if "metadata" not in config_dict:
+        config_dict["metadata"] = {}
+    # Merge centralized metadata with existing metadata
+    config_dict["metadata"].update(metadata)
+    
+    # Debug: Log config to verify callbacks and metadata are passed
+    callbacks = config_dict.get("callbacks")
+    if callbacks:
+        logger.debug(
+            "callbacks_found_in_config",
+            callback_count=len(callbacks),
+            metadata=config_dict.get("metadata"),
+        )
+    else:
+        logger.debug("no_callbacks_in_config", metadata=config_dict.get("metadata"))
     
     # Pass config directly to model.invoke - LangGraph/LangChain will handle callbacks propagation
     # According to official docs: https://langfuse.com/integrations/frameworks/langchain
-    if config:
-        response = model.invoke([last_message], config=config)
-    else:
-        response = model.invoke([last_message])
+    # Convert back to RunnableConfig type for type safety
+    response = model.invoke([last_message], config=config_dict if config_dict else config)
     
     state["messages"].append(response)
     

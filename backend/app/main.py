@@ -43,7 +43,7 @@ def parse_doppler_secrets() -> None:
 parse_doppler_secrets()
 
 # Now import settings after secrets are parsed
-from app.config import settings
+from app.config import settings, get_metadata
 from app.deps import verify_google_token
 from app.graph import AgentState, create_graph, _get_langfuse_handler
 
@@ -217,22 +217,18 @@ async def chat(
             handler_type=type(langfuse_handler).__name__,
         )
     
-    # Add metadata for Langfuse tracing
-    env = "prd" if os.getenv("ENVIRONMENT") == "prd" else "dev"
+    # Add metadata for Langfuse tracing using centralized metadata
+    centralized_metadata = get_metadata()
     metadata: dict[str, Any] = {
         "langfuse_user_id": user_id,
-        "env": env,
+        **centralized_metadata,  # Includes environment, customer, project
     }
-    if settings.langfuse_customer:
-        metadata["customer"] = settings.langfuse_customer
-        logger.debug("langfuse_metadata_customer_added", customer=settings.langfuse_customer)
-    else:
-        logger.debug("langfuse_metadata_customer_missing")
-    if settings.langfuse_project:
-        metadata["project"] = settings.langfuse_project
-        logger.debug("langfuse_metadata_project_added", project=settings.langfuse_project)
-    else:
-        logger.debug("langfuse_metadata_project_missing")
+    logger.debug(
+        "langfuse_metadata_constructed",
+        environment=centralized_metadata["environment"],
+        customer=centralized_metadata["customer"],
+        project=centralized_metadata["project"],
+    )
     
     config["metadata"] = metadata
     
@@ -249,24 +245,25 @@ async def chat(
             
             # In production/serverless, use shutdown() for more reliable flushing
             # shutdown() flushes all data and waits for background threads to complete
-            if env == "prd":
-                logger.debug("langfuse_shutdown_starting", env=env)
+            environment = centralized_metadata["environment"]
+            if environment == "prd":
+                logger.debug("langfuse_shutdown_starting", environment=environment)
                 # shutdown() is more reliable in serverless environments
                 # It flushes all data and ensures background threads complete
                 langfuse_client.shutdown()
-                logger.debug("langfuse_shutdown_completed", env=env)
+                logger.debug("langfuse_shutdown_completed", environment=environment)
             else:
                 # In dev, use flush() as shutdown() might be too aggressive for long-running services
-                logger.debug("langfuse_flush_starting", env=env)
+                logger.debug("langfuse_flush_starting", environment=environment)
                 langfuse_client.flush()
-                logger.debug("langfuse_flush_completed", env=env)
+                logger.debug("langfuse_flush_completed", environment=environment)
         except Exception as e:
             # Log error but don't fail the request
             logger.error(
                 "langfuse_flush_failed",
                 error=str(e),
                 error_type=type(e).__name__,
-                env=env,
+                environment=centralized_metadata["environment"],
                 langfuse_base_url=settings.langfuse_base_url,
             )
     
