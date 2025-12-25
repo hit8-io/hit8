@@ -1,3 +1,6 @@
+---
+alwaysApply: true
+---
 # Limit Fallback Code
 
 Minimize the use of fallback/default values that might hide configuration issues.
