@@ -12,13 +12,19 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - supabase
+      supabase:
+        condition: service_healthy
+      langfuse:
+        condition: service_started
     # Environment variables are injected by Doppler at runtime
     environment:
       - VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM=${VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM}
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
       - GCP_PROJECT=${GCP_PROJECT}
       - GOOGLE_IDENTITY_PLATFORM_DOMAIN=${GOOGLE_IDENTITY_PLATFORM_DOMAIN}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
+      - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL}
 
   supabase:
     image: supabase/postgres:15.1.0.147
@@ -27,6 +33,149 @@ services:
     environment:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      retries: 5
+      start_period: 10s
+      timeout: 5s
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    restart: always
+    user: "101:101"
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: clickhouse
+    volumes:
+      - langfuse-clickhouse-data:/var/lib/clickhouse
+      - langfuse-clickhouse-logs:/var/log/clickhouse-server
+    ports:
+      - "127.0.0.1:8123:8123"
+      - "127.0.0.1:9000:9000"
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 10s
+      retries: 5
+      start_period: 10s
+      timeout: 5s
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: redis-server --requirepass myredissecret
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "myredissecret", "ping"]
+      interval: 10s
+      retries: 5
+      start_period: 10s
+      timeout: 5s
+
+  minio:
+    image: minio/minio:latest
+    restart: always
+    command: server /data --console-address ":9091"
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: miniosecret
+    volumes:
+      - langfuse-minio-data:/data
+    ports:
+      - "127.0.0.1:9001:9000"
+      - "127.0.0.1:9090:9090"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      retries: 5
+      start_period: 10s
+      timeout: 5s
+
+  langfuse:
+    image: langfuse/langfuse:3
+    restart: always
+    ports:
+      - "3000:3000"
+    depends_on:
+      supabase:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: langfuse-secret-key-change-in-production
+      DATABASE_URL: postgresql://postgres:postgres@supabase:5432/langfuse
+      SALT: langfuse-salt-change-in-production
+      ENCRYPTION_KEY: bed99b51d6fc2699d820e0f7f68f6de0ac73613b00a9908bf957a9df1d7ed31d
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: clickhouse
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_AUTH: myredissecret
+      REDIS_TLS_ENABLED: "false"
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: miniosecret
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: miniosecret
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+    volumes:
+      - langfuse-data:/app/data
+
+  langfuse-worker:
+    image: langfuse/langfuse-worker:3
+    restart: always
+    depends_on:
+      supabase:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: langfuse-secret-key-change-in-production
+      DATABASE_URL: postgresql://postgres:postgres@supabase:5432/langfuse
+      SALT: langfuse-salt-change-in-production
+      ENCRYPTION_KEY: bed99b51d6fc2699d820e0f7f68f6de0ac73613b00a9908bf957a9df1d7ed31d
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: clickhouse
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_AUTH: myredissecret
+      REDIS_TLS_ENABLED: "false"
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: miniosecret
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: miniosecret
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
 
   web:
     build:
@@ -43,4 +192,10 @@ services:
       - VITE_GOOGLE_IDENTITY_PLATFORM_DOMAIN=${GOOGLE_IDENTITY_PLATFORM_DOMAIN}
       - VITE_GCP_PROJECT=${GCP_PROJECT}
       - VITE_API_URL=${VITE_API_URL}
+
+volumes:
+  langfuse-data:
+  langfuse-clickhouse-data:
+  langfuse-clickhouse-logs:
+  langfuse-minio-data:
 

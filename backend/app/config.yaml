@@ -1,22 +1,85 @@
 defaults:
   app_name: "Hit8 Chat API"
   app_version: "1.0.0"
-  debug_mode: false
   vertex_ai_model_name: "gemini-3-flash-preview"
   vertex_ai_location: "global"
   cors_allow_credentials: true
+  langfuse_enabled: true
+  log_level: INFO
+  log_format: json
+  logging:
+    version: 1
+    disable_existing_loggers: false
+    formatters:
+      json_formatter:
+        (): app.logging_utils.StructlogJSONFormatter
+      console_formatter:
+        (): app.logging_utils.StructlogConsoleFormatter
+    handlers:
+      console:
+        class: logging.StreamHandler
+        formatter: json_formatter
+        stream: ext://sys.stdout
+    loggers:
+      "":
+        handlers: [console]
+        level: INFO
+      app:
+        handlers: [console]
+        level: INFO
+        propagate: false
 
 dev:
-  debug_mode: true
+  log_level: DEBUG
+  log_format: console
   cors_allow_origins:
     - "http://localhost:5173"
     - "http://127.0.0.1:5173"
   supabase_url: "http://localhost:5432"
+  logging:
+    version: 1
+    disable_existing_loggers: false
+    formatters:
+      console_formatter:
+        (): app.logging_utils.StructlogConsoleFormatter
+    handlers:
+      console:
+        class: logging.StreamHandler
+        formatter: console_formatter
+        stream: ext://sys.stdout
+    loggers:
+      "":
+        handlers: [console]
+        level: DEBUG
+      app:
+        handlers: [console]
+        level: DEBUG
+        propagate: false
 
 prod:
-  debug_mode: false
+  log_level: INFO
+  log_format: json
   cors_allow_origins:
     - "https://www.hit8.io"
     - "https://hit8.io"
     - "https://hit8.pages.dev"  # Cloudflare Pages default URL (fallback)
   supabase_url: "https://dxwwmmhfhsljkhftnzke.supabase.co"
+  logging:
+    version: 1
+    disable_existing_loggers: false
+    formatters:
+      json_formatter:
+        (): app.logging_utils.StructlogJSONFormatter
+    handlers:
+      console:
+        class: logging.StreamHandler
+        formatter: json_formatter
+        stream: ext://sys.stdout
+    loggers:
+      "":
+        handlers: [console]
+        level: INFO
+      app:
+        handlers: [console]
+        level: INFO
+        propagate: false

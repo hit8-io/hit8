@@ -5,9 +5,13 @@ from __future__ import annotations
 
 import json
 import logging
+import logging.config
 import os
+import yaml
+from pathlib import Path
 from typing import Any
 
+import structlog
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -17,9 +21,40 @@ from pydantic import BaseModel
 
 from app.config import settings
 from app.deps import verify_google_token
-from app.graph import AgentState, create_graph
+from app.graph import AgentState, create_graph, _get_langfuse_handler
+from app.logging_utils import configure_structlog
 
-logger = logging.getLogger(__name__)
+# Initialize structlog before other imports that might use logging
+configure_structlog()
+
+# Load logging configuration from config.yaml
+def setup_logging() -> None:
+    """Setup logging from config.yaml."""
+    config_file = Path(__file__).parent / "config.yaml"
+    if not config_file.exists():
+        raise FileNotFoundError(f"Configuration file not found: {config_file}")
+    
+    with open(config_file) as f:
+        config_data = yaml.safe_load(f)
+        if config_data is None:
+            config_data = {}
+    
+    env = "prod" if os.getenv("ENVIRONMENT") == "prod" else "dev"
+    defaults = config_data.get("defaults", {})
+    env_config = config_data.get(env, {})
+    
+    # Merge logging config (env overrides defaults)
+    logging_config = defaults.get("logging", {})
+    if "logging" in env_config:
+        logging_config = {**logging_config, **env_config["logging"]}
+    
+    if logging_config:
+        logging.config.dictConfig(logging_config)
+
+# Setup logging at module level
+setup_logging()
+
+logger = structlog.get_logger(__name__)
 
 
 def parse_doppler_secrets() -> None:
@@ -97,6 +132,12 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 @app.exception_handler(FirebaseError)
 async def firebase_exception_handler(request: Request, exc: FirebaseError):
     """Handle Firebase errors and ensure CORS headers are included."""
+    logger.warning(
+        "firebase_authentication_failed",
+        error=str(exc),
+        path=request.url.path,
+        method=request.method,
+    )
     return JSONResponse(
         status_code=status.HTTP_401_UNAUTHORIZED,
         content={"detail": "Authentication failed"},
@@ -154,9 +195,46 @@ async def chat(
         "messages": [HumanMessage(content=request.message)]
     }
     
-    result = graph.invoke(initial_state)
+    # Get Langfuse callback handler if enabled
+    langfuse_handler = _get_langfuse_handler()
+    
+    # Prepare config with callbacks and metadata
+    config: dict[str, Any] = {}
+    if langfuse_handler:
+        config["callbacks"] = [langfuse_handler]
+        logger.debug(
+            "langfuse_callback_handler_added",
+            handler_type=type(langfuse_handler).__name__,
+        )
+    
+    # Add metadata for Langfuse tracing
+    env = "prod" if os.getenv("ENVIRONMENT") == "prod" else "dev"
+    metadata: dict[str, Any] = {
+        "langfuse_user_id": user_id,
+        "env": env,
+    }
+    if settings.langfuse_customer:
+        metadata["customer"] = settings.langfuse_customer
+    if settings.langfuse_project:
+        metadata["project"] = settings.langfuse_project
+    
+    config["metadata"] = metadata
+    
+    result = graph.invoke(initial_state, config=config)
     ai_message = extract_ai_message(result["messages"])
     content = extract_message_content(ai_message.content)
+    
+    # Flush Langfuse traces to ensure they're sent
+    if langfuse_handler and settings.langfuse_enabled:
+        try:
+            from langfuse import get_client
+            get_client().flush()
+        except Exception as e:
+            logger.warning(
+                "langfuse_flush_failed",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
     
     return ChatResponse(response=content, user_id=user_id)
 

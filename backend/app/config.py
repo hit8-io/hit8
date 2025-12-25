@@ -7,7 +7,7 @@ from typing import Any
 from pathlib import Path
 import os
 import yaml
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict, PydanticBaseSettingsSource
 
 
@@ -28,13 +28,18 @@ class YamlConfigSettingsSource(PydanticBaseSettingsSource):
         env = "prod" if os.getenv("ENVIRONMENT") == "prod" else "dev"
         defaults = config_data.get("defaults", {})
         env_config = config_data.get(env, {})
-        return {**defaults, **env_config}
+        
+        # Merge configs and exclude 'logging' section (handled separately)
+        merged = {**defaults, **env_config}
+        merged.pop("logging", None)  # Remove logging section from Settings
+        return merged
 
 
 class Settings(BaseSettings):
     app_name: str = Field(...)
     app_version: str = Field(...)
-    debug_mode: bool = Field(...)
+    log_level: str = Field(...)
+    log_format: str = Field(...)
     cors_allow_origins: list[str] = Field(...)
     cors_allow_credentials: bool = Field(...)
     vertex_ai_model_name: str = Field(...)
@@ -43,6 +48,25 @@ class Settings(BaseSettings):
     google_identity_platform_domain: str = Field(..., validation_alias="GOOGLE_IDENTITY_PLATFORM_DOMAIN")
     supabase_url: str = Field(...)
     vertex_service_account_json: str = Field(..., validation_alias="VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM", exclude=True)
+    # Langfuse configuration
+    langfuse_enabled: bool = Field(...)
+    langfuse_public_key: str | None = Field(None, validation_alias="LANGFUSE_PUBLIC_KEY")
+    langfuse_secret_key: str | None = Field(None, validation_alias="LANGFUSE_SECRET_KEY")
+    langfuse_base_url: str | None = Field(None, validation_alias="LANGFUSE_BASE_URL")
+    langfuse_customer: str | None = Field(None)
+    langfuse_project: str | None = Field(None)
+
+    @model_validator(mode="after")
+    def validate_langfuse_config(self) -> "Settings":
+        """Validate Langfuse configuration - require secrets when enabled."""
+        if self.langfuse_enabled:
+            if not self.langfuse_public_key:
+                raise ValueError("LANGFUSE_PUBLIC_KEY is required when langfuse_enabled=True")
+            if not self.langfuse_secret_key:
+                raise ValueError("LANGFUSE_SECRET_KEY is required when langfuse_enabled=True")
+            if not self.langfuse_base_url:
+                raise ValueError("LANGFUSE_BASE_URL is required when langfuse_enabled=True")
+        return self
 
     model_config = SettingsConfigDict(
         env_prefix="",

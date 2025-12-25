@@ -6,12 +6,16 @@ from __future__ import annotations
 import json
 from typing import TypedDict, Annotated
 from langchain_core.messages import BaseMessage, HumanMessage
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph, END
 from typing import Any
 from langchain_google_genai import ChatGoogleGenerativeAI
 from google.oauth2 import service_account
+import structlog
 
 from app.config import settings
+
+logger = structlog.get_logger(__name__)
 
 class AgentState(TypedDict):
     messages: Annotated[list[BaseMessage], "The conversation messages"]
@@ -19,6 +23,29 @@ class AgentState(TypedDict):
 
 # Cache model and credentials at module level
 _model: ChatGoogleGenerativeAI | None = None
+
+# Initialize Langfuse client if enabled
+if settings.langfuse_enabled:
+    try:
+        from langfuse import Langfuse
+        
+        # Validator ensures these are not None when langfuse_enabled is True
+        assert settings.langfuse_public_key is not None
+        assert settings.langfuse_secret_key is not None
+        assert settings.langfuse_base_url is not None
+        
+        Langfuse(
+            public_key=settings.langfuse_public_key,
+            secret_key=settings.langfuse_secret_key,
+            host=settings.langfuse_base_url,
+        )
+        logger.info("langfuse_client_initialized")
+    except Exception as e:
+        logger.warning(
+            "langfuse_client_init_failed",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
 
 def _get_model() -> ChatGoogleGenerativeAI:
@@ -47,11 +74,49 @@ def _get_model() -> ChatGoogleGenerativeAI:
     return _model
 
 
-def generate_node(state: AgentState) -> AgentState:
+def _get_langfuse_handler() -> Any | None:
+    """Get Langfuse callback handler if enabled, None otherwise."""
+    if not settings.langfuse_enabled:
+        return None
+    
+    try:
+        from langfuse.langchain import CallbackHandler
+        # CallbackHandler uses the singleton client initialized at module level
+        handler = CallbackHandler()
+        logger.debug("langfuse_callback_handler_created")
+        return handler
+    except Exception as e:
+        logger.warning(
+            "langfuse_callback_handler_creation_failed",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return None
+
+
+def generate_node(state: AgentState, config: RunnableConfig | dict[str, Any] | None = None) -> AgentState:
     """Generate response using Google Vertex AI."""
     model = _get_model()
     last_message = state["messages"][-1]
-    response = model.invoke([last_message])
+    
+    # Debug: Log config to verify callbacks are passed
+    if config:
+        callbacks = config.get("callbacks") if isinstance(config, dict) else getattr(config, "callbacks", None)
+        if callbacks:
+            logger.debug(
+                "callbacks_found_in_config",
+                callback_count=len(callbacks),
+            )
+        else:
+            logger.debug("no_callbacks_in_config")
+    
+    # Pass config directly to model.invoke - LangGraph/LangChain will handle callbacks propagation
+    # According to official docs: https://langfuse.com/integrations/frameworks/langchain
+    if config:
+        response = model.invoke([last_message], config=config)
+    else:
+        response = model.invoke([last_message])
+    
     state["messages"].append(response)
     
     return state
