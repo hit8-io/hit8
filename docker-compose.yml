@@ -1,3 +1,6 @@
+# Secrets are managed via Doppler. Run with: doppler run -- docker-compose up
+# See .cursor/rules/secrets.mdc for more information
+
 services:
   api:
     build:
@@ -10,6 +13,7 @@ services:
       - "8000:8000"
     depends_on:
       - supabase
+    # Environment variables are injected by Doppler at runtime
     environment:
       - VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM=${VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM}
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
@@ -33,6 +37,7 @@ services:
       - /app/node_modules
     ports:
       - "5173:5173"
+    # Environment variables are injected by Doppler at runtime
     environment:
       - VITE_GOOGLE_IDENTITY_PLATFORM_KEY=${GOOGLE_IDENTITY_PLATFORM_KEY}
       - VITE_GOOGLE_IDENTITY_PLATFORM_DOMAIN=${GOOGLE_IDENTITY_PLATFORM_DOMAIN}

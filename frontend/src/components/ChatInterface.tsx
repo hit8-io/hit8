@@ -26,17 +26,12 @@ interface ChatInterfaceProps {
 
 const API_URL = import.meta.env.VITE_API_URL
 
-// Validate API URL is set
-if (!API_URL) {
-  console.error('VITE_API_URL is not set. Please configure the API URL.')
-}
-
 export default function ChatInterface({ token, user, onLogout }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   
-  // Show error if API URL is missing
+  // Fail fast if API URL is missing
   if (!API_URL) {
     return (
       <div className="flex flex-col h-screen max-w-4xl mx-auto p-4">
@@ -76,11 +71,13 @@ export default function ChatInterface({ token, user, onLogout }: ChatInterfacePr
       }
       setMessages((prev) => [...prev, assistantMessage])
     } catch (error) {
+      let errorMessage = 'Sorry, I encountered an error. Please try again.'
+      if (axios.isAxiosError(error) && error.response?.data?.detail) {
+        errorMessage = error.response.data.detail
+      }
       const errorMsg: Message = {
         role: 'assistant',
-        content: axios.isAxiosError(error) && error.response?.data?.detail 
-          ? error.response.data.detail 
-          : 'Sorry, I encountered an error. Please try again.',
+        content: errorMessage,
       }
       setMessages((prev) => [...prev, errorMsg])
     } finally {
@@ -101,18 +98,18 @@ export default function ChatInterface({ token, user, onLogout }: ChatInterfacePr
         <div className="p-4 border-b flex justify-between items-center">
           <h1 className="text-2xl font-bold">Hit8 Chat</h1>
           <div className="flex items-center gap-4">
-            {user?.picture ? (
+            {user.picture ? (
               <img 
                 src={user.picture} 
-                alt={user.name || 'User'} 
+                alt={user.name} 
                 className="w-8 h-8 rounded-full object-cover border border-border"
               />
             ) : (
               <div className="w-8 h-8 rounded-full bg-primary/10 border border-border flex items-center justify-center text-primary text-xs font-semibold">
-                {(user?.name || user?.email || 'U').charAt(0).toUpperCase()}
+                {user.name.charAt(0).toUpperCase()}
               </div>
             )}
-            <span className="text-sm text-muted-foreground">{user?.name || user?.email}</span>
+            <span className="text-sm text-muted-foreground">{user.name}</span>
             <Button variant="outline" size="icon" onClick={onLogout} title="Sign out">
               <LogOut className="h-4 w-4" />
             </Button>

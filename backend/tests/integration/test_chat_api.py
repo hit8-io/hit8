@@ -14,7 +14,12 @@ async def test_chat_endpoint_success(client):
     from app.deps import verify_google_token
     
     async def mock_verify_token():
-        return {"sub": "test_user_123"}
+        return {
+            "sub": "test_user_123",
+            "email": "test@example.com",
+            "name": "Test User",
+            "picture": "https://example.com/picture.jpg"
+        }
     
     app.dependency_overrides[verify_google_token] = mock_verify_token
     

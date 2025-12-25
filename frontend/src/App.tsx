@@ -34,9 +34,8 @@ function App() {
   }
 
   useEffect(() => {
-    // Check Firebase config immediately
+    // Check Firebase config immediately - fail fast if missing
     if (!firebaseConfig.apiKey || !firebaseConfig.authDomain || !firebaseConfig.projectId) {
-      console.error('Firebase configuration is missing. Please set VITE_GOOGLE_IDENTITY_PLATFORM_KEY, VITE_GOOGLE_IDENTITY_PLATFORM_DOMAIN, and VITE_GCP_PROJECT')
       setLoading(false)
       return
     }
@@ -48,13 +47,22 @@ function App() {
     const auth = getAuth(app)
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: User | null) => {
       if (firebaseUser) {
+        if (!firebaseUser.email) {
+          throw new Error('User email is required but not provided')
+        }
+        if (!firebaseUser.displayName) {
+          throw new Error('User display name is required but not provided')
+        }
+        if (!firebaseUser.photoURL) {
+          throw new Error('User photo URL is required but not provided')
+        }
         const token = await firebaseUser.getIdToken(false)
         setIdToken(token)
         setUser({
           id: firebaseUser.uid,
-          email: firebaseUser.email || '',
-          name: firebaseUser.displayName || '',
-          picture: firebaseUser.photoURL || '',
+          email: firebaseUser.email,
+          name: firebaseUser.displayName,
+          picture: firebaseUser.photoURL,
         })
       } else {
         setUser(null)
@@ -97,8 +105,10 @@ function App() {
       const err = error as { code?: string; message?: string }
       if (err.code === 'auth/internal-error' && (err.message?.includes('403') || err.message?.includes('Forbidden'))) {
         setAuthError('Sign up is not available. Please contact an administrator.')
+      } else if (err.message) {
+        setAuthError(err.message)
       } else {
-        setAuthError(err.message || 'An error occurred during authentication')
+        setAuthError('An error occurred during authentication')
       }
     } finally {
       setAuthLoading(false)
@@ -111,6 +121,22 @@ function App() {
         <div className="text-center">
           <p className="text-muted-foreground">Loading...</p>
         </div>
+      </div>
+    )
+  }
+
+  // Fail fast if Firebase config is missing
+  if (!firebaseConfig.apiKey || !firebaseConfig.authDomain || !firebaseConfig.projectId) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle className="text-2xl text-destructive">Configuration Error</CardTitle>
+            <CardDescription>
+              Firebase configuration is missing. Please set VITE_GOOGLE_IDENTITY_PLATFORM_KEY, VITE_GOOGLE_IDENTITY_PLATFORM_DOMAIN, and VITE_GCP_PROJECT
+            </CardDescription>
+          </CardHeader>
+        </Card>
       </div>
     )
   }
@@ -248,7 +274,7 @@ function App() {
   return (
     <div className="min-h-screen bg-background">
       <ChatInterface 
-        token={idToken || ''} 
+        token={idToken} 
         user={user} 
         onLogout={handleLogout} 
       />

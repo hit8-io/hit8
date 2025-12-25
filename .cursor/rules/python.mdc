@@ -1,0 +1,119 @@
+---
+alwaysApply: true
+---
+
+# Python Development Guidelines
+
+## Package Management
+
+- **Use `uv` for all package management operations**
+  - Install packages: `uv add <package>`
+  - Remove packages: `uv remove <package>`
+  - Run commands: `uv run <command>` (e.g., `uv run pytest`, `uv run python`)
+  - Sync dependencies: `uv sync`
+  - Never use `pip`, `pipenv`, `poetry`, or other package managers
+
+## Environment Variables
+
+- **Use environment variables for configuration, not `.env` files**
+  - Environment variables are set via system environment or deployment configs
+  - Required environment variables must be explicitly validated (fail fast)
+  - Use Pydantic Settings for configuration management
+  - Never use `python-dotenv` or load `.env` files in production code
+
+## Python Version
+
+- **Require Python 3.11 or higher**
+  - Specify in `pyproject.toml`: `requires-python = ">=3.11"`
+  - Use modern Python features (type hints, `from __future__ import annotations`, etc.)
+
+## Code Style
+
+- **Type hints are required**
+  - Use `from __future__ import annotations` for forward references
+  - Use `TypedDict` for dictionary structures
+  - Use `Annotated` types when needed (e.g., for LangGraph state)
+
+- **Configuration management**
+  - Use Pydantic Settings with custom sources (YAML + environment variables)
+  - Fail fast when required configuration is missing
+  - No silent fallbacks for required values
+
+- **Error handling**
+  - Raise explicit exceptions with clear error messages
+  - Use specific exception types (`ValueError`, `FileNotFoundError`, etc.)
+  - Never catch and silently ignore errors
+
+## Project Structure
+
+- **Backend structure**
+  - Application code in `backend/app/`
+  - Tests in `backend/tests/` (unit/ and integration/ subdirectories)
+  - Configuration in `backend/app/config.yaml` and environment variables
+  - Use `pyproject.toml` for project metadata and dependencies
+
+- **Module organization**
+  - Keep modules focused and single-purpose
+  - Use dependency injection (FastAPI Depends) for shared resources
+  - Cache expensive resources (e.g., model initialization) at module level
+
+## Testing
+
+- **Use pytest for all testing**
+  - Run tests: `uv run pytest`
+  - Use `pytest-asyncio` for async tests
+  - Mock external services (Firebase, Vertex AI) in tests
+  - Set up test environment variables in `conftest.py` before imports
+
+## Examples
+
+### Bad: Using pip
+```python
+# Don't do this
+pip install fastapi
+```
+
+### Good: Using uv
+```bash
+uv add fastapi
+```
+
+### Bad: Loading .env file
+```python
+# Don't do this
+from dotenv import load_dotenv
+load_dotenv()
+```
+
+### Good: Using environment variables
+```python
+# Environment variables are set by the system/deployment
+from app.config import settings
+# settings automatically reads from environment variables
+```
+
+### Bad: Missing type hints
+```python
+def process_data(data):
+    return data.items()
+```
+
+### Good: With type hints
+```python
+from typing import Dict, Any
+
+def process_data(data: Dict[str, Any]) -> Dict[str, Any]:
+    return data.items()
+```
+
+### Bad: Silent fallback
+```python
+api_key = os.getenv("API_KEY", "default")
+```
+
+### Good: Fail fast
+```python
+api_key = os.getenv("API_KEY")
+if not api_key:
+    raise ValueError("API_KEY is required but not set")
+```

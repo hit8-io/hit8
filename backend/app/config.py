@@ -18,12 +18,14 @@ class YamlConfigSettingsSource(PydanticBaseSettingsSource):
     def __call__(self) -> dict[str, Any]:
         yaml_file = Path(__file__).parent / "config.yaml"
         if not yaml_file.exists():
-            return {}
+            raise FileNotFoundError(f"Configuration file not found: {yaml_file}")
         
         with open(yaml_file) as f:
-            config_data = yaml.safe_load(f) or {}
+            config_data = yaml.safe_load(f)
+            if config_data is None:
+                config_data = {}
         
-        env = "prod" if (os.getenv("K_SERVICE") or os.getenv("ENVIRONMENT") == "prod") else "dev"
+        env = "prod" if os.getenv("ENVIRONMENT") == "prod" else "dev"
         defaults = config_data.get("defaults", {})
         env_config = config_data.get(env, {})
         return {**defaults, **env_config}

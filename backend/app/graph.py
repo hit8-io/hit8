@@ -17,22 +17,39 @@ class AgentState(TypedDict):
     messages: Annotated[list[BaseMessage], "The conversation messages"]
 
 
+# Cache model and credentials at module level
+_model: ChatGoogleGenerativeAI | None = None
+
+
+def _get_model() -> ChatGoogleGenerativeAI:
+    """Get or create cached Vertex AI model."""
+    global _model
+    if _model is None:
+        service_account_info = json.loads(settings.vertex_service_account_json)
+        if "project_id" not in service_account_info:
+            raise ValueError("project_id is required in service account JSON")
+        project_id = service_account_info["project_id"]
+        if not project_id:
+            raise ValueError("project_id cannot be empty in service account JSON")
+        
+        creds = service_account.Credentials.from_service_account_info(
+            service_account_info,
+            scopes=['https://www.googleapis.com/auth/cloud-platform']
+        )
+        
+        _model = ChatGoogleGenerativeAI(
+            model=settings.vertex_ai_model_name,
+            model_kwargs={"provider": "vertexai"},
+            project=project_id,
+            location=settings.vertex_ai_location,
+            credentials=creds,
+        )
+    return _model
+
+
 def generate_node(state: AgentState) -> AgentState:
     """Generate response using Google Vertex AI."""
-    service_account_info = json.loads(settings.vertex_service_account_json)
-    creds = service_account.Credentials.from_service_account_info(
-        service_account_info,
-        scopes=['https://www.googleapis.com/auth/cloud-platform']
-    )
-    
-    model = ChatGoogleGenerativeAI(
-        model=settings.vertex_ai_model_name,
-        model_kwargs={"provider": "vertexai"},
-        project=service_account_info.get("project_id") or settings.gcp_project,
-        location=settings.vertex_ai_location,
-        credentials=creds,
-    )
-    
+    model = _get_model()
     last_message = state["messages"][-1]
     response = model.invoke([last_message])
     state["messages"].append(response)
