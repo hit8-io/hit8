@@ -56,7 +56,7 @@ dev:
         level: DEBUG
         propagate: false
 
-prod:
+prd:
   log_level: INFO
   log_format: json
   cors_allow_origins:

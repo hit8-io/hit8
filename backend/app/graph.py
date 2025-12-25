@@ -28,23 +28,31 @@ _model: ChatGoogleGenerativeAI | None = None
 if settings.langfuse_enabled:
     try:
         from langfuse import Langfuse
+        import os
         
         # Validator ensures these are not None when langfuse_enabled is True
         assert settings.langfuse_public_key is not None
         assert settings.langfuse_secret_key is not None
         assert settings.langfuse_base_url is not None
         
+        env = "prd" if os.getenv("ENVIRONMENT") == "prd" else "dev"
+        
         Langfuse(
             public_key=settings.langfuse_public_key,
             secret_key=settings.langfuse_secret_key,
             host=settings.langfuse_base_url,
         )
-        logger.info("langfuse_client_initialized")
+        logger.info(
+            "langfuse_client_initialized",
+            env=env,
+            base_url=settings.langfuse_base_url,
+        )
     except Exception as e:
-        logger.warning(
+        logger.error(
             "langfuse_client_init_failed",
             error=str(e),
             error_type=type(e).__name__,
+            env=os.getenv("ENVIRONMENT", "unknown"),
         )
 
 

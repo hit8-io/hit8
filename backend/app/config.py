@@ -25,7 +25,7 @@ class YamlConfigSettingsSource(PydanticBaseSettingsSource):
             if config_data is None:
                 config_data = {}
         
-        env = "prod" if os.getenv("ENVIRONMENT") == "prod" else "dev"
+        env = "prd" if os.getenv("ENVIRONMENT") == "prd" else "dev"
         defaults = config_data.get("defaults", {})
         env_config = config_data.get(env, {})
         

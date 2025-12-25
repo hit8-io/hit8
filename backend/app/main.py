@@ -39,7 +39,7 @@ def setup_logging() -> None:
         if config_data is None:
             config_data = {}
     
-    env = "prod" if os.getenv("ENVIRONMENT") == "prod" else "dev"
+    env = "prd" if os.getenv("ENVIRONMENT") == "prd" else "dev"
     defaults = config_data.get("defaults", {})
     env_config = config_data.get(env, {})
     
@@ -208,7 +208,7 @@ async def chat(
         )
     
     # Add metadata for Langfuse tracing
-    env = "prod" if os.getenv("ENVIRONMENT") == "prod" else "dev"
+    env = "prd" if os.getenv("ENVIRONMENT") == "prd" else "dev"
     metadata: dict[str, Any] = {
         "langfuse_user_id": user_id,
         "env": env,
@@ -225,15 +225,33 @@ async def chat(
     content = extract_message_content(ai_message.content)
     
     # Flush Langfuse traces to ensure they're sent
+    # Critical in serverless/production environments where the process may terminate quickly
     if langfuse_handler and settings.langfuse_enabled:
         try:
             from langfuse import get_client
-            get_client().flush()
+            langfuse_client = get_client()
+            
+            # In production/serverless, use shutdown() for more reliable flushing
+            # shutdown() flushes all data and waits for background threads to complete
+            if env == "prd":
+                logger.debug("langfuse_shutdown_starting", env=env)
+                # shutdown() is more reliable in serverless environments
+                # It flushes all data and ensures background threads complete
+                langfuse_client.shutdown()
+                logger.debug("langfuse_shutdown_completed", env=env)
+            else:
+                # In dev, use flush() as shutdown() might be too aggressive for long-running services
+                logger.debug("langfuse_flush_starting", env=env)
+                langfuse_client.flush()
+                logger.debug("langfuse_flush_completed", env=env)
         except Exception as e:
-            logger.warning(
+            # Log error but don't fail the request
+            logger.error(
                 "langfuse_flush_failed",
                 error=str(e),
                 error_type=type(e).__name__,
+                env=env,
+                langfuse_base_url=settings.langfuse_base_url,
             )
     
     return ChatResponse(response=content, user_id=user_id)
