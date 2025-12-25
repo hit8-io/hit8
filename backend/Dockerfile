@@ -19,21 +19,7 @@ COPY pyproject.toml .
 COPY . .
 
 # Install dependencies using uv with pyproject.toml (modern Python dependency management)
-# Extract dependencies from pyproject.toml and install them
-RUN uv pip install --system --no-cache \
-    fastapi \
-    "uvicorn[standard]" \
-    pydantic \
-    pydantic-settings \
-    pyyaml \
-    types-PyYAML \
-    langchain-core \
-    langgraph \
-    langchain-google-genai \
-    firebase-admin \
-    google-auth \
-    supabase \
-    cryptography
+RUN uv pip install --system --no-cache .
 
 ENV PORT=8080
 CMD exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}

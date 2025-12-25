@@ -1,10 +1,23 @@
 """
 FastAPI application entrypoint.
 """
+import os
+import json
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from langchain_core.messages import HumanMessage
+
+# Parse Doppler secrets JSON if provided (for Cloud Run)
+if doppler_secrets_json := os.getenv("DOPPLER_SECRETS_JSON"):
+    try:
+        secrets = json.loads(doppler_secrets_json)
+        # Set individual environment variables from Doppler secrets
+        for key, value in secrets.items():
+            if key not in os.environ:  # Don't override existing env vars
+                os.environ[key] = str(value)
+    except json.JSONDecodeError:
+        pass  # Invalid JSON, continue with existing env vars
 
 from app.config import settings
 from app.deps import verify_google_token
