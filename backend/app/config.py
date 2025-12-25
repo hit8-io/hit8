@@ -53,8 +53,8 @@ class Settings(BaseSettings):
     langfuse_public_key: str | None = Field(None, validation_alias="LANGFUSE_PUBLIC_KEY")
     langfuse_secret_key: str | None = Field(None, validation_alias="LANGFUSE_SECRET_KEY")
     langfuse_base_url: str | None = Field(None, validation_alias="LANGFUSE_BASE_URL")
-    langfuse_customer: str | None = Field(None)
-    langfuse_project: str | None = Field(None)
+    langfuse_customer: str | None = Field(None, validation_alias="LANGFUSE_CUSTOMER")
+    langfuse_project: str | None = Field(None, validation_alias="LANGFUSE_PROJECT")
 
     @model_validator(mode="after")
     def validate_langfuse_config(self) -> "Settings":

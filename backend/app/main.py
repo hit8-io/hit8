@@ -19,13 +19,33 @@ from firebase_admin.exceptions import FirebaseError
 from langchain_core.messages import BaseMessage, HumanMessage
 from pydantic import BaseModel
 
-from app.config import settings
-from app.deps import verify_google_token
-from app.graph import AgentState, create_graph, _get_langfuse_handler
 from app.logging_utils import configure_structlog
 
 # Initialize structlog before other imports that might use logging
 configure_structlog()
+
+# Parse Doppler secrets FIRST, before importing settings
+# This ensures environment variables are set before Settings initialization
+def parse_doppler_secrets() -> None:
+    """Parse Doppler secrets JSON if provided (for Cloud Run)."""
+    if doppler_secrets_json := os.getenv("DOPPLER_SECRETS_JSON"):
+        try:
+            secrets = json.loads(doppler_secrets_json)
+            # Set individual environment variables from Doppler secrets
+            for key, value in secrets.items():
+                if key not in os.environ:  # Don't override existing env vars
+                    os.environ[key] = str(value)
+        except json.JSONDecodeError:
+            # Invalid JSON, continue with existing env vars
+            pass
+
+# Parse Doppler secrets at module level BEFORE importing settings
+parse_doppler_secrets()
+
+# Now import settings after secrets are parsed
+from app.config import settings
+from app.deps import verify_google_token
+from app.graph import AgentState, create_graph, _get_langfuse_handler
 
 # Load logging configuration from config.yaml
 def setup_logging() -> None:
@@ -55,16 +75,6 @@ def setup_logging() -> None:
 setup_logging()
 
 logger = structlog.get_logger(__name__)
-
-
-def parse_doppler_secrets() -> None:
-    """Parse Doppler secrets JSON if provided (for Cloud Run)."""
-    if doppler_secrets_json := os.getenv("DOPPLER_SECRETS_JSON"):
-        secrets = json.loads(doppler_secrets_json)
-        # Set individual environment variables from Doppler secrets
-        for key, value in secrets.items():
-            if key not in os.environ:  # Don't override existing env vars
-                os.environ[key] = str(value)
 
 
 def get_cors_headers(request: Request) -> dict[str, str]:
@@ -215,8 +225,14 @@ async def chat(
     }
     if settings.langfuse_customer:
         metadata["customer"] = settings.langfuse_customer
+        logger.debug("langfuse_metadata_customer_added", customer=settings.langfuse_customer)
+    else:
+        logger.debug("langfuse_metadata_customer_missing")
     if settings.langfuse_project:
         metadata["project"] = settings.langfuse_project
+        logger.debug("langfuse_metadata_project_added", project=settings.langfuse_project)
+    else:
+        logger.debug("langfuse_metadata_project_missing")
     
     config["metadata"] = metadata
     
