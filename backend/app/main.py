@@ -110,9 +110,6 @@ def extract_ai_message(messages: list[BaseMessage]) -> BaseMessage:
     return ai_messages[-1]
 
 
-# Parse Doppler secrets at module level
-parse_doppler_secrets()
-
 # Initialize FastAPI app
 app = FastAPI(title=settings.app_name, version=settings.app_version)
 
@@ -158,7 +155,6 @@ async def firebase_exception_handler(request: Request, exc: FirebaseError):
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """Handle all exceptions and ensure CORS headers are included."""
-    # Log the error for debugging
     logger.exception("Unhandled exception", exc_info=exc)
     
     # Determine error message based on exception type

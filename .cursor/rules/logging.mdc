@@ -1,0 +1,166 @@
+---
+alwaysApply: true
+---
+
+# Logging Strategy
+
+## Overview
+
+The project uses **structlog** for structured logging with environment-specific configuration. Logging is configured via `config.yaml` and supports both JSON (production) and console-friendly (development) formats.
+
+## Logging Library
+
+- **Use structlog for all application logging**
+  - Import: `import structlog`
+  - Get logger: `logger = structlog.get_logger(__name__)`
+  - Never use `print()` statements for logging
+  - Never use standard library `logging` directly (use structlog wrappers)
+
+## Initialization
+
+- **Initialize structlog early in application startup**
+  - Call `configure_structlog()` from `app.logging_utils` before other imports that might use logging
+  - This happens in `main.py` at module level before importing settings
+  - Logging configuration is loaded from `config.yaml` after structlog initialization
+
+## Configuration
+
+- **Logging configuration is environment-specific in `config.yaml`**
+  - Default configuration in `defaults.logging`
+  - Environment-specific overrides in `dev.logging` and `prd.logging`
+  - Configuration includes formatters, handlers, and logger levels
+  - Log levels: `DEBUG` in dev, `INFO` in prd
+
+## Log Formats
+
+- **Production (prd): JSON format**
+  - Uses `StructlogJSONFormatter` for structured JSON output
+  - Machine-readable for log aggregation systems (Cloud Logging, etc.)
+  - Includes timestamps, log levels, logger names, and structured context
+
+- **Development (dev): Console format**
+  - Uses `StructlogConsoleFormatter` for human-readable output
+  - Color-coded for easier debugging
+  - Same structured data, formatted for terminal viewing
+
+## Log Levels
+
+- **Use appropriate log levels**
+  - `logger.debug()`: Detailed diagnostic information (only in dev)
+  - `logger.info()`: General informational messages (startup, configuration)
+  - `logger.warning()`: Warning messages (non-critical issues, fallbacks)
+  - `logger.error()`: Error messages (recoverable errors)
+  - `logger.exception()`: Exception logging (includes traceback)
+
+## Structured Logging
+
+- **Always use structured logging with key-value pairs**
+  - Pass context as keyword arguments, not in the message string
+  - Use descriptive event names as the first argument
+  - Include relevant context (user_id, environment, error details, etc.)
+
+### Good: Structured logging
+```python
+logger.info(
+    "langfuse_client_initialized",
+    env=env,
+    base_url=settings.langfuse_base_url,
+)
+
+logger.error(
+    "langfuse_flush_failed",
+    error=str(e),
+    error_type=type(e).__name__,
+    environment=centralized_metadata["environment"],
+    langfuse_base_url=settings.langfuse_base_url,
+)
+```
+
+### Bad: String formatting
+```python
+# Don't do this
+logger.info(f"Langfuse initialized for {env} at {settings.langfuse_base_url}")
+logger.error(f"Langfuse flush failed: {e}")
+```
+
+## Logging Best Practices
+
+- **Include relevant context in logs**
+  - User IDs, request paths, environment, configuration values
+  - Error types and messages for exceptions
+  - Operation status and timing information
+
+- **Use descriptive event names**
+  - Use snake_case for event names (e.g., `langfuse_client_initialized`)
+  - Make event names self-documenting
+  - Group related events with prefixes (e.g., `langfuse_*`)
+
+- **Log exceptions properly**
+  - Use `logger.exception()` for exceptions (includes traceback automatically)
+  - Include `exc_info=exc` when using other log levels with exceptions
+  - Add context about what operation failed
+
+- **Avoid debug logging in production code**
+  - Debug logs are only visible in dev environment
+  - Use info/warning/error for production-visible logs
+  - Remove temporary debug logging after troubleshooting
+
+## Examples
+
+### Good: Structured exception logging
+```python
+try:
+    result = some_operation()
+except Exception as e:
+    logger.exception(
+        "operation_failed",
+        operation="some_operation",
+        error=str(e),
+        error_type=type(e).__name__,
+    )
+```
+
+### Bad: Unstructured logging
+```python
+try:
+    result = some_operation()
+except Exception as e:
+    logger.error(f"Operation failed: {e}")  # Missing context and traceback
+```
+
+### Good: Informational logging with context
+```python
+logger.info(
+    "request_processed",
+    user_id=user_id,
+    path=request.url.path,
+    method=request.method,
+    status_code=200,
+)
+```
+
+### Bad: Missing context
+```python
+logger.info("Request processed")  # No context about what was processed
+```
+
+## Integration with Standard Library
+
+- **structlog integrates with Python's standard logging**
+  - Third-party libraries using standard logging will automatically use structlog formatters
+  - Configuration in `config.yaml` applies to all loggers
+  - Use structlog for application code, standard logging works for dependencies
+
+## Context Variables
+
+- **Use structlog context variables for request-scoped data**
+  - Context variables are automatically included in all log messages
+  - Useful for request IDs, user IDs, etc.
+  - Example: `structlog.contextvars.bind_contextvars(user_id=user_id)`
+
+## Testing
+
+- **Mock or configure logging in tests**
+  - Set up test environment variables before importing application code
+  - Use appropriate log levels in test configuration
+  - Verify log calls in tests when testing error handling

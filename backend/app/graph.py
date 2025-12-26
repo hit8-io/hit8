@@ -121,17 +121,6 @@ def generate_node(state: AgentState, config: RunnableConfig | None = None) -> Ag
     # Merge centralized metadata with existing metadata
     config_dict["metadata"].update(metadata)
     
-    # Debug: Log config to verify callbacks and metadata are passed
-    callbacks = config_dict.get("callbacks")
-    if callbacks:
-        logger.debug(
-            "callbacks_found_in_config",
-            callback_count=len(callbacks),
-            metadata=config_dict.get("metadata"),
-        )
-    else:
-        logger.debug("no_callbacks_in_config", metadata=config_dict.get("metadata"))
-    
     # Pass config directly to model.invoke - LangGraph/LangChain will handle callbacks propagation
     # According to official docs: https://langfuse.com/integrations/frameworks/langchain
     # Convert back to RunnableConfig type for type safety

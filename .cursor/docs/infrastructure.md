@@ -190,3 +190,5 @@ The frontend is a static site served via Cloudflare's CDN:
 - **Caching**: Static assets cached at edge locations
 - **No Scaling Limits**: Handles unlimited traffic
 
+
+

@@ -149,3 +149,5 @@ sequenceDiagram
 - **Secrets Management**: Doppler (via GCP Secret Manager in production)
 - **CI/CD**: GitHub Actions (backend), Cloudflare Pages (frontend)
 
+
+

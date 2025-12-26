@@ -389,3 +389,5 @@ gcloud run services logs read hit8-api --region=europe-west1
 - Verify environment variables
 - Test build locally: `npm run build:cloudflare`
 
+
+

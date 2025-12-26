@@ -334,3 +334,5 @@ export VITE_API_URL="http://localhost:8000"
 - Error messages indicate which secrets are required
 - Check Doppler/GCP Secret Manager for missing secrets
 
+
+
