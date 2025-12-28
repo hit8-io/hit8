@@ -33,8 +33,12 @@ def parse_doppler_secrets() -> None:
     """Parse Doppler secrets JSON if provided (for Cloud Run)."""
     import sys
     
-    # Get logger (structlog is already configured)
-    logger = structlog.get_logger(__name__)
+    # Get logger (structlog is already configured at this point)
+    try:
+        logger = structlog.get_logger(__name__)
+    except Exception:
+        # Fallback if logger not available yet
+        logger = None
     
     doppler_secrets_json = os.getenv("DOPPLER_SECRETS_JSON")
     if not doppler_secrets_json:
@@ -44,11 +48,12 @@ def parse_doppler_secrets() -> None:
     
     try:
         secrets = json.loads(doppler_secrets_json)
-        logger.info(
-            "doppler_secrets_json_parsed",
-            secret_count=len(secrets),
-            secret_keys=list(secrets.keys()),
-        )
+        if logger:
+            logger.info(
+                "doppler_secrets_json_parsed",
+                secret_count=len(secrets),
+                secret_keys=list(secrets.keys()),
+            )
         
         # Set individual environment variables from Doppler secrets
         set_count = 0
@@ -59,20 +64,22 @@ def parse_doppler_secrets() -> None:
                 set_count += 1
             else:
                 skipped_count += 1
-                logger.debug(
-                    "env_var_already_set",
-                    key=key,
-                    message="Environment variable already set, skipping",
-                )
+                if logger:
+                    logger.debug(
+                        "env_var_already_set",
+                        key=key,
+                        message="Environment variable already set, skipping",
+                    )
         
-        logger.info(
-            "doppler_secrets_loaded",
-            secrets_set=set_count,
-            secrets_skipped=skipped_count,
-            has_database_connection_string="DATABASE_CONNECTION_STRING" in secrets,
-            has_gcp_project="GCP_PROJECT" in secrets,
-            has_vertex_service_account="VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM" in secrets,
-        )
+        if logger:
+            logger.info(
+                "doppler_secrets_loaded",
+                secrets_set=set_count,
+                secrets_skipped=skipped_count,
+                has_database_connection_string="DATABASE_CONNECTION_STRING" in secrets,
+                has_gcp_project="GCP_PROJECT" in secrets,
+                has_vertex_service_account="VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM" in secrets,
+            )
         
         # Verify critical secrets were set
         critical_keys = [
@@ -84,22 +91,25 @@ def parse_doppler_secrets() -> None:
         missing_critical = [key for key in critical_keys if key not in os.environ]
         if missing_critical:
             error_msg = f"Critical environment variables missing after parsing Doppler secrets: {', '.join(missing_critical)}"
-            logger.error("critical_secrets_missing", missing_keys=missing_critical)
+            if logger:
+                logger.error("critical_secrets_missing", missing_keys=missing_critical)
             print(f"ERROR: {error_msg}", file=sys.stderr)
             
     except json.JSONDecodeError as e:
         # Invalid JSON, log error
         error_msg = f"Failed to parse DOPPLER_SECRETS_JSON: {e}"
-        logger.error(
-            "doppler_secrets_json_invalid",
-            error=str(e),
-            error_type=type(e).__name__,
-        )
+        if logger:
+            logger.error(
+                "doppler_secrets_json_invalid",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
         print(f"ERROR: {error_msg}", file=sys.stderr)
         raise
     except Exception as e:
         error_msg = f"Unexpected error parsing Doppler secrets: {e}"
-        logger.exception("doppler_secrets_parse_error", error=str(e), error_type=type(e).__name__)
+        if logger:
+            logger.exception("doppler_secrets_parse_error", error=str(e), error_type=type(e).__name__)
         print(f"ERROR: {error_msg}", file=sys.stderr)
         raise
 
@@ -313,8 +323,12 @@ class ChatResponse(BaseModel):
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
-    return {"status": "healthy"}
+    """Health check endpoint that doesn't require database or Firebase."""
+    return {
+        "status": "healthy",
+        "service": "hit8-api",
+        "version": settings.app_version,
+    }
 
 
 @app.get("/metadata")
