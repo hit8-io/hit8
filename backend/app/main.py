@@ -186,8 +186,29 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-# Initialize the graph
-graph = create_graph()
+# Lazy graph initialization - only create when needed
+# This allows the app to start even if database connection fails initially
+_graph: Any | None = None
+_graph_lock = threading.Lock()
+
+def get_graph() -> Any:
+    """Get or create the graph instance (lazy initialization)."""
+    global _graph
+    if _graph is None:
+        with _graph_lock:
+            # Double-check pattern to avoid race conditions
+            if _graph is None:
+                try:
+                    _graph = create_graph()
+                    logger.info("graph_initialized_successfully")
+                except Exception as e:
+                    logger.error(
+                        "graph_initialization_failed",
+                        error=str(e),
+                        error_type=type(e).__name__,
+                    )
+                    raise
+    return _graph
 
 
 class ChatRequest(BaseModel):
@@ -236,7 +257,7 @@ async def get_graph_structure(
     """Get the LangGraph structure as JSON."""
     try:
         logger.debug("graph_structure_export_starting")
-        graph_obj = graph.get_graph()
+        graph_obj = get_graph().get_graph()
         logger.debug("graph_get_graph_success", graph_type=type(graph_obj).__name__)
         
         # to_json() returns a dict, not a JSON string
@@ -271,7 +292,7 @@ async def get_graph_state(
         # Get state with history to track visited nodes
         # If thread doesn't exist, get_state returns None or empty state
         try:
-            state = graph.get_state(config)
+            state = get_graph().get_state(config)
         except Exception as state_error:
             # If state retrieval fails, return empty state
             logger.debug(
@@ -431,7 +452,7 @@ async def _stream_chat_events(
                 event_queue.put(("__event__", {"type": "node_start", "node": "generate", "thread_id": thread_id}))
                 
                 # Stream the graph execution (sync)
-                for chunk in graph.stream(initial_state, config=config):
+                for chunk in get_graph().stream(initial_state, config=config):
                     event_queue.put(("__chunk__", chunk))
                 
                 # Send node end event
@@ -483,7 +504,7 @@ async def _stream_chat_events(
             raise stream_error
         
         # Get final state and send graph end event
-        final_state = graph.get_state(config)
+        final_state = get_graph().get_state(config)
         if hasattr(final_state, "values") and "messages" in final_state.values:
             ai_message = extract_ai_message(final_state.values["messages"])
             final_response = extract_message_content(ai_message.content)
@@ -510,7 +531,7 @@ async def _stream_chat_events(
             )
             # Try to get the final state one more time
             try:
-                final_state = graph.get_state(config)
+                final_state = get_graph().get_state(config)
                 if hasattr(final_state, "values") and "messages" in final_state.values:
                     ai_message = extract_ai_message(final_state.values["messages"])
                     final_response = extract_message_content(ai_message.content)
