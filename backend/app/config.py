@@ -6,6 +6,7 @@ from __future__ import annotations
 from typing import Any
 from pathlib import Path
 import os
+import threading
 import yaml
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict, PydanticBaseSettingsSource
@@ -93,8 +94,16 @@ class Settings(BaseSettings):
         )
 
 
-# Initialize settings with better error handling
-try:
+# Lazy Settings initialization - only create when first accessed
+# This allows the app to start even if Settings initialization fails
+_settings_instance: Settings | None = None
+_settings_lock = threading.Lock()
+
+def _initialize_settings() -> Settings:
+    """Initialize Settings with error handling."""
+    import sys
+    import threading
+    
     # Validate critical environment variables before Settings initialization
     required_env_vars = [
         "GCP_PROJECT",
@@ -104,43 +113,59 @@ try:
     ]
     missing_vars = [var for var in required_env_vars if not os.getenv(var)]
     if missing_vars:
-        import sys
-        print(f"ERROR: Missing required environment variables: {', '.join(missing_vars)}", file=sys.stderr)
-        print(f"ERROR: Available env vars: {', '.join(sorted([k for k in os.environ.keys() if not k.startswith('_')]))}", file=sys.stderr)
+        print(f"CONFIG_ERROR: Missing required environment variables: {', '.join(missing_vars)}", file=sys.stderr, flush=True)
+        print(f"CONFIG_ERROR: Available env vars: {', '.join(sorted([k for k in os.environ.keys() if not k.startswith('_')]))}", file=sys.stderr, flush=True)
         raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
     
     # Validate DATABASE_CONNECTION_STRING format
     db_conn_str = os.getenv("DATABASE_CONNECTION_STRING")
     if db_conn_str:
         if not db_conn_str.startswith("postgresql://"):
-            import sys
-            print(f"ERROR: DATABASE_CONNECTION_STRING does not start with 'postgresql://'", file=sys.stderr)
-            print(f"ERROR: Connection string (first 50 chars): {db_conn_str[:50]}...", file=sys.stderr)
+            print(f"CONFIG_ERROR: DATABASE_CONNECTION_STRING does not start with 'postgresql://'", file=sys.stderr, flush=True)
+            print(f"CONFIG_ERROR: Connection string (first 50 chars): {db_conn_str[:50]}...", file=sys.stderr, flush=True)
             raise ValueError("Invalid DATABASE_CONNECTION_STRING format")
     
-    settings = Settings()
-except Exception as e:
-    import sys
-    import traceback
-    # Print detailed error to stderr for Cloud Run logs
-    print(f"ERROR: Failed to initialize Settings: {e}", file=sys.stderr)
-    print(f"ERROR: Error type: {type(e).__name__}", file=sys.stderr)
-    print(f"ERROR: Traceback:", file=sys.stderr)
-    traceback.print_exc(file=sys.stderr)
-    # Check which required fields might be missing
-    required_env_vars = [
-        "GCP_PROJECT",
-        "GOOGLE_IDENTITY_PLATFORM_DOMAIN",
-        "DATABASE_CONNECTION_STRING",
-        "VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM",
-    ]
-    missing_vars = [var for var in required_env_vars if not os.getenv(var)]
-    if missing_vars:
-        print(f"ERROR: Missing environment variables: {', '.join(missing_vars)}", file=sys.stderr)
-    # Also check what env vars ARE present (for debugging)
-    present_vars = {var: "SET" if os.getenv(var) else "MISSING" for var in required_env_vars}
-    print(f"ERROR: Environment variable status: {present_vars}", file=sys.stderr)
-    raise
+    try:
+        return Settings()
+    except Exception as e:
+        import traceback
+        print(f"CONFIG_ERROR: Failed to initialize Settings: {e}", file=sys.stderr, flush=True)
+        print(f"CONFIG_ERROR: Error type: {type(e).__name__}", file=sys.stderr, flush=True)
+        print(f"CONFIG_ERROR: Traceback:", file=sys.stderr, flush=True)
+        traceback.print_exc(file=sys.stderr)
+        # Check which required fields might be missing
+        missing_vars = [var for var in required_env_vars if not os.getenv(var)]
+        if missing_vars:
+            print(f"CONFIG_ERROR: Missing environment variables: {', '.join(missing_vars)}", file=sys.stderr, flush=True)
+        # Also check what env vars ARE present (for debugging)
+        present_vars = {var: "SET" if os.getenv(var) else "MISSING" for var in required_env_vars}
+        print(f"CONFIG_ERROR: Environment variable status: {present_vars}", file=sys.stderr, flush=True)
+        raise
+
+def get_settings() -> Settings:
+    """Get Settings instance (lazy initialization)."""
+    global _settings_instance
+    if _settings_instance is None:
+        import threading
+        with _settings_lock:
+            if _settings_instance is None:
+                _settings_instance = _initialize_settings()
+    return _settings_instance
+
+# Create a settings proxy object that initializes on first access
+class SettingsProxy:
+    """Proxy for Settings that initializes lazily."""
+    def __getattr__(self, name: str) -> Any:
+        return getattr(get_settings(), name)
+    
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name in ('_initialized', '_instance'):
+            super().__setattr__(name, value)
+        else:
+            setattr(get_settings(), name, value)
+
+# Export settings as a proxy - will initialize on first access
+settings = SettingsProxy()
 
 
 def get_metadata() -> dict[str, str]:

@@ -256,10 +256,19 @@ def extract_ai_message(messages: list[BaseMessage]) -> BaseMessage:
     return ai_messages[-1]
 
 
-# STARTUP_MARKER_5: Create FastAPI app
+# STARTUP_MARKER_5: Create FastAPI app (can work without settings)
 print("STARTUP_MARKER_5: Creating FastAPI app", file=sys.stderr, flush=True)
 try:
-    app = FastAPI(title=settings.app_name, version=settings.app_version)
+    # Try to get app name/version from settings, fallback to defaults
+    try:
+        app_name = settings.app_name
+        app_version = settings.app_version
+    except Exception:
+        app_name = "Hit8 API"
+        app_version = "1.0.0"
+        print("STARTUP_MARKER_5: Using default app name/version", file=sys.stderr, flush=True)
+    
+    app = FastAPI(title=app_name, version=app_version)
     print("STARTUP_MARKER_5: FastAPI app created", file=sys.stderr, flush=True)
 except Exception as e:
     print(f"STARTUP_MARKER_5_ERROR: Failed to create FastAPI app: {e}", file=sys.stderr, flush=True)
@@ -278,14 +287,25 @@ async def startup_event():
     except Exception:
         pass  # Logger might not be fully configured yet
 
-# Setup CORS
+# Setup CORS (can work with defaults if settings fail)
+print("STARTUP_MARKER_5: Setting up CORS", file=sys.stderr, flush=True)
+try:
+    cors_origins = settings.cors_allow_origins
+    cors_credentials = settings.cors_allow_credentials
+except Exception as e:
+    # Default CORS settings if settings not available
+    cors_origins = ["*"]
+    cors_credentials = True
+    print(f"STARTUP_MARKER_5: Using default CORS settings (settings error: {e})", file=sys.stderr, flush=True)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_allow_origins,
-    allow_credentials=settings.cors_allow_credentials,
+    allow_origins=cors_origins,
+    allow_credentials=cors_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+print("STARTUP_MARKER_5: CORS middleware added", file=sys.stderr, flush=True)
 
 
 # Exception handlers to ensure CORS headers are included in error responses
