@@ -31,16 +31,77 @@ configure_structlog()
 # This ensures environment variables are set before Settings initialization
 def parse_doppler_secrets() -> None:
     """Parse Doppler secrets JSON if provided (for Cloud Run)."""
-    if doppler_secrets_json := os.getenv("DOPPLER_SECRETS_JSON"):
-        try:
-            secrets = json.loads(doppler_secrets_json)
-            # Set individual environment variables from Doppler secrets
-            for key, value in secrets.items():
-                if key not in os.environ:  # Don't override existing env vars
-                    os.environ[key] = str(value)
-        except json.JSONDecodeError:
-            # Invalid JSON, continue with existing env vars
-            pass
+    import sys
+    
+    # Get logger (structlog is already configured)
+    logger = structlog.get_logger(__name__)
+    
+    doppler_secrets_json = os.getenv("DOPPLER_SECRETS_JSON")
+    if not doppler_secrets_json:
+        logger.warning("doppler_secrets_json_not_found", message="DOPPLER_SECRETS_JSON environment variable not set")
+        print("WARNING: DOPPLER_SECRETS_JSON not found", file=sys.stderr)
+        return
+    
+    try:
+        secrets = json.loads(doppler_secrets_json)
+        logger.info(
+            "doppler_secrets_json_parsed",
+            secret_count=len(secrets),
+            secret_keys=list(secrets.keys()),
+        )
+        
+        # Set individual environment variables from Doppler secrets
+        set_count = 0
+        skipped_count = 0
+        for key, value in secrets.items():
+            if key not in os.environ:  # Don't override existing env vars
+                os.environ[key] = str(value)
+                set_count += 1
+            else:
+                skipped_count += 1
+                logger.debug(
+                    "env_var_already_set",
+                    key=key,
+                    message="Environment variable already set, skipping",
+                )
+        
+        logger.info(
+            "doppler_secrets_loaded",
+            secrets_set=set_count,
+            secrets_skipped=skipped_count,
+            has_database_connection_string="DATABASE_CONNECTION_STRING" in secrets,
+            has_gcp_project="GCP_PROJECT" in secrets,
+            has_vertex_service_account="VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM" in secrets,
+        )
+        
+        # Verify critical secrets were set
+        critical_keys = [
+            "DATABASE_CONNECTION_STRING",
+            "GCP_PROJECT",
+            "GOOGLE_IDENTITY_PLATFORM_DOMAIN",
+            "VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM",
+        ]
+        missing_critical = [key for key in critical_keys if key not in os.environ]
+        if missing_critical:
+            error_msg = f"Critical environment variables missing after parsing Doppler secrets: {', '.join(missing_critical)}"
+            logger.error("critical_secrets_missing", missing_keys=missing_critical)
+            print(f"ERROR: {error_msg}", file=sys.stderr)
+            
+    except json.JSONDecodeError as e:
+        # Invalid JSON, log error
+        error_msg = f"Failed to parse DOPPLER_SECRETS_JSON: {e}"
+        logger.error(
+            "doppler_secrets_json_invalid",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        print(f"ERROR: {error_msg}", file=sys.stderr)
+        raise
+    except Exception as e:
+        error_msg = f"Unexpected error parsing Doppler secrets: {e}"
+        logger.exception("doppler_secrets_parse_error", error=str(e), error_type=type(e).__name__)
+        print(f"ERROR: {error_msg}", file=sys.stderr)
+        raise
 
 # Parse Doppler secrets at module level BEFORE importing settings
 parse_doppler_secrets()
@@ -91,6 +152,34 @@ def setup_logging() -> None:
 setup_logging()
 
 logger = structlog.get_logger(__name__)
+
+# Log startup information (without sensitive values)
+def log_startup_info() -> None:
+    """Log startup information for debugging."""
+    env_vars_to_check = [
+        "ENVIRONMENT",
+        "GCP_PROJECT",
+        "GOOGLE_IDENTITY_PLATFORM_DOMAIN",
+        "DATABASE_CONNECTION_STRING",
+        "VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM",
+        "LANGFUSE_PUBLIC_KEY",
+        "LANGFUSE_SECRET_KEY",
+        "LANGFUSE_BASE_URL",
+        "DOPPLER_SECRETS_JSON",
+    ]
+    present_vars = {var: "SET" if os.getenv(var) else "MISSING" for var in env_vars_to_check}
+    logger.info(
+        "startup_env_check",
+        environment_vars=present_vars,
+    )
+
+# Log startup info after logger is configured
+try:
+    log_startup_info()
+except Exception as e:
+    # If logging fails, at least print to stderr
+    import sys
+    print(f"WARNING: Failed to log startup info: {e}", file=sys.stderr)
 
 
 def get_cors_headers(request: Request) -> dict[str, str]:

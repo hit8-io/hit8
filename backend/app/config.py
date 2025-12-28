@@ -93,7 +93,54 @@ class Settings(BaseSettings):
         )
 
 
-settings = Settings()
+# Initialize settings with better error handling
+try:
+    # Validate critical environment variables before Settings initialization
+    required_env_vars = [
+        "GCP_PROJECT",
+        "GOOGLE_IDENTITY_PLATFORM_DOMAIN",
+        "DATABASE_CONNECTION_STRING",
+        "VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM",
+    ]
+    missing_vars = [var for var in required_env_vars if not os.getenv(var)]
+    if missing_vars:
+        import sys
+        print(f"ERROR: Missing required environment variables: {', '.join(missing_vars)}", file=sys.stderr)
+        print(f"ERROR: Available env vars: {', '.join(sorted([k for k in os.environ.keys() if not k.startswith('_')]))}", file=sys.stderr)
+        raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
+    
+    # Validate DATABASE_CONNECTION_STRING format
+    db_conn_str = os.getenv("DATABASE_CONNECTION_STRING")
+    if db_conn_str:
+        if not db_conn_str.startswith("postgresql://"):
+            import sys
+            print(f"ERROR: DATABASE_CONNECTION_STRING does not start with 'postgresql://'", file=sys.stderr)
+            print(f"ERROR: Connection string (first 50 chars): {db_conn_str[:50]}...", file=sys.stderr)
+            raise ValueError("Invalid DATABASE_CONNECTION_STRING format")
+    
+    settings = Settings()
+except Exception as e:
+    import sys
+    import traceback
+    # Print detailed error to stderr for Cloud Run logs
+    print(f"ERROR: Failed to initialize Settings: {e}", file=sys.stderr)
+    print(f"ERROR: Error type: {type(e).__name__}", file=sys.stderr)
+    print(f"ERROR: Traceback:", file=sys.stderr)
+    traceback.print_exc(file=sys.stderr)
+    # Check which required fields might be missing
+    required_env_vars = [
+        "GCP_PROJECT",
+        "GOOGLE_IDENTITY_PLATFORM_DOMAIN",
+        "DATABASE_CONNECTION_STRING",
+        "VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM",
+    ]
+    missing_vars = [var for var in required_env_vars if not os.getenv(var)]
+    if missing_vars:
+        print(f"ERROR: Missing environment variables: {', '.join(missing_vars)}", file=sys.stderr)
+    # Also check what env vars ARE present (for debugging)
+    present_vars = {var: "SET" if os.getenv(var) else "MISSING" for var in required_env_vars}
+    print(f"ERROR: Environment variable status: {present_vars}", file=sys.stderr)
+    raise
 
 
 def get_metadata() -> dict[str, str]:
