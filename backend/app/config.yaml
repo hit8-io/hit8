@@ -9,7 +9,10 @@ defaults:
   log_format: json
   customer: "hit8"
   project: "hit8-poc"
-  database_connection_string: "postgresql://postgres:postgres@localhost:5432/postgres"
+  # Database connection string must be provided via DATABASE_CONNECTION_STRING environment variable
+  # Format: postgresql://user:password@host:port/database?sslmode=require
+  # For dev: postgresql://postgres:postgres@localhost:5432/postgres
+  # For prd: Use Supabase connection pooler (port 6543) for Cloud Run
   logging:
     version: 1
     disable_existing_loggers: false
