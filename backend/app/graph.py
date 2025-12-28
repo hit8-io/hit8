@@ -8,6 +8,7 @@ from typing import TypedDict, Annotated
 from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph, END
+from langgraph.checkpoint.memory import MemorySaver
 from typing import Any
 from langchain_google_genai import ChatGoogleGenerativeAI
 from google.oauth2 import service_account
@@ -23,6 +24,13 @@ class AgentState(TypedDict):
 
 # Cache model and credentials at module level
 _model: ChatGoogleGenerativeAI | None = None
+
+# Store checkpointer reference for history access
+_checkpointer: MemorySaver | None = None
+
+def get_checkpointer() -> MemorySaver | None:
+    """Get the checkpointer instance."""
+    return _checkpointer
 
 # Initialize Langfuse client if enabled
 if settings.langfuse_enabled:
@@ -133,9 +141,13 @@ def generate_node(state: AgentState, config: RunnableConfig | None = None) -> Ag
 
 def create_graph() -> Any:
     """Create and compile the LangGraph state machine."""
+    global _checkpointer
     graph = StateGraph(AgentState)
     graph.add_node("generate", generate_node)
     graph.set_entry_point("generate")
     graph.add_edge("generate", END)
-    return graph.compile()
+    
+    # Add checkpointer to enable state retrieval by thread_id
+    _checkpointer = MemorySaver()
+    return graph.compile(checkpointer=_checkpointer)
 

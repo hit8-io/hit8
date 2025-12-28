@@ -22,14 +22,17 @@ interface ChatInterfaceProps {
   token: string
   user: User
   onLogout: () => void
+  onChatStateChange?: (active: boolean, threadId?: string | null) => void
+  onExecutionStateUpdate?: (state: unknown) => void
 }
 
 const API_URL = import.meta.env.VITE_API_URL
 
-export default function ChatInterface({ token, user, onLogout }: ChatInterfaceProps) {
+export default function ChatInterface({ token, user, onLogout, onChatStateChange, onExecutionStateUpdate }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [visitedNodes, setVisitedNodes] = useState<string[]>([]) // Track visited nodes for history
   
   // Fail fast if API URL is missing
   if (!API_URL) {
@@ -51,29 +54,128 @@ export default function ChatInterface({ token, user, onLogout }: ChatInterfacePr
     setInput('')
     setIsLoading(true)
 
-    try {
-      // Send message to backend with Google access token
-      // Backend will verify the token using Google Identity Platform
-      const response = await axios.post(
-        `${API_URL}/chat`,
-        { message: userMessage.content },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      )
+    // Generate thread_id on frontend so we can start polling immediately
+    const threadId = crypto.randomUUID()
 
-      const assistantMessage: Message = {
-        role: 'assistant',
-        content: response.data.response,
+    // Notify parent that chat is active with thread_id for immediate polling
+    onChatStateChange?.(true, threadId)
+
+    let finalResponse = ''
+    let hasError = false
+
+    try {
+      // Use fetch for streaming SSE response
+      const response = await fetch(`${API_URL}/chat`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: userMessage.content,
+          thread_id: threadId,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
       }
-      setMessages((prev) => [...prev, assistantMessage])
+
+      // Read the stream
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+
+      if (!reader) {
+        throw new Error('No response body reader available')
+      }
+
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || '' // Keep incomplete line in buffer
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6)) // Remove 'data: ' prefix
+              
+              // Handle different event types
+              if (data.type === 'node_start') {
+                // Node is starting - mark as active
+                const nodeName = data.node
+                setVisitedNodes(prev => {
+                  onExecutionStateUpdate?.({
+                    next: [nodeName],
+                    values: {},
+                    history: prev.map(node => ({ node })),
+                  })
+                  return prev
+                })
+              } else if (data.type === 'node_end') {
+                // Node completed - add to visited nodes and mark as inactive
+                const nodeName = data.node
+                setVisitedNodes(prev => {
+                  const updated = prev.includes(nodeName) ? prev : [...prev, nodeName]
+                  onExecutionStateUpdate?.({
+                    next: [],
+                    values: {},
+                    history: updated.map(node => ({ node })),
+                  })
+                  return updated
+                })
+              } else if (data.type === 'graph_end') {
+                // Graph execution completed - get final response
+                finalResponse = data.response || ''
+                console.log('Graph end received, response:', finalResponse)
+                // Final state update with all visited nodes
+                setVisitedNodes(prev => {
+                  onExecutionStateUpdate?.({
+                    next: [],
+                    values: {},
+                    history: prev.map(node => ({ node })),
+                  })
+                  return prev
+                })
+              } else if (data.type === 'error') {
+                hasError = true
+                throw new Error(data.error || 'Unknown error')
+              }
+            } catch (parseError) {
+              console.error('Failed to parse SSE data:', parseError, line)
+            }
+          }
+        }
+      }
+
+      // Add final assistant message
+      console.log('Streaming complete, finalResponse:', finalResponse, 'hasError:', hasError)
+      if (finalResponse && !hasError) {
+        const assistantMessage: Message = {
+          role: 'assistant',
+          content: finalResponse,
+        }
+        setMessages((prev) => [...prev, assistantMessage])
+      } else if (!finalResponse && !hasError) {
+        // If no response was received, show an error
+        console.error('No response received from server')
+        const errorMsg: Message = {
+          role: 'assistant',
+          content: 'No response received from the server. Please try again.',
+        }
+        setMessages((prev) => [...prev, errorMsg])
+      }
+
     } catch (error) {
+      hasError = true
       let errorMessage = 'Sorry, I encountered an error. Please try again.'
-      if (axios.isAxiosError(error) && error.response?.data?.detail) {
-        errorMessage = error.response.data.detail
+      if (error instanceof Error) {
+        errorMessage = error.message
       }
       const errorMsg: Message = {
         role: 'assistant',
@@ -82,6 +184,12 @@ export default function ChatInterface({ token, user, onLogout }: ChatInterfacePr
       setMessages((prev) => [...prev, errorMsg])
     } finally {
       setIsLoading(false)
+      // Reset visited nodes for next conversation
+      setVisitedNodes([])
+      // Keep chat active briefly to allow final state update, then deactivate
+      setTimeout(() => {
+        onChatStateChange?.(false)
+      }, 1000)
     }
   }
 
@@ -93,23 +201,11 @@ export default function ChatInterface({ token, user, onLogout }: ChatInterfacePr
   }
 
   return (
-    <div className="flex flex-col h-screen max-w-4xl mx-auto p-4">
+    <div className="flex flex-col h-full">
       <Card className="flex-1 flex flex-col overflow-hidden">
         <div className="p-4 border-b flex justify-between items-center">
           <h1 className="text-2xl font-bold">Hit8 Chat</h1>
           <div className="flex items-center gap-4">
-            {user.picture ? (
-              <img 
-                src={user.picture} 
-                alt={user.name} 
-                className="w-8 h-8 rounded-full object-cover border border-border"
-              />
-            ) : (
-              <div className="w-8 h-8 rounded-full bg-primary/10 border border-border flex items-center justify-center text-primary text-xs font-semibold">
-                {user.name.charAt(0).toUpperCase()}
-              </div>
-            )}
-            <span className="text-sm text-muted-foreground">{user.name}</span>
             <Button variant="outline" size="icon" onClick={onLogout} title="Sign out">
               <LogOut className="h-4 w-4" />
             </Button>

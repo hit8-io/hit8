@@ -7,6 +7,7 @@ import json
 import logging
 import logging.config
 import os
+import uuid
 import yaml
 from pathlib import Path
 from typing import Any
@@ -14,7 +15,7 @@ from typing import Any
 import structlog
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from firebase_admin.exceptions import FirebaseError
 from langchain_core.messages import BaseMessage, HumanMessage
 from pydantic import BaseModel
@@ -45,7 +46,20 @@ parse_doppler_secrets()
 # Now import settings after secrets are parsed
 from app.config import settings, get_metadata
 from app.deps import verify_google_token
-from app.graph import AgentState, create_graph, _get_langfuse_handler
+from app.graph import AgentState, create_graph, _get_langfuse_handler, get_checkpointer
+
+# Enable debugpy for remote debugging if log_level is DEBUG
+try:
+    import debugpy
+    if settings.log_level.upper() == "DEBUG":
+        debugpy.listen(("0.0.0.0", 5678))
+        logger = structlog.get_logger(__name__)
+        logger.info("debugpy_listening", port=5678, log_level=settings.log_level)
+except ImportError:
+    pass  # debugpy not installed, skip
+except Exception as e:
+    logger = structlog.get_logger(__name__)
+    logger.warning("debugpy_init_failed", error=str(e), log_level=settings.log_level)
 
 # Load logging configuration from config.yaml
 def setup_logging() -> None:
@@ -176,11 +190,13 @@ graph = create_graph()
 
 class ChatRequest(BaseModel):
     message: str
+    thread_id: str | None = None
 
 
 class ChatResponse(BaseModel):
     response: str
     user_id: str
+    thread_id: str
 
 
 @app.get("/health")
@@ -189,13 +205,340 @@ async def health_check():
     return {"status": "healthy"}
 
 
-@app.post("/chat", response_model=ChatResponse)
+@app.get("/metadata")
+async def get_metadata_endpoint(
+    user_payload: dict = Depends(verify_google_token)
+):
+    """Get application metadata (customer, project, environment, log_level)."""
+    try:
+        metadata = get_metadata()
+        # Add log_level to metadata
+        metadata["log_level"] = settings.log_level
+        return metadata
+    except Exception as e:
+        logger.error(
+            "metadata_retrieval_failed",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve metadata: {str(e)}"
+        )
+
+
+@app.get("/graph/structure")
+async def get_graph_structure(
+    user_payload: dict = Depends(verify_google_token)
+):
+    """Get the LangGraph structure as JSON."""
+    try:
+        logger.debug("graph_structure_export_starting")
+        graph_obj = graph.get_graph()
+        logger.debug("graph_get_graph_success", graph_type=type(graph_obj).__name__)
+        
+        # to_json() returns a dict, not a JSON string
+        graph_structure = graph_obj.to_json()
+        logger.debug(
+            "graph_structure_export_success",
+            structure_type=type(graph_structure).__name__,
+            has_nodes="nodes" in graph_structure if isinstance(graph_structure, dict) else False,
+        )
+        return graph_structure
+    except Exception as e:
+        logger.exception(
+            "graph_structure_export_failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to export graph structure: {str(e)}"
+        )
+
+
+@app.get("/graph/state")
+async def get_graph_state(
+    thread_id: str,
+    user_payload: dict = Depends(verify_google_token)
+):
+    """Get the current execution state for a thread."""
+    try:
+        config: dict[str, Any] = {"configurable": {"thread_id": thread_id}}
+        # Get state with history to track visited nodes
+        state = graph.get_state(config)
+        
+        # Debug: Log state object structure to understand what's available
+        logger.debug(
+            "graph_state_object_structure",
+            thread_id=thread_id,
+            has_next=hasattr(state, "next"),
+            next_value=list(state.next) if hasattr(state, "next") and state.next else [],
+            has_values=hasattr(state, "values"),
+            has_tasks=hasattr(state, "tasks"),
+            has_history=hasattr(state, "history"),
+            has_checkpoint_id=hasattr(state, "checkpoint_id"),
+            has_parent_checkpoint_id=hasattr(state, "parent_checkpoint_id"),
+            has_metadata=hasattr(state, "metadata"),
+            state_attrs=dir(state),
+        )
+        
+        # Convert state to dict, handling serialization
+        state_dict: dict[str, Any] = {
+            "values": {},
+            "next": state.next if hasattr(state, "next") else [],
+        }
+        
+        # Serialize messages if present
+        if hasattr(state, "values") and "messages" in state.values:
+            # Convert messages to dict format
+            messages = []
+            for msg in state.values["messages"]:
+                if hasattr(msg, "content"):
+                    messages.append({
+                        "type": type(msg).__name__,
+                        "content": str(msg.content) if hasattr(msg, "content") else str(msg)
+                    })
+            state_dict["values"]["messages"] = messages
+            state_dict["values"]["message_count"] = len(messages)
+        
+        # Add next nodes
+        if hasattr(state, "next"):
+            state_dict["next"] = list(state.next) if state.next else []
+        
+        # Get history by examining state and checkpoints
+        # LangGraph execution history can be extracted from:
+        # 1. State object metadata/tasks (if available)
+        # 2. Fallback: infer from state values (if messages exist, "generate" executed)
+        try:
+            history: list[dict[str, Any]] = []
+            
+            # Method 1: Check if state has task information
+            if hasattr(state, "tasks") and state.tasks:
+                for task in state.tasks:
+                    if hasattr(task, "name"):
+                        history.append({"node": task.name})
+                    elif isinstance(task, dict) and "name" in task:
+                        history.append({"node": task["name"]})
+            
+            # Method 2: Fallback - infer from state values
+            # If we have AI messages, the "generate" node must have executed
+            # This is the most reliable method for our simple graph
+            if not history:
+                message_count = state_dict.get("values", {}).get("message_count", 0)
+                if message_count > 0:
+                    # Check if we have both human and AI messages (indicates generation happened)
+                    messages = state_dict.get("values", {}).get("messages", [])
+                    has_human = any(msg.get("type") == "HumanMessage" for msg in messages)
+                    has_ai = any(msg.get("type") == "AIMessage" for msg in messages)
+                    if has_human and has_ai:
+                        # AI message exists, so "generate" node executed
+                        history.append({"node": "generate"})
+                        logger.debug(
+                            "history_inferred_from_messages",
+                            thread_id=thread_id,
+                            message_count=message_count,
+                            has_human=has_human,
+                            has_ai=has_ai,
+                        )
+            
+            state_dict["history"] = history
+            
+            logger.debug(
+                "history_extracted",
+                thread_id=thread_id,
+                history_length=len(history),
+                history_nodes=[h.get("node") for h in history if isinstance(h, dict)],
+            )
+            
+        except Exception as e:
+            logger.debug(
+                "history_extraction_failed",
+                error=str(e),
+                error_type=type(e).__name__,
+                thread_id=thread_id,
+            )
+            state_dict["history"] = []
+        
+        logger.debug(
+            "graph_state_retrieved",
+            thread_id=thread_id,
+            next_nodes=state_dict["next"],
+            history_length=len(state_dict.get("history", [])),
+        )
+        
+        return state_dict
+    except Exception as e:
+        logger.error(
+            "graph_state_retrieval_failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            thread_id=thread_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve graph state: {str(e)}"
+        )
+
+
+async def _stream_chat_events(
+    request: ChatRequest,
+    user_id: str,
+    thread_id: str,
+    initial_state: AgentState,
+    config: dict[str, Any],
+    langfuse_handler: Any | None,
+    centralized_metadata: dict[str, str],
+):
+    """Stream chat execution events using LangGraph astream_events."""
+    import asyncio
+    
+    final_response: str | None = None
+    
+    try:
+        # Stream events from LangGraph execution
+        async for event in graph.astream_events(
+            initial_state, 
+            config=config, 
+            version="v2",
+        ):
+            event_type = event.get("event")
+            event_name = event.get("name", "")
+            
+            # Debug logging for event structure
+            logger.debug(
+                "streaming_event_received",
+                event_type=event_type,
+                event_name=event_name,
+                thread_id=thread_id,
+            )
+            
+            # Handle node start events - indicates a node is about to execute
+            if event_type == "on_chain_start":
+                if event_name == "LangGraph":
+                    # This is the start of graph execution
+                    state_data = {
+                        "type": "graph_start",
+                        "thread_id": thread_id,
+                    }
+                    yield f"data: {json.dumps(state_data)}\n\n"
+                elif event_name and event_name != "LangGraph":
+                    # Node is starting execution
+                    state_data = {
+                        "type": "node_start",
+                        "node": event_name,
+                        "thread_id": thread_id,
+                    }
+                    yield f"data: {json.dumps(state_data)}\n\n"
+            
+            # Handle node end events - indicates a node has completed
+            elif event_type == "on_chain_end":
+                if event_name == "LangGraph":
+                    # Graph execution completed, get final state
+                    final_state = graph.get_state(config)
+                    if hasattr(final_state, "values") and "messages" in final_state.values:
+                        ai_message = extract_ai_message(final_state.values["messages"])
+                        final_response = extract_message_content(ai_message.content)
+                        
+                        logger.debug(
+                            "graph_end_event",
+                            thread_id=thread_id,
+                            response_length=len(final_response) if final_response else 0,
+                        )
+                        
+                        # Send final state update
+                        state_data = {
+                            "type": "graph_end",
+                            "thread_id": thread_id,
+                            "response": final_response,
+                        }
+                        yield f"data: {json.dumps(state_data)}\n\n"
+                elif event_name and event_name != "LangGraph":
+                    # Node has completed execution
+                    state_data = {
+                        "type": "node_end",
+                        "node": event_name,
+                        "thread_id": thread_id,
+                    }
+                    yield f"data: {json.dumps(state_data)}\n\n"
+        
+        # Ensure we send the final response even if graph_end event wasn't caught
+        if not final_response:
+            logger.warning(
+                "graph_end_not_received",
+                thread_id=thread_id,
+            )
+            # Try to get the final state one more time
+            try:
+                final_state = graph.get_state(config)
+                if hasattr(final_state, "values") and "messages" in final_state.values:
+                    ai_message = extract_ai_message(final_state.values["messages"])
+                    final_response = extract_message_content(ai_message.content)
+                    
+                    logger.debug(
+                        "graph_end_fallback",
+                        thread_id=thread_id,
+                        response_length=len(final_response) if final_response else 0,
+                    )
+                    
+                    state_data = {
+                        "type": "graph_end",
+                        "thread_id": thread_id,
+                        "response": final_response,
+                    }
+                    yield f"data: {json.dumps(state_data)}\n\n"
+            except Exception as e:
+                logger.error(
+                    "failed_to_get_final_state",
+                    error=str(e),
+                    thread_id=thread_id,
+                )
+        
+        # Flush Langfuse traces after streaming completes
+        if langfuse_handler and settings.langfuse_enabled:
+            try:
+                from langfuse import get_client
+                langfuse_client = get_client()
+                environment = centralized_metadata["environment"]
+                if environment == "prd":
+                    langfuse_client.shutdown()
+                else:
+                    langfuse_client.flush()
+            except Exception as e:
+                logger.error(
+                    "langfuse_flush_failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    environment=centralized_metadata["environment"],
+                )
+        
+    except Exception as e:
+        logger.exception(
+            "streaming_error",
+            error=str(e),
+            error_type=type(e).__name__,
+            thread_id=thread_id,
+        )
+        error_data = {
+            "type": "error",
+            "error": str(e),
+            "thread_id": thread_id,
+        }
+        yield f"data: {json.dumps(error_data)}\n\n"
+
+
+@app.post("/chat")
 async def chat(
     request: ChatRequest,
     user_payload: dict = Depends(verify_google_token)
 ):
-    """Chat endpoint that processes user messages through LangGraph."""
+    """Chat endpoint that processes user messages through LangGraph with streaming support."""
     user_id = user_payload["sub"]
+    
+    # Use provided thread_id or generate one for state tracking
+    # Frontend generates thread_id to enable immediate polling
+    thread_id = request.thread_id if request.thread_id else str(uuid.uuid4())
     
     initial_state: AgentState = {
         "messages": [HumanMessage(content=request.message)]
@@ -204,13 +547,16 @@ async def chat(
     # Get Langfuse callback handler if enabled
     langfuse_handler = _get_langfuse_handler()
     
-    # Prepare config with callbacks and metadata
-    config: dict[str, Any] = {}
+    # Prepare config with callbacks, metadata, and thread_id
+    config: dict[str, Any] = {
+        "configurable": {"thread_id": thread_id}
+    }
     if langfuse_handler:
         config["callbacks"] = [langfuse_handler]
         logger.debug(
             "langfuse_callback_handler_added",
             handler_type=type(langfuse_handler).__name__,
+            thread_id=thread_id,
         )
     
     # Add metadata for Langfuse tracing using centralized metadata
@@ -224,44 +570,34 @@ async def chat(
         environment=centralized_metadata["environment"],
         customer=centralized_metadata["customer"],
         project=centralized_metadata["project"],
+        thread_id=thread_id,
     )
     
     config["metadata"] = metadata
     
-    result = graph.invoke(initial_state, config=config)
-    ai_message = extract_ai_message(result["messages"])
-    content = extract_message_content(ai_message.content)
+    # Log start of execution
+    logger.debug(
+        "graph_execution_started",
+        thread_id=thread_id,
+        message_length=len(request.message),
+    )
     
-    # Flush Langfuse traces to ensure they're sent
-    # Critical in serverless/production environments where the process may terminate quickly
-    if langfuse_handler and settings.langfuse_enabled:
-        try:
-            from langfuse import get_client
-            langfuse_client = get_client()
-            
-            # In production/serverless, use shutdown() for more reliable flushing
-            # shutdown() flushes all data and waits for background threads to complete
-            environment = centralized_metadata["environment"]
-            if environment == "prd":
-                logger.debug("langfuse_shutdown_starting", environment=environment)
-                # shutdown() is more reliable in serverless environments
-                # It flushes all data and ensures background threads complete
-                langfuse_client.shutdown()
-                logger.debug("langfuse_shutdown_completed", environment=environment)
-            else:
-                # In dev, use flush() as shutdown() might be too aggressive for long-running services
-                logger.debug("langfuse_flush_starting", environment=environment)
-                langfuse_client.flush()
-                logger.debug("langfuse_flush_completed", environment=environment)
-        except Exception as e:
-            # Log error but don't fail the request
-            logger.error(
-                "langfuse_flush_failed",
-                error=str(e),
-                error_type=type(e).__name__,
-                environment=centralized_metadata["environment"],
-                langfuse_base_url=settings.langfuse_base_url,
-            )
-    
-    return ChatResponse(response=content, user_id=user_id)
+    # Return streaming response with Server-Sent Events
+    return StreamingResponse(
+        _stream_chat_events(
+            request=request,
+            user_id=user_id,
+            thread_id=thread_id,
+            initial_state=initial_state,
+            config=config,
+            langfuse_handler=langfuse_handler,
+            centralized_metadata=centralized_metadata,
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        },
+    )
 
