@@ -113,13 +113,34 @@ def parse_doppler_secrets() -> None:
         print(f"ERROR: {error_msg}", file=sys.stderr)
         raise
 
-# Parse Doppler secrets at module level BEFORE importing settings
+# STARTUP_MARKER_1: Parse Doppler secrets
+import sys
+print("STARTUP_MARKER_1: Parsing Doppler secrets", file=sys.stderr, flush=True)
 parse_doppler_secrets()
+print("STARTUP_MARKER_1: Doppler secrets parsed", file=sys.stderr, flush=True)
 
-# Now import settings after secrets are parsed
-from app.config import settings, get_metadata
-from app.deps import verify_google_token
-from app.graph import AgentState, create_graph, _get_langfuse_handler, get_checkpointer
+# STARTUP_MARKER_2: Import settings (critical - must succeed)
+print("STARTUP_MARKER_2: Importing settings", file=sys.stderr, flush=True)
+try:
+    from app.config import settings, get_metadata
+    print("STARTUP_MARKER_2: Settings imported successfully", file=sys.stderr, flush=True)
+except Exception as e:
+    print(f"STARTUP_MARKER_2_ERROR: Failed to import settings: {e}", file=sys.stderr, flush=True)
+    import traceback
+    traceback.print_exc(file=sys.stderr)
+    raise
+
+# STARTUP_MARKER_3: Import dependencies (can fail - will be lazy loaded)
+print("STARTUP_MARKER_3: Importing dependencies", file=sys.stderr, flush=True)
+try:
+    from app.deps import verify_google_token
+    from app.graph import AgentState, create_graph, _get_langfuse_handler, get_checkpointer
+    print("STARTUP_MARKER_3: Dependencies imported successfully", file=sys.stderr, flush=True)
+except Exception as e:
+    print(f"STARTUP_MARKER_3_ERROR: Failed to import dependencies: {e}", file=sys.stderr, flush=True)
+    import traceback
+    traceback.print_exc(file=sys.stderr)
+    raise
 
 # Enable debugpy for remote debugging if log_level is DEBUG
 try:
@@ -158,10 +179,20 @@ def setup_logging() -> None:
     if logging_config:
         logging.config.dictConfig(logging_config)
 
-# Setup logging at module level
-setup_logging()
+# STARTUP_MARKER_4: Setup logging
+print("STARTUP_MARKER_4: Setting up logging", file=sys.stderr, flush=True)
+try:
+    setup_logging()
+    print("STARTUP_MARKER_4: Logging setup complete", file=sys.stderr, flush=True)
+except Exception as e:
+    print(f"STARTUP_MARKER_4_ERROR: Failed to setup logging: {e}", file=sys.stderr, flush=True)
+    import traceback
+    traceback.print_exc(file=sys.stderr)
+    # Don't raise - continue with basic logging
+    print("STARTUP_MARKER_4: Continuing with basic logging", file=sys.stderr, flush=True)
 
 logger = structlog.get_logger(__name__)
+print("STARTUP_MARKER_4: Logger initialized", file=sys.stderr, flush=True)
 
 # Log startup information (without sensitive values)
 def log_startup_info() -> None:
@@ -225,8 +256,27 @@ def extract_ai_message(messages: list[BaseMessage]) -> BaseMessage:
     return ai_messages[-1]
 
 
-# Initialize FastAPI app
-app = FastAPI(title=settings.app_name, version=settings.app_version)
+# STARTUP_MARKER_5: Create FastAPI app
+print("STARTUP_MARKER_5: Creating FastAPI app", file=sys.stderr, flush=True)
+try:
+    app = FastAPI(title=settings.app_name, version=settings.app_version)
+    print("STARTUP_MARKER_5: FastAPI app created", file=sys.stderr, flush=True)
+except Exception as e:
+    print(f"STARTUP_MARKER_5_ERROR: Failed to create FastAPI app: {e}", file=sys.stderr, flush=True)
+    import traceback
+    traceback.print_exc(file=sys.stderr)
+    raise
+
+# STARTUP_MARKER_6: Add startup event
+@app.on_event("startup")
+async def startup_event():
+    """Log that the application has started successfully."""
+    print("STARTUP_MARKER_6: FastAPI startup event fired", file=sys.stderr, flush=True)
+    print("STARTUP_MARKER_6: Application is ready to accept requests", file=sys.stderr, flush=True)
+    try:
+        logger.info("application_startup_complete")
+    except Exception:
+        pass  # Logger might not be fully configured yet
 
 # Setup CORS
 app.add_middleware(
@@ -324,11 +374,21 @@ class ChatResponse(BaseModel):
 @app.get("/health")
 async def health_check():
     """Health check endpoint that doesn't require database or Firebase."""
-    return {
-        "status": "healthy",
-        "service": "hit8-api",
-        "version": settings.app_version,
-    }
+    print("STARTUP_MARKER_HEALTH: Health check called", file=sys.stderr, flush=True)
+    try:
+        return {
+            "status": "healthy",
+            "service": "hit8-api",
+            "version": settings.app_version if hasattr(settings, 'app_version') else "unknown",
+        }
+    except Exception as e:
+        # Even if settings fails, return basic health
+        return {
+            "status": "healthy",
+            "service": "hit8-api",
+            "version": "unknown",
+            "warning": "Settings not fully loaded",
+        }
 
 
 @app.get("/metadata")

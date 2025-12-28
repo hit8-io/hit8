@@ -34,36 +34,49 @@ def get_checkpointer() -> PostgresSaver | None:
     """Get the checkpointer instance."""
     return _checkpointer
 
-# Initialize Langfuse client if enabled
-if settings.langfuse_enabled:
-    try:
-        from langfuse import Langfuse
-        import os
-        
-        # Validator ensures these are not None when langfuse_enabled is True
-        assert settings.langfuse_public_key is not None
-        assert settings.langfuse_secret_key is not None
-        assert settings.langfuse_base_url is not None
-        
-        env = "prd" if os.getenv("ENVIRONMENT") == "prd" else "dev"
-        
-        Langfuse(
-            public_key=settings.langfuse_public_key,
-            secret_key=settings.langfuse_secret_key,
-            host=settings.langfuse_base_url,
-        )
-        logger.info(
-            "langfuse_client_initialized",
-            env=env,
-            base_url=settings.langfuse_base_url,
-        )
-    except Exception as e:
-        logger.error(
-            "langfuse_client_init_failed",
-            error=str(e),
-            error_type=type(e).__name__,
-            env=os.getenv("ENVIRONMENT", "unknown"),
-        )
+# Lazy Langfuse initialization - only initialize when needed
+# This prevents blocking app startup if Langfuse is unavailable
+_langfuse_client: Any | None = None
+
+def _get_langfuse_client() -> Any | None:
+    """Get or create Langfuse client (lazy initialization)."""
+    global _langfuse_client
+    if not settings.langfuse_enabled:
+        return None
+    
+    if _langfuse_client is None:
+        try:
+            from langfuse import Langfuse
+            import os
+            
+            # Validator ensures these are not None when langfuse_enabled is True
+            assert settings.langfuse_public_key is not None
+            assert settings.langfuse_secret_key is not None
+            assert settings.langfuse_base_url is not None
+            
+            env = "prd" if os.getenv("ENVIRONMENT") == "prd" else "dev"
+            
+            _langfuse_client = Langfuse(
+                public_key=settings.langfuse_public_key,
+                secret_key=settings.langfuse_secret_key,
+                host=settings.langfuse_base_url,
+            )
+            logger.info(
+                "langfuse_client_initialized",
+                env=env,
+                base_url=settings.langfuse_base_url,
+            )
+        except Exception as e:
+            logger.error(
+                "langfuse_client_init_failed",
+                error=str(e),
+                error_type=type(e).__name__,
+                env=os.getenv("ENVIRONMENT", "unknown"),
+            )
+            # Don't raise - allow app to continue without Langfuse
+            return None
+    
+    return _langfuse_client
 
 
 def _get_model() -> ChatGoogleGenerativeAI:
@@ -98,8 +111,11 @@ def _get_langfuse_handler() -> Any | None:
         return None
     
     try:
+        # Ensure Langfuse client is initialized before creating handler
+        _get_langfuse_client()
+        
         from langfuse.langchain import CallbackHandler
-        # CallbackHandler uses the singleton client initialized at module level
+        # CallbackHandler uses the singleton client (now lazily initialized)
         handler = CallbackHandler()
         logger.debug("langfuse_callback_handler_created")
         return handler
