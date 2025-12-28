@@ -7,6 +7,8 @@ import json
 import logging
 import logging.config
 import os
+import queue
+import threading
 import uuid
 import yaml
 from pathlib import Path
@@ -267,7 +269,22 @@ async def get_graph_state(
     try:
         config: dict[str, Any] = {"configurable": {"thread_id": thread_id}}
         # Get state with history to track visited nodes
-        state = graph.get_state(config)
+        # If thread doesn't exist, get_state returns None or empty state
+        try:
+            state = graph.get_state(config)
+        except Exception as state_error:
+            # If state retrieval fails, return empty state
+            logger.debug(
+                "graph_state_not_found",
+                thread_id=thread_id,
+                error=str(state_error),
+                error_type=type(state_error).__name__,
+            )
+            return {
+                "values": {},
+                "next": [],
+                "history": [],
+            }
         
         # Debug: Log state object structure to understand what's available
         logger.debug(
@@ -391,77 +408,99 @@ async def _stream_chat_events(
     langfuse_handler: Any | None,
     centralized_metadata: dict[str, str],
 ):
-    """Stream chat execution events using LangGraph astream_events."""
+    """Stream chat execution events using LangGraph stream_events (sync version for PostgresSaver compatibility)."""
     import asyncio
     
     final_response: str | None = None
     
     try:
-        # Stream events from LangGraph execution
-        async for event in graph.astream_events(
-            initial_state, 
-            config=config, 
-            version="v2",
-        ):
-            event_type = event.get("event")
-            event_name = event.get("name", "")
+        # Use stream (sync) instead of async methods because
+        # PostgresSaver doesn't fully support async checkpoint operations (aget_tuple raises NotImplementedError)
+        # Run sync stream in a background thread to avoid blocking
+        event_queue: queue.Queue = queue.Queue()
+        stream_done = threading.Event()
+        stream_error: Exception | None = None
+        
+        def run_stream():
+            """Run sync stream in a thread and put state chunks in queue."""
+            nonlocal stream_error
+            try:
+                # Send graph start event
+                event_queue.put(("__event__", {"type": "graph_start", "thread_id": thread_id}))
+                # Send node start event
+                event_queue.put(("__event__", {"type": "node_start", "node": "generate", "thread_id": thread_id}))
+                
+                # Stream the graph execution (sync)
+                for chunk in graph.stream(initial_state, config=config):
+                    event_queue.put(("__chunk__", chunk))
+                
+                # Send node end event
+                event_queue.put(("__event__", {"type": "node_end", "node": "generate", "thread_id": thread_id}))
+            except Exception as e:
+                stream_error = e
+                event_queue.put(("__error__", e))
+            finally:
+                stream_done.set()
+        
+        # Start streaming in background thread
+        stream_thread = threading.Thread(target=run_stream, daemon=True)
+        stream_thread.start()
+        
+        # Yield events and process chunks as they arrive from the queue
+        while not stream_done.is_set() or not event_queue.empty():
+            try:
+                # Wait for event/chunk with timeout
+                item = event_queue.get(timeout=0.1)
+                item_type, item_data = item
+                
+                if item_type == "__error__":
+                    raise item_data
+                elif item_type == "__event__":
+                    # Send event to client
+                    yield f"data: {json.dumps(item_data)}\n\n"
+                elif item_type == "__chunk__":
+                    # Process state chunk
+                    chunk = item_data
+                    if "messages" in chunk and chunk["messages"]:
+                        # Get the last message (should be AI response)
+                        last_message = chunk["messages"][-1]
+                        if hasattr(last_message, "content") and not isinstance(last_message, HumanMessage):
+                            # This is the AI response
+                            final_response = extract_message_content(last_message.content)
+            except queue.Empty:
+                # No item yet, continue waiting
+                await asyncio.sleep(0.01)
+                continue
+            except Exception as e:
+                # Error from stream thread
+                raise
+        
+        # Wait for thread to complete
+        stream_thread.join(timeout=5.0)
+        
+        # Check for errors
+        if stream_error:
+            raise stream_error
+        
+        # Get final state and send graph end event
+        final_state = graph.get_state(config)
+        if hasattr(final_state, "values") and "messages" in final_state.values:
+            ai_message = extract_ai_message(final_state.values["messages"])
+            final_response = extract_message_content(ai_message.content)
             
-            # Debug logging for event structure
             logger.debug(
-                "streaming_event_received",
-                event_type=event_type,
-                event_name=event_name,
+                "graph_end_event",
                 thread_id=thread_id,
+                response_length=len(final_response) if final_response else 0,
             )
             
-            # Handle node start events - indicates a node is about to execute
-            if event_type == "on_chain_start":
-                if event_name == "LangGraph":
-                    # This is the start of graph execution
-                    state_data = {
-                        "type": "graph_start",
-                        "thread_id": thread_id,
-                    }
-                    yield f"data: {json.dumps(state_data)}\n\n"
-                elif event_name and event_name != "LangGraph":
-                    # Node is starting execution
-                    state_data = {
-                        "type": "node_start",
-                        "node": event_name,
-                        "thread_id": thread_id,
-                    }
-                    yield f"data: {json.dumps(state_data)}\n\n"
-            
-            # Handle node end events - indicates a node has completed
-            elif event_type == "on_chain_end":
-                if event_name == "LangGraph":
-                    # Graph execution completed, get final state
-                    final_state = graph.get_state(config)
-                    if hasattr(final_state, "values") and "messages" in final_state.values:
-                        ai_message = extract_ai_message(final_state.values["messages"])
-                        final_response = extract_message_content(ai_message.content)
-                        
-                        logger.debug(
-                            "graph_end_event",
-                            thread_id=thread_id,
-                            response_length=len(final_response) if final_response else 0,
-                        )
-                        
-                        # Send final state update
-                        state_data = {
-                            "type": "graph_end",
-                            "thread_id": thread_id,
-                            "response": final_response,
-                        }
-                        yield f"data: {json.dumps(state_data)}\n\n"
-                elif event_name and event_name != "LangGraph":
-                    # Node has completed execution
-                    state_data = {
-                        "type": "node_end",
-                        "node": event_name,
-                        "thread_id": thread_id,
-                    }
-                    yield f"data: {json.dumps(state_data)}\n\n"
+            # Send final state update
+            state_data = {
+                "type": "graph_end",
+                "thread_id": thread_id,
+                "response": final_response,
+            }
+            yield f"data: {json.dumps(state_data)}\n\n"
         
         # Ensure we send the final response even if graph_end event wasn't caught
         if not final_response:
@@ -514,15 +553,25 @@ async def _stream_chat_events(
                 )
         
     except Exception as e:
+        # Get detailed error information
+        error_type = type(e).__name__
+        error_str = str(e) if str(e) else ""
+        error_message = error_str if error_str else f"{error_type}: An error occurred during streaming"
+        
+        # Log full exception details for debugging
         logger.exception(
             "streaming_error",
-            error=str(e),
-            error_type=type(e).__name__,
+            error=error_message,
+            error_type=error_type,
+            error_repr=repr(e),
             thread_id=thread_id,
+            exc_info=True,
         )
+        
         error_data = {
             "type": "error",
-            "error": str(e),
+            "error": error_message,
+            "error_type": error_type,
             "thread_id": thread_id,
         }
         yield f"data: {json.dumps(error_data)}\n\n"

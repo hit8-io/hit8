@@ -144,7 +144,9 @@ export default function ChatInterface({ token, user, onLogout, onChatStateChange
                 })
               } else if (data.type === 'error') {
                 hasError = true
-                throw new Error(data.error || 'Unknown error')
+                const errorMessage = data.error && data.error.trim() ? data.error : 'Unknown error occurred'
+                console.error('SSE error received:', errorMessage, data)
+                throw new Error(errorMessage)
               }
             } catch (parseError) {
               console.error('Failed to parse SSE data:', parseError, line)

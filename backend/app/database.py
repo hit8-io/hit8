@@ -1,15 +1,21 @@
 """
 Supabase database client initialization.
+
+Note: This module is currently unused. The application uses direct PostgreSQL
+connections via PostgresSaver for LangGraph checkpointing instead of the Supabase client.
 """
 import os
 from supabase import create_client, Client
 
-from app.config import settings
-
 def get_supabase_client() -> Client:
-    """Get Supabase client instance."""
-    service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-    if not service_role_key:
-        raise ValueError("SUPABASE_SERVICE_ROLE_KEY environment variable is required")
-    return create_client(settings.supabase_url, service_role_key)
+    """
+    Get Supabase client instance.
+    
+    Note: This function is not currently used. The application uses direct
+    PostgreSQL connections via DATABASE_CONNECTION_STRING instead.
+    """
+    raise NotImplementedError(
+        "Supabase client is not configured. The application uses direct "
+        "PostgreSQL connections via PostgresSaver instead."
+    )
 

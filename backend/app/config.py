@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     vertex_ai_location: str = Field(...)
     gcp_project: str = Field(..., validation_alias="GCP_PROJECT")
     google_identity_platform_domain: str = Field(..., validation_alias="GOOGLE_IDENTITY_PLATFORM_DOMAIN")
-    supabase_url: str = Field(...)
+    database_connection_string: str = Field(..., validation_alias="DATABASE_CONNECTION_STRING")
     vertex_service_account_json: str = Field(..., validation_alias="VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM", exclude=True)
     # Langfuse configuration
     langfuse_enabled: bool = Field(...)

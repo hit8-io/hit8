@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import ReactFlow, { Node, Edge, Background, Controls, useNodesState, useEdgesState, Position } from 'reactflow'
+import { useState, useEffect } from 'react'
+import ReactFlow, { Node, Edge, Background, Controls, useNodesState, useEdgesState, useReactFlow, Position } from 'reactflow'
 import 'reactflow/dist/style.css'
 import dagre from 'dagre'
 import axios from 'axios'
@@ -31,6 +31,23 @@ interface ExecutionState {
 
 const nodeWidth = 150
 const nodeHeight = 50
+
+// Component to fit view when nodes are loaded (must be inside ReactFlow context)
+function FitViewOnLoad({ nodeCount }: { nodeCount: number }) {
+  const { fitView } = useReactFlow()
+  
+  useEffect(() => {
+    if (nodeCount > 0) {
+      // Fit view after a short delay to ensure nodes are rendered
+      const timeoutId = setTimeout(() => {
+        fitView({ padding: 0.1, maxZoom: 1.5, minZoom: 0.5 })
+      }, 100)
+      return () => clearTimeout(timeoutId)
+    }
+  }, [nodeCount, fitView])
+  
+  return null
+}
 
 function getLayoutedElements(nodes: Node[], edges: Edge[], direction = 'TB') {
   const dagreGraph = new dagre.graphlib.Graph()
@@ -68,64 +85,10 @@ export default function GraphView({ apiUrl, token, threadId, isChatActive, execu
   const currentExecutionState = propExecutionState ?? executionState
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
 
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
 
-  // Update container dimensions using ResizeObserver for accurate initial measurement
-  useEffect(() => {
-    const updateDimensions = () => {
-      if (containerRef.current) {
-        const rect = containerRef.current.getBoundingClientRect()
-        // Only update if we have valid dimensions
-        if (rect.width > 0 && rect.height > 0) {
-          setDimensions({ width: rect.width, height: rect.height })
-        }
-      }
-    }
-
-    // Use ResizeObserver to detect container size changes (triggers immediately if element has size)
-    const resizeObserver = new ResizeObserver(() => {
-      updateDimensions()
-    })
-
-    // Set up observer when ref is available
-    const setupObserver = () => {
-      if (containerRef.current) {
-        resizeObserver.observe(containerRef.current)
-        // Initial measurement
-        updateDimensions()
-        // Try multiple times to catch layout completion
-        requestAnimationFrame(() => {
-          updateDimensions()
-          setTimeout(updateDimensions, 0)
-          setTimeout(updateDimensions, 100)
-        })
-      }
-    }
-
-    // Try to set up immediately, or wait a bit if ref isn't ready
-    if (containerRef.current) {
-      setupObserver()
-    } else {
-      // Wait a bit for ref to be attached
-      const timeoutId = setTimeout(setupObserver, 0)
-      return () => {
-        clearTimeout(timeoutId)
-        resizeObserver.disconnect()
-      }
-    }
-
-    // Also listen to window resize as fallback
-    window.addEventListener('resize', updateDimensions)
-
-    return () => {
-      resizeObserver.disconnect()
-      window.removeEventListener('resize', updateDimensions)
-    }
-  }, [graphStructure]) // Re-run when graph structure loads (ensures container is rendered)
 
   // Fetch graph structure on mount
   useEffect(() => {
@@ -267,6 +230,8 @@ export default function GraphView({ apiUrl, token, threadId, isChatActive, execu
   useEffect(() => {
     if (!isChatActive || !threadId || !apiUrl || !token) return
 
+    let lastStateHash = ''
+    
     const pollState = async () => {
       try {
         const response = await axios.get(`${apiUrl}/graph/state`, {
@@ -277,13 +242,20 @@ export default function GraphView({ apiUrl, token, threadId, isChatActive, execu
           },
         })
 
-        console.log('Graph state response:', JSON.stringify(response.data, null, 2))
-        setExecutionState(response.data)
-        // Notify parent of state changes
-        onExecutionStateChange?.(response.data)
+        // Only update and log if state actually changed
+        const stateHash = JSON.stringify(response.data)
+        if (stateHash !== lastStateHash) {
+          lastStateHash = stateHash
+          setExecutionState(response.data)
+          // Notify parent of state changes
+          onExecutionStateChange?.(response.data)
+        }
       } catch (err) {
         // Silently fail - state polling is optional
-        console.log('Failed to fetch graph state:', err)
+        // Only log errors, not every poll
+        if (axios.isAxiosError(err) && err.response?.status !== 404) {
+          console.debug('Failed to fetch graph state:', err)
+        }
       }
     }
 
@@ -294,7 +266,7 @@ export default function GraphView({ apiUrl, token, threadId, isChatActive, execu
     const interval = setInterval(pollState, 2500)
 
     return () => clearInterval(interval)
-  }, [isChatActive, threadId, apiUrl, token, onExecutionStateChange])
+  }, [isChatActive, threadId, apiUrl, token])
 
   // Update node styles based on execution state
   useEffect(() => {
@@ -347,20 +319,8 @@ export default function GraphView({ apiUrl, token, threadId, isChatActive, execu
       })
     }
 
-    // Debug logging - log full state to understand structure
-    console.log('Execution state update:', {
-      fullState: JSON.stringify(currentExecutionState, null, 2),
-      activeNodes: JSON.stringify(activeNodes),
-      visitedNodes: JSON.stringify(visitedNodes),
-      messageCount: currentExecutionState.values?.message_count,
-      historyLength: currentExecutionState.history?.length,
-      history: JSON.stringify(currentExecutionState.history),
-      nodeCount: nodes.length,
-      nodeIds: JSON.stringify(nodes.map(n => n.id)),
-      matchingActiveNodes: JSON.stringify(activeNodes.filter(id => nodes.some(n => n.id === id))),
-      matchingVisitedNodes: JSON.stringify(visitedNodes.filter(id => nodes.some(n => n.id === id))),
-    })
-
+    // Update node and edge styles based on execution state
+    // Use functional updates to avoid needing nodes/edges in dependency array
     setNodes((nds) =>
       nds.map((node) => {
         const isActive = activeNodes.includes(node.id)
@@ -389,7 +349,7 @@ export default function GraphView({ apiUrl, token, threadId, isChatActive, execu
         }
       })
     )
-  }, [currentExecutionState, setNodes, setEdges, nodes])
+  }, [currentExecutionState, setNodes, setEdges])
 
   if (loading) {
     return (
@@ -414,28 +374,18 @@ export default function GraphView({ apiUrl, token, threadId, isChatActive, execu
   return (
     <Card className="h-full flex flex-col overflow-hidden">
       <CardContent className="flex-1 min-h-0 p-0 overflow-hidden">
-        <div 
-          ref={containerRef}
-          className="w-full h-full min-h-[400px]"
-        >
-          {dimensions.width > 0 && dimensions.height > 0 ? (
-            <ReactFlow
-              nodes={nodes}
-              edges={edges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              fitView
-              fitViewOptions={{ padding: 0.1, maxZoom: 1.5, minZoom: 0.5 }}
-              proOptions={{ hideAttribution: true }}
-            >
-              <Background />
-              <Controls />
-            </ReactFlow>
-          ) : (
-            <div className="w-full h-full flex items-center justify-center">
-              <p className="text-muted-foreground text-sm">Initializing graph view...</p>
-            </div>
-          )}
+        <div className="w-full h-full min-h-[400px]">
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            proOptions={{ hideAttribution: true }}
+          >
+            <Background />
+            <Controls />
+            <FitViewOnLoad nodeCount={nodes.length} />
+          </ReactFlow>
         </div>
       </CardContent>
     </Card>

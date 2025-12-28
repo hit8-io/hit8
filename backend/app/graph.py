@@ -4,11 +4,11 @@ LangGraph state machine for chat orchestration.
 from __future__ import annotations
 
 import json
-from typing import TypedDict, Annotated
+from typing import TypedDict, Annotated, Optional
 from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph, END
-from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.postgres import PostgresSaver
 from typing import Any
 from langchain_google_genai import ChatGoogleGenerativeAI
 from google.oauth2 import service_account
@@ -26,9 +26,11 @@ class AgentState(TypedDict):
 _model: ChatGoogleGenerativeAI | None = None
 
 # Store checkpointer reference for history access
-_checkpointer: MemorySaver | None = None
+_checkpointer: PostgresSaver | None = None
+# Store context manager to keep connection alive
+_checkpointer_cm: Any | None = None
 
-def get_checkpointer() -> MemorySaver | None:
+def get_checkpointer() -> PostgresSaver | None:
     """Get the checkpointer instance."""
     return _checkpointer
 
@@ -110,7 +112,7 @@ def _get_langfuse_handler() -> Any | None:
         return None
 
 
-def generate_node(state: AgentState, config: RunnableConfig | None = None) -> AgentState:
+def generate_node(state: AgentState, config: Optional[RunnableConfig] = None) -> AgentState:
     """Generate response using Google Vertex AI."""
     model = _get_model()
     last_message = state["messages"][-1]
@@ -141,13 +143,35 @@ def generate_node(state: AgentState, config: RunnableConfig | None = None) -> Ag
 
 def create_graph() -> Any:
     """Create and compile the LangGraph state machine."""
-    global _checkpointer
+    global _checkpointer, _checkpointer_cm
+    
+    # Initialize PostgreSQL checkpointer for persistent state storage
+    # PostgresSaver.from_conn_string returns a context manager that must be kept alive
+    # We store both the context manager and the instance to prevent connection closure
+    try:
+        # Create the context manager and keep it alive for the application lifetime
+        _checkpointer_cm = PostgresSaver.from_conn_string(settings.database_connection_string)
+        # Enter the context manager to get the PostgresSaver instance
+        # The context manager must stay alive to keep the connection open
+        _checkpointer = _checkpointer_cm.__enter__()
+        # Initialize database schema (idempotent - safe to call multiple times)
+        _checkpointer.setup()
+        logger.info(
+            "postgres_checkpointer_initialized",
+            database_url=settings.database_connection_string.split("@")[-1] if "@" in settings.database_connection_string else "configured",
+        )
+    except Exception as e:
+        logger.error(
+            "postgres_checkpointer_init_failed",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+    
     graph = StateGraph(AgentState)
     graph.add_node("generate", generate_node)
     graph.set_entry_point("generate")
     graph.add_edge("generate", END)
     
-    # Add checkpointer to enable state retrieval by thread_id
-    _checkpointer = MemorySaver()
     return graph.compile(checkpointer=_checkpointer)
 
