@@ -9,9 +9,6 @@ defaults:
   log_format: json
   customer: "hit8"
   project: "hit8-poc"
-  # Database connection string for LangGraph checkpointer
-  # Format: postgresql://user:password@host:port/database
-  # Default for dev: postgresql://postgres:postgres@localhost:5432/postgres
   database_connection_string: "postgresql://postgres:postgres@localhost:5432/postgres"
   logging:
     version: 1
@@ -67,7 +64,7 @@ prd:
   cors_allow_origins:
     - "https://www.hit8.io"
     - "https://hit8.io"
-    - "https://hit8.pages.dev"  # Cloudflare Pages default URL (fallback)
+    - "https://hit8.pages.dev"
   logging:
     version: 1
     disable_existing_loggers: false
