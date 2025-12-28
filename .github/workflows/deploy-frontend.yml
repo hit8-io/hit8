@@ -1,0 +1,55 @@
+name: Deploy Frontend to Cloudflare Pages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/deploy-frontend.yml'
+  workflow_dispatch:  # Allows manual triggering from GitHub UI
+
+env:
+  CLOUDFLARE_PROJECT_NAME: hit8
+  NODE_VERSION: 20
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: ./frontend
+        run: npm run build:cloudflare
+        env:
+          # These should be set in Cloudflare Pages dashboard, but include here for build-time
+          # If not set, build will use defaults or fail gracefully
+          VITE_GOOGLE_IDENTITY_PLATFORM_KEY: ${{ secrets.VITE_GOOGLE_IDENTITY_PLATFORM_KEY }}
+          VITE_GOOGLE_IDENTITY_PLATFORM_DOMAIN: ${{ secrets.VITE_GOOGLE_IDENTITY_PLATFORM_DOMAIN }}
+          VITE_GCP_PROJECT: ${{ secrets.VITE_GCP_PROJECT }}
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: ${{ env.CLOUDFLARE_PROJECT_NAME }}
+          directory: ./frontend/dist
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+

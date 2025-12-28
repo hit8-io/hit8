@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { Send, LogOut } from 'lucide-react'
-import axios from 'axios'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Card } from './ui/card'
@@ -28,11 +27,11 @@ interface ChatInterfaceProps {
 
 const API_URL = import.meta.env.VITE_API_URL
 
-export default function ChatInterface({ token, user, onLogout, onChatStateChange, onExecutionStateUpdate }: ChatInterfaceProps) {
+export default function ChatInterface({ token, user: _user, onLogout, onChatStateChange, onExecutionStateUpdate }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const [visitedNodes, setVisitedNodes] = useState<string[]>([]) // Track visited nodes for history
+  const [_visitedNodes, setVisitedNodes] = useState<string[]>([]) // Track visited nodes for history
   
   // Fail fast if API URL is missing
   if (!API_URL) {
