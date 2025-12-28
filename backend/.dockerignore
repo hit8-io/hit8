@@ -1,17 +1,79 @@
-__pycache__
-*.pyc
-*.pyo
-*.pyd
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
 .Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
 env/
 venv/
+ENV/
 .venv
-*.egg-info
-.pytest_cache
+env.bak/
+venv.bak/
+
+# Testing
+.pytest_cache/
 .coverage
-htmlcov
-.git
-.gitignore
-*.md
-test_*.py
+htmlcov/
+.tox/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.hypothesis/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
 *.log
+logs/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+README*
+LICENSE*
+docs/
+
+# Tests (not needed in production image)
+tests/
+test_*.py
+*_test.py
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Cloud Build
+cloudbuild.yaml
+
+# Other
+*.bak
+*.tmp
+*.cache

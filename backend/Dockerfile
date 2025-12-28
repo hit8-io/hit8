@@ -14,12 +14,16 @@ ENV PATH="/root/.local/bin:/root/.cargo/bin:$PATH"
 
 WORKDIR /app
 
-# Copy project files
-COPY pyproject.toml .
-COPY . .
+# Copy dependency files first (for better layer caching)
+# Dependencies only need to be reinstalled if pyproject.toml changes
+COPY pyproject.toml uv.lock* ./
 
-# Install dependencies using uv with pyproject.toml (modern Python dependency management)
-RUN uv pip install --system --no-cache .
+# Install dependencies (cached unless pyproject.toml or uv.lock changes)
+RUN uv pip install --system .
+
+# Copy application code last (changes most frequently)
+# This layer will be rebuilt on code changes, but dependencies layer stays cached
+COPY . .
 
 # Cloud Run sets PORT environment variable automatically
 # Default to 8080 if not set (for local development)
