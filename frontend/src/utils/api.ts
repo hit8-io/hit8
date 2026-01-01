@@ -1,7 +1,7 @@
 const API_TOKEN = import.meta.env.VITE_API_TOKEN
 
-export function getApiHeaders(token: string | null): HeadersInit {
-  const headers: HeadersInit = {
+export function getApiHeaders(token: string | null): Record<string, string> {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'X-Source-Token': API_TOKEN,
   }
