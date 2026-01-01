@@ -57,6 +57,8 @@ class Settings(BaseSettings):
     # Centralized metadata
     customer: str = Field(...)
     project: str = Field(...)
+    # API token for X-Source-Token header validation
+    api_token: str = Field(..., validation_alias="API_TOKEN")
 
     @model_validator(mode="after")
     def validate_langfuse_config(self) -> "Settings":
@@ -143,29 +145,16 @@ def _initialize_settings() -> Settings:
         raise
 
 def get_settings() -> Settings:
-    """Get Settings instance (lazy initialization)."""
+    """Get Settings instance (lazy initialization with thread safety)."""
     global _settings_instance
     if _settings_instance is None:
-        import threading
         with _settings_lock:
             if _settings_instance is None:
                 _settings_instance = _initialize_settings()
     return _settings_instance
 
-# Create a settings proxy object that initializes on first access
-class SettingsProxy:
-    """Proxy for Settings that initializes lazily."""
-    def __getattr__(self, name: str) -> Any:
-        return getattr(get_settings(), name)
-    
-    def __setattr__(self, name: str, value: Any) -> None:
-        if name in ('_initialized', '_instance'):
-            super().__setattr__(name, value)
-        else:
-            setattr(get_settings(), name, value)
-
-# Export settings as a proxy - will initialize on first access
-settings = SettingsProxy()
+# Export settings as a singleton - initializes on first access
+settings = get_settings()
 
 
 def get_metadata() -> dict[str, str]:

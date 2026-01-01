@@ -4,6 +4,7 @@ import 'reactflow/dist/style.css'
 import dagre from 'dagre'
 import axios from 'axios'
 import { Card, CardContent } from './ui/card'
+import { getApiHeaders } from '../utils/api'
 
 interface GraphViewProps {
   apiUrl: string
@@ -101,10 +102,7 @@ export default function GraphView({ apiUrl, token, threadId, isChatActive, execu
       try {
         setLoading(true)
         const response = await axios.get(`${apiUrl}/graph/structure`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
+          headers: getApiHeaders(token),
         })
 
         console.log('Graph structure received:', JSON.stringify(response.data, null, 2))
@@ -236,10 +234,7 @@ export default function GraphView({ apiUrl, token, threadId, isChatActive, execu
       try {
         const response = await axios.get(`${apiUrl}/graph/state`, {
           params: { thread_id: threadId },
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
+          headers: getApiHeaders(token),
         })
 
         // Only update and log if state actually changed

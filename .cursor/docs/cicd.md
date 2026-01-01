@@ -393,3 +393,6 @@ gcloud run services logs read hit8-api --region=europe-west1
 
 
 
+
+
+

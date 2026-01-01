@@ -28,7 +28,7 @@ services:
       - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL}
 
   supabase:
-    image: supabase/postgres:15.1.0.147
+    image: pgvector/pgvector:pg15
     ports:
       - "5432:5432"
     environment:

@@ -10,6 +10,7 @@ export default defineConfig(({ mode }) => {
   process.env.VITE_GOOGLE_IDENTITY_PLATFORM_KEY = process.env.VITE_GOOGLE_IDENTITY_PLATFORM_KEY || process.env.GOOGLE_IDENTITY_PLATFORM_KEY || env.GOOGLE_IDENTITY_PLATFORM_KEY
   process.env.VITE_GOOGLE_IDENTITY_PLATFORM_DOMAIN = process.env.VITE_GOOGLE_IDENTITY_PLATFORM_DOMAIN || process.env.GOOGLE_IDENTITY_PLATFORM_DOMAIN || env.GOOGLE_IDENTITY_PLATFORM_DOMAIN
   process.env.VITE_GCP_PROJECT = process.env.VITE_GCP_PROJECT || process.env.GCP_PROJECT || env.GCP_PROJECT
+  process.env.VITE_API_TOKEN = process.env.VITE_API_TOKEN || process.env.API_TOKEN || env.API_TOKEN
   
   return {
     plugins: [react()],

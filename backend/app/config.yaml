@@ -18,9 +18,9 @@ defaults:
     disable_existing_loggers: false
     formatters:
       json_formatter:
-        (): app.logging_utils.StructlogJSONFormatter
+        (): app.logging.StructlogJSONFormatter
       console_formatter:
-        (): app.logging_utils.StructlogConsoleFormatter
+        (): app.logging.StructlogConsoleFormatter
     handlers:
       console:
         class: logging.StreamHandler
@@ -46,7 +46,7 @@ dev:
     disable_existing_loggers: false
     formatters:
       console_formatter:
-        (): app.logging_utils.StructlogConsoleFormatter
+        (): app.logging.StructlogConsoleFormatter
     handlers:
       console:
         class: logging.StreamHandler
@@ -73,7 +73,7 @@ prd:
     disable_existing_loggers: false
     formatters:
       json_formatter:
-        (): app.logging_utils.StructlogJSONFormatter
+        (): app.logging.StructlogJSONFormatter
     handlers:
       console:
         class: logging.StreamHandler

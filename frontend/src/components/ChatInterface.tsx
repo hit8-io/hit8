@@ -4,6 +4,7 @@ import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Card } from './ui/card'
 import { ScrollArea } from './ui/scroll-area'
+import { getApiHeaders } from '../utils/api'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -66,10 +67,7 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
       // Use fetch for streaming SSE response
       const response = await fetch(`${API_URL}/chat`, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
+        headers: getApiHeaders(token),
         body: JSON.stringify({
           message: userMessage.content,
           thread_id: threadId,

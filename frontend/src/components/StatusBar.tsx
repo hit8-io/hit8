@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { CheckCircle2, XCircle, AlertCircle, Wifi, WifiOff } from 'lucide-react'
+import { getApiHeaders } from '../utils/api'
 
 interface StatusBarProps {
   apiUrl: string
@@ -29,9 +30,7 @@ export default function StatusBar({ apiUrl, token, userName }: StatusBarProps) {
       try {
         const response = await fetch(`${apiUrl}/health`, {
           method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: getApiHeaders(null),
         })
 
         if (response.ok) {
@@ -59,10 +58,7 @@ export default function StatusBar({ apiUrl, token, userName }: StatusBarProps) {
       try {
         const response = await fetch(`${apiUrl}/metadata`, {
           method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
+          headers: getApiHeaders(token),
         })
 
         if (response.ok) {
