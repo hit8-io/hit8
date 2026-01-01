@@ -6,7 +6,9 @@ import LoginScreen from './components/LoginScreen'
 import GraphView from './components/GraphView'
 import StatusWindow from './components/StatusWindow'
 import StatusBar from './components/StatusBar'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { Card, CardDescription, CardHeader, CardTitle } from './components/ui/card'
+import type { ExecutionState } from './types/execution'
 
 interface IdentityUser {
   id: string
@@ -24,7 +26,7 @@ function App() {
   const [firebaseApp, setFirebaseApp] = useState<FirebaseApp | null>(null)
   const [threadId, setThreadId] = useState<string | null>(null)
   const [isChatActive, setIsChatActive] = useState(false)
-  const [executionState, setExecutionState] = useState<unknown>(null)
+  const [executionState, setExecutionState] = useState<ExecutionState | null>(null)
 
   const firebaseConfig = {
     apiKey: import.meta.env.VITE_GOOGLE_IDENTITY_PLATFORM_KEY,
@@ -44,29 +46,48 @@ function App() {
 
     const auth = getAuth(app)
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: User | null) => {
-      if (firebaseUser) {
-        if (!firebaseUser.email) {
-          throw new Error('User email is required but not provided')
+      try {
+        if (firebaseUser) {
+          if (!firebaseUser.email) {
+            console.error('User email is required but not provided')
+            setUser(null)
+            setIdToken(null)
+            setLoading(false)
+            return
+          }
+          if (!firebaseUser.displayName) {
+            console.error('User display name is required but not provided')
+            setUser(null)
+            setIdToken(null)
+            setLoading(false)
+            return
+          }
+          if (!firebaseUser.photoURL) {
+            console.error('User photo URL is required but not provided')
+            setUser(null)
+            setIdToken(null)
+            setLoading(false)
+            return
+          }
+          const token = await firebaseUser.getIdToken(false)
+          setIdToken(token)
+          setUser({
+            id: firebaseUser.uid,
+            email: firebaseUser.email,
+            name: firebaseUser.displayName,
+            picture: firebaseUser.photoURL,
+          })
+        } else {
+          setUser(null)
+          setIdToken(null)
         }
-        if (!firebaseUser.displayName) {
-          throw new Error('User display name is required but not provided')
-        }
-        if (!firebaseUser.photoURL) {
-          throw new Error('User photo URL is required but not provided')
-        }
-        const token = await firebaseUser.getIdToken(false)
-        setIdToken(token)
-        setUser({
-          id: firebaseUser.uid,
-          email: firebaseUser.email,
-          name: firebaseUser.displayName,
-          picture: firebaseUser.photoURL,
-        })
-      } else {
+      } catch (error) {
+        console.error('Error in auth state change:', error)
         setUser(null)
         setIdToken(null)
+      } finally {
+        setLoading(false)
       }
-      setLoading(false)
     })
 
     return unsubscribe
@@ -83,7 +104,7 @@ function App() {
     }
   }
 
-  const handleExecutionStateUpdate = (state: unknown) => {
+  const handleExecutionStateUpdate = (state: ExecutionState | null) => {
     setExecutionState(state)
   }
 
@@ -139,44 +160,46 @@ function App() {
   }
 
   return (
-    <div className="h-screen bg-background flex flex-col overflow-hidden">
-      {/* Grid Layout */}
-      <div className="flex-1 min-h-0 grid grid-cols-12 grid-rows-[auto_1fr] gap-4 p-4 overflow-hidden">
-        {/* Chat Interface - Left Column */}
-        <div className="col-span-12 lg:col-span-7 row-span-2 flex flex-col min-h-0 overflow-hidden">
-          <ChatInterface 
-            token={idToken} 
-            user={user} 
-            onLogout={handleLogout}
-            onChatStateChange={handleChatStateChange}
-            onExecutionStateUpdate={handleExecutionStateUpdate}
-          />
+    <ErrorBoundary>
+      <div className="h-screen bg-background flex flex-col overflow-hidden">
+        {/* Grid Layout */}
+        <div className="flex-1 min-h-0 grid grid-cols-12 grid-rows-[auto_1fr] gap-4 p-4 overflow-hidden">
+          {/* Chat Interface - Left Column */}
+          <div className="col-span-12 lg:col-span-7 row-span-2 flex flex-col min-h-0 overflow-hidden">
+            <ChatInterface 
+              token={idToken} 
+              user={user} 
+              onLogout={handleLogout}
+              onChatStateChange={handleChatStateChange}
+              onExecutionStateUpdate={handleExecutionStateUpdate}
+            />
+          </div>
+
+          {/* Graph View - Top Right */}
+          <div className="col-span-12 lg:col-span-5 row-span-1 flex flex-col min-h-0 overflow-hidden">
+            <GraphView
+              apiUrl={API_URL}
+              token={idToken}
+              threadId={threadId}
+              isChatActive={isChatActive}
+              executionState={executionState}
+              onExecutionStateChange={handleExecutionStateUpdate}
+            />
+          </div>
+
+          {/* Status Window - Bottom Right */}
+          <div className="col-span-12 lg:col-span-5 row-span-1 flex flex-col min-h-0 overflow-hidden">
+            <StatusWindow
+              executionState={executionState}
+              isLoading={isChatActive}
+            />
+          </div>
         </div>
 
-        {/* Graph View - Top Right */}
-        <div className="col-span-12 lg:col-span-5 row-span-1 flex flex-col min-h-0 overflow-hidden">
-          <GraphView
-            apiUrl={API_URL}
-            token={idToken}
-            threadId={threadId}
-            isChatActive={isChatActive}
-            executionState={executionState as { next?: string[]; values?: { messages?: unknown[]; message_count?: number }; history?: unknown[] } | null}
-            onExecutionStateChange={handleExecutionStateUpdate}
-          />
-        </div>
-
-        {/* Status Window - Bottom Right */}
-        <div className="col-span-12 lg:col-span-5 row-span-1 flex flex-col min-h-0 overflow-hidden">
-          <StatusWindow
-            executionState={executionState as { next?: string[]; values?: { messages?: unknown[]; message_count?: number }; history?: unknown[] } | null}
-            isLoading={isChatActive}
-          />
-        </div>
+        {/* Status Bar - Bottom Full Width */}
+        <StatusBar apiUrl={API_URL} token={idToken} userName={user.name} />
       </div>
-
-      {/* Status Bar - Bottom Full Width */}
-      <StatusBar apiUrl={API_URL} token={idToken} userName={user.name} />
-    </div>
+    </ErrorBoundary>
   )
 }
 

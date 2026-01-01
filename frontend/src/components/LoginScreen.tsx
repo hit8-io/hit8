@@ -18,10 +18,26 @@ export default function LoginScreen({ firebaseApp }: LoginScreenProps) {
   const [authLoading, setAuthLoading] = useState(false)
 
   const handleLogin = async () => {
-    const auth = getAuth(firebaseApp)
-    const provider = new GoogleAuthProvider()
-    provider.setCustomParameters({ prompt: 'select_account' })
-    await signInWithPopup(auth, provider)
+    setAuthError(null)
+    setAuthLoading(true)
+    try {
+      const auth = getAuth(firebaseApp)
+      const provider = new GoogleAuthProvider()
+      provider.setCustomParameters({ prompt: 'select_account' })
+      await signInWithPopup(auth, provider)
+    } catch (error: unknown) {
+      const err = error as { code?: string; message?: string }
+      if (err.code === 'auth/popup-closed-by-user') {
+        // User closed the popup - don't show error
+        setAuthError(null)
+      } else if (err.message) {
+        setAuthError(err.message)
+      } else {
+        setAuthError('Failed to sign in with Google. Please try again.')
+      }
+    } finally {
+      setAuthLoading(false)
+    }
   }
 
   const handleEmailAuth = async (e: React.FormEvent) => {

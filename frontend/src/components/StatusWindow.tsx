@@ -1,15 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { Card, CardContent } from './ui/card'
 import { ScrollArea } from './ui/scroll-area'
-
-interface ExecutionState {
-  next?: string[]
-  values?: {
-    messages?: unknown[]
-    message_count?: number
-  }
-  history?: unknown[]
-}
+import type { ExecutionState } from '../types/execution'
 
 interface LogEntry {
   id: string

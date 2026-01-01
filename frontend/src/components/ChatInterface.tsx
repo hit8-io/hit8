@@ -1,11 +1,14 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Send, LogOut } from 'lucide-react'
 import { Button } from './ui/button'
+import { getApiHeaders } from '../utils/api'
 import { Input } from './ui/input'
 import { Card } from './ui/card'
 import { ScrollArea } from './ui/scroll-area'
+import type { ExecutionState } from '../types/execution'
 
 interface Message {
+  id: string
   role: 'user' | 'assistant'
   content: string
 }
@@ -22,7 +25,7 @@ interface ChatInterfaceProps {
   user: User
   onLogout: () => void
   onChatStateChange?: (active: boolean, threadId?: string | null) => void
-  onExecutionStateUpdate?: (state: unknown) => void
+  onExecutionStateUpdate?: (state: ExecutionState | null) => void
 }
 
 const API_URL = import.meta.env.VITE_API_URL
@@ -32,6 +35,7 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [_visitedNodes, setVisitedNodes] = useState<string[]>([]) // Track visited nodes for history
+  const timeoutRef = useRef<number | null>(null)
   
   // Fail fast if API URL is missing
   if (!API_URL) {
@@ -45,10 +49,23 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
     )
   }
 
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current !== null) {
+        clearTimeout(timeoutRef.current)
+      }
+    }
+  }, [])
+
   const handleSend = async () => {
     if (!input.trim() || isLoading) return
 
-    const userMessage: Message = { role: 'user', content: input }
+    const userMessage: Message = { 
+      id: crypto.randomUUID(),
+      role: 'user', 
+      content: input 
+    }
     setMessages((prev) => [...prev, userMessage])
     setInput('')
     setIsLoading(true)
@@ -66,10 +83,7 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
       // Use fetch for streaming SSE response
       const response = await fetch(`${API_URL}/chat`, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
+        headers: getApiHeaders(token),
         body: JSON.stringify({
           message: userMessage.content,
           thread_id: threadId,
@@ -131,7 +145,6 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
               } else if (data.type === 'graph_end') {
                 // Graph execution completed - get final response
                 finalResponse = data.response || ''
-                console.log('Graph end received, response:', finalResponse)
                 // Final state update with all visited nodes
                 setVisitedNodes(prev => {
                   onExecutionStateUpdate?.({
@@ -144,28 +157,27 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
               } else if (data.type === 'error') {
                 hasError = true
                 const errorMessage = data.error && data.error.trim() ? data.error : 'Unknown error occurred'
-                console.error('SSE error received:', errorMessage, data)
                 throw new Error(errorMessage)
               }
             } catch (parseError) {
-              console.error('Failed to parse SSE data:', parseError, line)
+              // Silently skip malformed SSE data
             }
           }
         }
       }
 
       // Add final assistant message
-      console.log('Streaming complete, finalResponse:', finalResponse, 'hasError:', hasError)
       if (finalResponse && !hasError) {
         const assistantMessage: Message = {
+          id: crypto.randomUUID(),
           role: 'assistant',
           content: finalResponse,
         }
         setMessages((prev) => [...prev, assistantMessage])
       } else if (!finalResponse && !hasError) {
         // If no response was received, show an error
-        console.error('No response received from server')
         const errorMsg: Message = {
+          id: crypto.randomUUID(),
           role: 'assistant',
           content: 'No response received from the server. Please try again.',
         }
@@ -179,6 +191,7 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
         errorMessage = error.message
       }
       const errorMsg: Message = {
+        id: crypto.randomUUID(),
         role: 'assistant',
         content: errorMessage,
       }
@@ -188,8 +201,13 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
       // Reset visited nodes for next conversation
       setVisitedNodes([])
       // Keep chat active briefly to allow final state update, then deactivate
-      setTimeout(() => {
+      // Clear any existing timeout
+      if (timeoutRef.current !== null) {
+        clearTimeout(timeoutRef.current)
+      }
+      timeoutRef.current = window.setTimeout(() => {
         onChatStateChange?.(false)
+        timeoutRef.current = null
       }, 1000)
     }
   }
@@ -220,9 +238,9 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
                 Start a conversation by sending a message below.
               </div>
             )}
-            {messages.map((message, index) => (
+            {messages.map((message) => (
               <div
-                key={index}
+                key={message.id}
                 className={`flex ${
                   message.role === 'user' ? 'justify-end' : 'justify-start'
                 }`}

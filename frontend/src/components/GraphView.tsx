@@ -4,6 +4,8 @@ import 'reactflow/dist/style.css'
 import dagre from 'dagre'
 import axios from 'axios'
 import { Card, CardContent } from './ui/card'
+import { getApiHeaders } from '../utils/api'
+import type { ExecutionState } from '../types/execution'
 
 interface GraphViewProps {
   apiUrl: string
@@ -18,15 +20,6 @@ interface GraphStructure {
   nodes?: Array<{ id: string; name?: string; [key: string]: unknown }>
   edges?: Array<{ source: string; target: string; [key: string]: unknown }>
   [key: string]: unknown
-}
-
-interface ExecutionState {
-  next?: string[]
-  history?: unknown[]
-  values?: {
-    messages?: unknown[]
-    message_count?: number
-  }
 }
 
 const nodeWidth = 150
@@ -101,13 +94,9 @@ export default function GraphView({ apiUrl, token, threadId, isChatActive, execu
       try {
         setLoading(true)
         const response = await axios.get(`${apiUrl}/graph/structure`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
+          headers: getApiHeaders(token),
         })
 
-        console.log('Graph structure received:', JSON.stringify(response.data, null, 2))
         setGraphStructure(response.data)
         setError(null)
       } catch (err) {
@@ -122,7 +111,6 @@ export default function GraphView({ apiUrl, token, threadId, isChatActive, execu
         } else {
           setError('Failed to load graph structure')
         }
-        console.error('Failed to fetch graph structure:', err)
       } finally {
         setLoading(false)
       }
@@ -136,7 +124,6 @@ export default function GraphView({ apiUrl, token, threadId, isChatActive, execu
     if (!graphStructure) return
 
     try {
-      console.log('Processing graph structure:', graphStructure)
       // Extract nodes and edges from LangGraph JSON structure
       // LangGraph JSON structure may vary, so we need to handle different formats
       let graphNodes: Node[] = []
@@ -144,7 +131,6 @@ export default function GraphView({ apiUrl, token, threadId, isChatActive, execu
 
       // Try to extract from common LangGraph JSON formats
       if (graphStructure.nodes && Array.isArray(graphStructure.nodes)) {
-        console.log('Found nodes array format')
         graphNodes = graphStructure.nodes.map((node: { id: string; name?: string; [key: string]: unknown }) => ({
           id: node.id,
           data: { label: node.name || node.id },
@@ -152,7 +138,6 @@ export default function GraphView({ apiUrl, token, threadId, isChatActive, execu
           position: { x: 0, y: 0 }, // Temporary position, will be updated by dagre
         }))
       } else if (graphStructure.channels) {
-        console.log('Found channels format')
         // Alternative format: channels-based
         const channelNodes = Object.keys(graphStructure.channels)
         graphNodes = channelNodes.map((id) => ({
@@ -163,11 +148,8 @@ export default function GraphView({ apiUrl, token, threadId, isChatActive, execu
         }))
       } else {
         // Try to find nodes in other possible formats
-        console.log('Unknown format, checking all keys:', Object.keys(graphStructure))
-        
         // Check if there's a 'nodes' key that's an object
         if (graphStructure.nodes && typeof graphStructure.nodes === 'object' && !Array.isArray(graphStructure.nodes)) {
-          console.log('Found nodes object format')
           const nodeKeys = Object.keys(graphStructure.nodes)
           graphNodes = nodeKeys.map((id) => ({
             id,
@@ -176,15 +158,7 @@ export default function GraphView({ apiUrl, token, threadId, isChatActive, execu
             position: { x: 0, y: 0 },
           }))
         }
-        
-        // If still no nodes, try to extract from the graph structure itself
-        // LangGraph might store nodes differently
-        if (graphNodes.length === 0) {
-          console.warn('No nodes found in graph structure. Full structure:', JSON.stringify(graphStructure, null, 2))
-        }
       }
-      
-      console.log('Extracted nodes:', graphNodes.map(n => n.id))
 
       if (graphStructure.edges && Array.isArray(graphStructure.edges)) {
         graphEdges = graphStructure.edges.map((edge: { source: string; target: string }) => ({
@@ -216,12 +190,9 @@ export default function GraphView({ apiUrl, token, threadId, isChatActive, execu
 
       // Apply layout
       const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(graphNodes, graphEdges)
-      console.log('Final nodes after layout:', layoutedNodes.map(n => ({ id: n.id, label: n.data.label })))
-      console.log('Final edges after layout:', layoutedEdges.map(e => ({ id: e.id, source: e.source, target: e.target })))
       setNodes(layoutedNodes)
       setEdges(layoutedEdges)
     } catch (err) {
-      console.error('Failed to process graph structure:', err)
       setError('Failed to process graph structure')
     }
   }, [graphStructure, setNodes, setEdges])
@@ -236,10 +207,7 @@ export default function GraphView({ apiUrl, token, threadId, isChatActive, execu
       try {
         const response = await axios.get(`${apiUrl}/graph/state`, {
           params: { thread_id: threadId },
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
+          headers: getApiHeaders(token),
         })
 
         // Only update and log if state actually changed
@@ -252,10 +220,7 @@ export default function GraphView({ apiUrl, token, threadId, isChatActive, execu
         }
       } catch (err) {
         // Silently fail - state polling is optional
-        // Only log errors, not every poll
-        if (axios.isAxiosError(err) && err.response?.status !== 404) {
-          console.debug('Failed to fetch graph state:', err)
-        }
+        // Errors are handled silently to avoid noise
       }
     }
 
