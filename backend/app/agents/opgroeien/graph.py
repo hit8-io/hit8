@@ -159,10 +159,7 @@ def create_agent_graph() -> CompiledGraph:
     graph.add_node(NODE_AGENT, agent_node)
     graph.add_node(NODE_TOOLS, tool_node)
     
-    # Set entry point
-    graph.set_entry_point(START)
-    
-    # Add edges
+    # Add edges (START is automatically the entry point when used in add_edge)
     graph.add_edge(START, NODE_AGENT)
     
     # Conditional edge from agent: if tool calls exist, go to tools, else END
