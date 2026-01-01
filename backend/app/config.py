@@ -57,8 +57,6 @@ class Settings(BaseSettings):
     # Centralized metadata
     customer: str = Field(...)
     project: str = Field(...)
-    # API token for X-Source-Token header validation
-    api_token: str = Field(..., validation_alias="API_TOKEN")
 
     @model_validator(mode="after")
     def validate_langfuse_config(self) -> "Settings":

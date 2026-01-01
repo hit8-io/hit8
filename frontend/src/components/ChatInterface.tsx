@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { Send, LogOut } from 'lucide-react'
+import axios from 'axios'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Card } from './ui/card'
 import { ScrollArea } from './ui/scroll-area'
-import { getApiHeaders } from '../utils/api'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -28,11 +28,11 @@ interface ChatInterfaceProps {
 
 const API_URL = import.meta.env.VITE_API_URL
 
-export default function ChatInterface({ token, user: _user, onLogout, onChatStateChange, onExecutionStateUpdate }: ChatInterfaceProps) {
+export default function ChatInterface({ token, user, onLogout, onChatStateChange, onExecutionStateUpdate }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  const [_visitedNodes, setVisitedNodes] = useState<string[]>([]) // Track visited nodes for history
+  const [visitedNodes, setVisitedNodes] = useState<string[]>([]) // Track visited nodes for history
   
   // Fail fast if API URL is missing
   if (!API_URL) {
@@ -67,7 +67,10 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
       // Use fetch for streaming SSE response
       const response = await fetch(`${API_URL}/chat`, {
         method: 'POST',
-        headers: getApiHeaders(token),
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
           message: userMessage.content,
           thread_id: threadId,

@@ -30,29 +30,19 @@ def setup_api_token_middleware(app: FastAPI) -> None:
     """Setup middleware to validate X-Source-Token header."""
     
     @app.middleware("http")
-    async def api_token_middleware(request: Request, call_next):
-        """Validate X-Source-Token header for all requests except health check."""
+    async def verify_source(request: Request, call_next):
+        """Validate X-Source-Token header for all requests except health check and OPTIONS."""
+        # 1. IMMEDIATE PASS FOR PREFLIGHT
+        if request.method == "OPTIONS":
+            return await call_next(request)  # Let CORSMiddleware handle it
+        
         # Skip validation for health check endpoint
         if request.url.path == "/health":
             return await call_next(request)
         
-        # Get the source token from header
-        source_token = request.headers.get("X-Source-Token")
-        
-        if not source_token:
-            logger.warning(
-                "api_token_missing",
-                path=request.url.path,
-                method=request.method,
-            )
-            return JSONResponse(
-                status_code=status.HTTP_403_FORBIDDEN,
-                content={"detail": "X-Source-Token header is required"},
-                headers=get_cors_headers(request),
-            )
-        
-        # Validate token matches configured secret
-        if source_token != settings.api_token:
+        # 2. Check token for real requests only
+        token = request.headers.get("X-Source-Token")
+        if token != settings.api_token:
             logger.warning(
                 "api_token_invalid",
                 path=request.url.path,
@@ -60,13 +50,11 @@ def setup_api_token_middleware(app: FastAPI) -> None:
             )
             return JSONResponse(
                 status_code=status.HTTP_403_FORBIDDEN,
-                content={"detail": "Invalid X-Source-Token"},
+                content={"detail": "Unauthorized"},
                 headers=get_cors_headers(request),
             )
         
-        # Token is valid, proceed with request
-        response = await call_next(request)
-        return response
+        return await call_next(request)
 
 
 def setup_exception_handlers(app: FastAPI) -> None:
