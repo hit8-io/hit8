@@ -11,6 +11,7 @@ from google.oauth2 import service_account
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_google_genai import ChatGoogleGenerativeAI
+import psycopg
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
@@ -130,10 +131,19 @@ def create_agent_graph() -> CompiledGraph:
     global _agent_checkpointer, _agent_checkpointer_cm
     
     # Initialize PostgreSQL checkpointer for persistent state storage
+    # Disable prepared statements for Supabase connection pooling compatibility
     try:
-        _agent_checkpointer_cm = PostgresSaver.from_conn_string(settings.database_connection_string)
-        _agent_checkpointer = _agent_checkpointer_cm.__enter__()
+        # Create connection with prepare_threshold=None to disable prepared statements
+        # This is required for Supabase connection pooling which doesn't support prepared statements
+        conn = psycopg.connect(
+            settings.database_connection_string,
+            prepare_threshold=None,  # Disable prepared statements for connection pooling
+        )
+        # PostgresSaver can be initialized with a connection object directly
+        _agent_checkpointer = PostgresSaver(conn)
         _agent_checkpointer.setup()
+        # Store connection as context manager to keep it alive for the application lifetime
+        _agent_checkpointer_cm = conn
         logger.info(
             "agent_postgres_checkpointer_initialized",
             database_url=settings.database_connection_string.split("@")[-1] if "@" in settings.database_connection_string else "configured",
