@@ -1,5 +1,61 @@
+# Note: DATABASE_CONNECTION_STRING must be configured as a secret in Google Cloud Build
+# Configure it with: gcloud secrets create DATABASE_CONNECTION_STRING --data-file=-
+# Or use Secret Manager and reference it in availableSecrets section below
+
 steps:
+  # Install Python dependencies (including Migra)
+  - name: 'python:3.11'
+    id: 'install-migra'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -e
+        cd /workspace/backend
+        pip install --upgrade pip
+        pip install migra[pg]
+        python -c "import migra; print('Migra installed successfully')"
+
+  # Plan database migration (dry-run)
+  - name: 'python:3.11'
+    id: 'plan-migration'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -e
+        cd /workspace
+        echo "Planning migration with Migra..."
+        python supabase/scripts/migra_migrate.py \
+          --dry-run \
+          --env prd || {
+          echo "Migration planning failed"
+          exit 1
+        }
+    secretEnv: ['DATABASE_CONNECTION_STRING', 'DEV_DATABASE_CONNECTION_STRING']
+
+  # Apply database migration
+  # Note: In production, you may want to add a manual approval step before this
+  - name: 'python:3.11'
+    id: 'apply-migration'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -e
+        cd /workspace
+        echo "Applying migration with Migra..."
+        python supabase/scripts/migra_migrate.py \
+          --env prd || {
+          echo "Migration application failed"
+          exit 1
+        }
+    secretEnv: ['DATABASE_CONNECTION_STRING', 'DEV_DATABASE_CONNECTION_STRING']
+    waitFor: ['plan-migration']
+
+  # Build and push Docker image
   - name: 'gcr.io/kaniko-project/executor:latest'
+    id: 'build-image'
     args:
       - '--dockerfile=Dockerfile'
       - '--context=dir://.'
@@ -10,5 +66,6 @@ steps:
       - '--cache=true'
       - '--cache-ttl=24h'
       - '--cache-repo=gcr.io/${_PROJECT_ID}/cache'
+    waitFor: ['apply-migration']
     # Kaniko pushes images directly, so no need for images: section
 

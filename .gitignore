@@ -49,3 +49,5 @@ Thumbs.db
 # Doppler
 doppler.yaml
 
+# DB
+supabase/backup/
