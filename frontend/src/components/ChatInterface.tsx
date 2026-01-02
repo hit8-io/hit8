@@ -7,7 +7,7 @@ import { getApiHeaders } from '../utils/api'
 import { Input } from './ui/input'
 import { Card } from './ui/card'
 import { ScrollArea } from './ui/scroll-area'
-import type { ExecutionState } from '../types/execution'
+import type { ExecutionState, StreamEvent } from '../types/execution'
 
 interface Message {
   id: string
@@ -39,6 +39,7 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
   const [streamingContent, setStreamingContent] = useState('') // Track incremental content while streaming
   const [visitedNodes, setVisitedNodes] = useState<string[]>([]) // Track visited nodes for history
   const [activeNode, setActiveNode] = useState<string | null>(null) // Track currently active node
+  const [streamEvents, setStreamEvents] = useState<StreamEvent[]>([]) // Track stream events for real-time logging
   const timeoutRef = useRef<number | null>(null)
   const executionStateUpdateRef = useRef(onExecutionStateUpdate)
   const prevStateRef = useRef<{ visitedNodes: string[], activeNode: string | null }>({ visitedNodes: [], activeNode: null })
@@ -46,7 +47,45 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
   // Update ref on each render (safe for refs, doesn't cause re-renders)
   executionStateUpdateRef.current = onExecutionStateUpdate
   
-  // Fail fast if API URL is missing
+  // Cleanup timeout on unmount - must be called before any early returns
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current !== null) {
+        clearTimeout(timeoutRef.current)
+      }
+    }
+  }, [])
+
+  // Sync execution state updates to parent (avoid calling during render) - must be called before any early returns
+  useEffect(() => {
+    if (!executionStateUpdateRef.current) return
+    
+    // Always update execution state when visitedNodes, activeNode, or streamEvents change
+    // This ensures GraphView and StatusWindow always have the latest state
+    const newState: ExecutionState = {
+      next: activeNode ? [activeNode] : [],
+      values: {},
+      history: visitedNodes.map(node => ({ node })),
+      streamEvents: streamEvents.length > 0 ? [...streamEvents] : undefined,
+    }
+    
+    // Always send state update when streamEvents change (for real-time event logging)
+    // Also send when visitedNodes or activeNode change
+    const prevState = prevStateRef.current
+    const stateChanged = 
+      prevState.visitedNodes.length !== visitedNodes.length ||
+      prevState.activeNode !== activeNode ||
+      // eslint-disable-next-line security/detect-object-injection
+      prevState.visitedNodes.some((node, i) => node !== visitedNodes[i]) ||
+      streamEvents.length > 0 // Always update if there are stream events
+    
+    if (stateChanged) {
+      prevStateRef.current = { visitedNodes, activeNode }
+      executionStateUpdateRef.current(newState)
+    }
+  }, [visitedNodes, activeNode, streamEvents, onExecutionStateUpdate])
+
+  // Fail fast if API URL is missing (after hooks)
   if (!API_URL) {
     return (
       <div className="flex flex-col h-screen max-w-4xl mx-auto p-4">
@@ -57,34 +96,6 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
       </div>
     )
   }
-
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current !== null) {
-        clearTimeout(timeoutRef.current)
-      }
-    }
-  }, [])
-
-  // Sync execution state updates to parent (avoid calling during render)
-  useEffect(() => {
-    // Only update if state actually changed
-    const prevState = prevStateRef.current
-    const stateChanged = 
-      prevState.visitedNodes.length !== visitedNodes.length ||
-      prevState.activeNode !== activeNode ||
-      prevState.visitedNodes.some((node, i) => node !== visitedNodes[i])
-    
-    if (stateChanged && executionStateUpdateRef.current) {
-      prevStateRef.current = { visitedNodes, activeNode }
-      executionStateUpdateRef.current({
-        next: activeNode ? [activeNode] : [],
-        values: {},
-        history: visitedNodes.map(node => ({ node })),
-      })
-    }
-  }, [visitedNodes, activeNode])
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return
@@ -98,14 +109,15 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
     setInput('')
     setIsLoading(true)
 
-    // Generate thread_id on frontend so we can start polling immediately
+    // Generate thread_id on frontend
     const threadId = crypto.randomUUID()
 
-    // Notify parent that chat is active with thread_id for immediate polling
+    // Notify parent that chat is active with thread_id
     onChatStateChange?.(true, threadId)
 
-    // Reset streaming state
+    // Reset streaming state and events
     setStreamingContent('')
+    setStreamEvents([])
     let accumulatedContent = '' // Track accumulated content from chunks
     let finalResponse = ''
     let hasError = false
@@ -161,14 +173,48 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             try {
-              const data = JSON.parse(line.slice(6)) // Remove 'data: ' prefix
+              const rawData = line.slice(6) // Remove 'data: ' prefix
+              const data = JSON.parse(rawData)
               
               // Handle different event types
-              if (data.type === 'content_chunk') {
+              if (data.type === 'graph_start') {
+                // Graph execution started
+                setStreamEvents([]) // Reset events for new execution
+                setVisitedNodes([])
+                setActiveNode(null)
+              } else if (data.type === 'content_chunk') {
                 // Incremental content chunk received
                 const chunkContent = data.content || ''
                 accumulatedContent += chunkContent
                 setStreamingContent(accumulatedContent)
+              } else if (data.type === 'state_update') {
+                // Real-time state update from stream_events - no polling needed
+                const stateEvent = data as StreamEvent & { type: 'state_update' }
+                // Also update active node based on next nodes
+                if (stateEvent.next && stateEvent.next.length > 0) {
+                  setActiveNode(stateEvent.next[0])
+                } else {
+                  setActiveNode(null)
+                }
+                // Add state_update to streamEvents and let useEffect sync state
+                setStreamEvents(prev => [...prev, stateEvent])
+                // Also trigger immediate state update for state_update events
+                executionStateUpdateRef.current?.({
+                  next: stateEvent.next || [],
+                  values: {
+                    message_count: stateEvent.message_count || 0,
+                  },
+                  history: visitedNodes.map(node => ({ node })),
+                  streamEvents: streamEvents.length > 0 ? [...streamEvents, stateEvent] : [stateEvent],
+                })
+              } else if (data.type === 'llm_start' || data.type === 'llm_end') {
+                // LLM call event - add to stream events (useEffect will sync state)
+                const llmEvent = data as StreamEvent & { type: 'llm_start' | 'llm_end' }
+                setStreamEvents(prev => [...prev, llmEvent])
+              } else if (data.type === 'tool_start' || data.type === 'tool_end') {
+                // Tool invocation event - add to stream events (useEffect will sync state)
+                const toolEvent = data as StreamEvent & { type: 'tool_start' | 'tool_end' }
+                setStreamEvents(prev => [...prev, toolEvent])
               } else if (data.type === 'node_start') {
                 // Node is starting - mark as active
                 const nodeName = data.node
@@ -177,15 +223,35 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
                 // Node completed - add to visited nodes and mark as inactive
                 const nodeName = data.node
                 setActiveNode(null)
-                setVisitedNodes(prev => {
-                  return prev.includes(nodeName) ? prev : [...prev, nodeName]
-                })
+                const updatedVisitedNodes = visitedNodes.includes(nodeName) 
+                  ? visitedNodes 
+                  : [...visitedNodes, nodeName]
+                setVisitedNodes(updatedVisitedNodes)
               } else if (data.type === 'graph_end') {
-                // Graph execution completed - get final response
-                // Prefer graph_end.response, fallback to accumulated content
+                // Graph execution completed
                 finalResponse = data.response || accumulatedContent || ''
-                setActiveNode(null)
+                // Ensure any active node is marked as visited before clearing
+                const finalVisitedNodes = activeNode && !visitedNodes.includes(activeNode)
+                  ? [...visitedNodes, activeNode]
+                  : visitedNodes
+                setVisitedNodes(finalVisitedNodes)
+                setActiveNode(null) // Clear active node
                 setStreamingContent('') // Clear streaming content
+                
+                // Final state will be sent via state_update events, no need to fetch
+                // Clear state after a short delay to allow StatusWindow to process final events
+                setTimeout(() => {
+                  executionStateUpdateRef.current?.({
+                    next: [],
+                    values: {},
+                    history: finalVisitedNodes.map(node => ({ node })),
+                  })
+                  // Clear stream events after processing
+                  setStreamEvents([])
+                }, 1000)
+                
+                // Update prevStateRef to ensure useEffect recognizes the change
+                prevStateRef.current = { visitedNodes: finalVisitedNodes, activeNode: null }
               } else if (data.type === 'error') {
                 hasError = true
                 const errorMessage = data.error && data.error.trim() ? data.error : 'Unknown error occurred'
@@ -199,7 +265,7 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
                 
                 throw new Error(errorMessage)
               }
-            } catch (parseError) {
+            } catch {
               // Silently skip malformed SSE data
             }
           }
@@ -207,16 +273,8 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
       }
 
       // If stream ended without graph_end, use accumulated content if available
-      if (!finalResponse && !hasError) {
-        if (accumulatedContent) {
-          // Use accumulated content as final response
-          finalResponse = accumulatedContent
-        } else {
-          // Backend should always send graph_end, but handle gracefully if it doesn't
-          if (import.meta.env.DEV) {
-            console.warn('Stream ended without graph_end event and no accumulated content', { threadId })
-          }
-        }
+      if (!finalResponse && !hasError && accumulatedContent) {
+        finalResponse = accumulatedContent
       }
 
       // Clear streaming content
@@ -264,15 +322,18 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
       setMessages((prev) => [...prev, errorMsg])
     } finally {
       setIsLoading(false)
-      // Reset visited nodes and active node for next conversation
-      setVisitedNodes([])
-      setActiveNode(null)
       // Keep chat active briefly to allow final state update, then deactivate
       // Clear any existing timeout
       if (timeoutRef.current !== null) {
         clearTimeout(timeoutRef.current)
       }
       timeoutRef.current = window.setTimeout(() => {
+        // Reset visited nodes, active node, and stream events for next conversation
+        setVisitedNodes([])
+        setActiveNode(null)
+        setStreamEvents([])
+        // Clear execution state when chat becomes inactive
+        executionStateUpdateRef.current?.(null)
         onChatStateChange?.(false)
         timeoutRef.current = null
       }, 1000)

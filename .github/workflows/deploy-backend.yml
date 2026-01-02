@@ -39,6 +39,13 @@ jobs:
       - name: Configure Docker for GCR
         run: gcloud auth configure-docker
 
+      - name: Read VERSION file
+        id: version
+        run: |
+          VERSION=$(cat VERSION | tr -d '[:space:]')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Read version: $VERSION"
+
       - name: Build and Push Docker Image
         working-directory: ./backend
         run: |-
@@ -47,7 +54,7 @@ jobs:
             --config cloudbuild.yaml \
             --region=europe-west1 \
             --machine-type=e2-medium \
-            --substitutions=_IMAGE_NAME=gcr.io/$PROJECT_ID/$SERVICE_NAME,_TAG=$GITHUB_SHA,_PROJECT_ID=$PROJECT_ID \
+            --substitutions=_IMAGE_NAME=gcr.io/$PROJECT_ID/$SERVICE_NAME,_TAG=$GITHUB_SHA,_VERSION=${{ steps.version.outputs.version }},_PROJECT_ID=$PROJECT_ID \
             . || {
               # Check if the image was actually created (build may have succeeded despite log streaming error)
               if gcloud container images describe gcr.io/$PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA --format="value(image_summary.fully_qualified_digest)" 2>/dev/null; then
@@ -69,8 +76,14 @@ jobs:
           CUSTOMER=${CUSTOMER:-""}
           PROJECT=${PROJECT:-""}
           
+          # Use version tag for deployment (fallback to SHA if version not available)
+          IMAGE_TAG="${{ steps.version.outputs.version }}"
+          if [ -z "$IMAGE_TAG" ]; then
+            IMAGE_TAG="$GITHUB_SHA"
+          fi
+          
           gcloud run deploy $SERVICE_NAME \
-            --image gcr.io/$PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA \
+            --image gcr.io/$PROJECT_ID/$SERVICE_NAME:$IMAGE_TAG \
             --platform managed \
             --region $REGION \
             --allow-unauthenticated \

@@ -22,16 +22,96 @@ def _serialize_messages(state: Any) -> list[dict[str, Any]]:
         state: Graph state object
         
     Returns:
-        List of serialized message dictionaries
+        List of serialized message dictionaries with full details including tool_calls
     """
+    from langchain_core.messages import AIMessage, ToolMessage
+    
     messages = []
     if hasattr(state, "values") and "messages" in state.values:
         for msg in state.values["messages"]:
+            # #region debug log - serializing message
+            import json
+            try:
+                with open('/Users/jan/dev/hit8/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"location":"graph.py:_serialize_messages","message":"Serializing message","data":{"msgType":type(msg).__name__,"hasToolCalls":hasattr(msg,"tool_calls") if hasattr(msg,"tool_calls") else False,"toolCallsCount":len(msg.tool_calls) if hasattr(msg,"tool_calls") and msg.tool_calls else 0,"hasResponseMetadata":hasattr(msg,"response_metadata") if hasattr(msg,"response_metadata") else False},"timestamp":int(__import__('time').time()*1000),"sessionId":"debug-session","runId":"run1","hypothesisId":"A"}) + '\n')
+            except: pass
+            # #endregion
+            
+            msg_dict: dict[str, Any] = {
+                "type": type(msg).__name__,
+            }
+            
+            # Add content
             if hasattr(msg, "content"):
-                messages.append({
-                    "type": type(msg).__name__,
-                    "content": str(msg.content) if hasattr(msg, "content") else str(msg)
-                })
+                msg_dict["content"] = str(msg.content) if msg.content is not None else ""
+            
+            # Add tool_calls for AIMessage
+            if isinstance(msg, AIMessage) and hasattr(msg, "tool_calls") and msg.tool_calls:
+                msg_dict["tool_calls"] = []
+                for tool_call in msg.tool_calls:
+                    tool_call_dict: dict[str, Any] = {}
+                    if hasattr(tool_call, "name"):
+                        tool_call_dict["name"] = tool_call.name
+                    if hasattr(tool_call, "args"):
+                        tool_call_dict["args"] = tool_call.args
+                    if hasattr(tool_call, "id"):
+                        tool_call_dict["id"] = tool_call.id
+                    # Also check for function format
+                    if hasattr(tool_call, "function"):
+                        func = tool_call.function
+                        if hasattr(func, "name"):
+                            tool_call_dict["name"] = func.name
+                        if hasattr(func, "arguments"):
+                            import json
+                            try:
+                                tool_call_dict["args"] = json.loads(func.arguments)
+                            except (json.JSONDecodeError, TypeError):
+                                tool_call_dict["args"] = func.arguments
+                    msg_dict["tool_calls"].append(tool_call_dict)
+            
+            # Add tool_call_id and name for ToolMessage
+            if isinstance(msg, ToolMessage):
+                if hasattr(msg, "tool_call_id"):
+                    msg_dict["tool_call_id"] = msg.tool_call_id
+                if hasattr(msg, "name"):
+                    msg_dict["name"] = msg.name
+            
+            # Add usage_metadata if available (for token counts)
+            # #region debug log - checking response_metadata
+            try:
+                with open('/Users/jan/dev/hit8/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"location":"graph.py:_serialize_messages","message":"Checking response_metadata","data":{"hasResponseMetadata":hasattr(msg,"response_metadata"),"responseMetadataType":type(msg.response_metadata).__name__ if hasattr(msg,"response_metadata") else None,"responseMetadataKeys":list(msg.response_metadata.keys()) if hasattr(msg,"response_metadata") and isinstance(msg.response_metadata,dict) else [],"responseMetadataPreview":json.dumps(msg.response_metadata)[:500] if hasattr(msg,"response_metadata") and msg.response_metadata else None},"timestamp":int(__import__('time').time()*1000),"sessionId":"debug-session","runId":"run1","hypothesisId":"A"}) + '\n')
+            except: pass
+            # #endregion
+            
+            if hasattr(msg, "response_metadata") and msg.response_metadata:
+                metadata = msg.response_metadata
+                if isinstance(metadata, dict):
+                    if "token_usage" in metadata:
+                        msg_dict["usage_metadata"] = metadata["token_usage"]
+                        # #region debug log - token_usage found
+                        try:
+                            with open('/Users/jan/dev/hit8/.cursor/debug.log', 'a') as f:
+                                f.write(json.dumps({"location":"graph.py:_serialize_messages","message":"token_usage found","data":{"tokenUsage":metadata["token_usage"],"tokenUsageType":type(metadata["token_usage"]).__name__,"tokenUsageKeys":list(metadata["token_usage"].keys()) if isinstance(metadata["token_usage"],dict) else []},"timestamp":int(__import__('time').time()*1000),"sessionId":"debug-session","runId":"run1","hypothesisId":"A"}) + '\n')
+                        except: pass
+                        # #endregion
+                    elif "usage_metadata" in metadata:
+                        msg_dict["usage_metadata"] = metadata["usage_metadata"]
+                        # #region debug log - usage_metadata found
+                        try:
+                            with open('/Users/jan/dev/hit8/.cursor/debug.log', 'a') as f:
+                                f.write(json.dumps({"location":"graph.py:_serialize_messages","message":"usage_metadata found","data":{"usageMetadata":metadata["usage_metadata"],"usageMetadataType":type(metadata["usage_metadata"]).__name__,"usageMetadataKeys":list(metadata["usage_metadata"].keys()) if isinstance(metadata["usage_metadata"],dict) else []},"timestamp":int(__import__('time').time()*1000),"sessionId":"debug-session","runId":"run1","hypothesisId":"A"}) + '\n')
+                        except: pass
+                        # #endregion
+            
+            # #region debug log - message serialized
+            try:
+                with open('/Users/jan/dev/hit8/.cursor/debug.log', 'a') as f:
+                    f.write(json.dumps({"location":"graph.py:_serialize_messages","message":"Message serialized","data":{"msgType":msg_dict.get("type"),"hasToolCalls":"tool_calls" in msg_dict,"toolCallsCount":len(msg_dict.get("tool_calls",[])),"hasUsageMetadata":"usage_metadata" in msg_dict,"serializedPreview":json.dumps(msg_dict).substring(0,500)},"timestamp":int(__import__('time').time()*1000),"sessionId":"debug-session","runId":"run1","hypothesisId":"A"}) + '\n')
+            except: pass
+            # #endregion
+            
+            messages.append(msg_dict)
     return messages
 
 

@@ -25,6 +25,7 @@ services:
       langfuse:
         condition: service_started
     # Environment variables are injected by Doppler at runtime
+    # Use: doppler run -- docker-compose up
     environment:
       - VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM=${VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM}
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
@@ -35,7 +36,8 @@ services:
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
       - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL}
-      - DEBUG=${DEBUG:-true}  # Default to true for local dev, set to false in production
+      - GOOGLE_IDENTITY_PLATFORM_KEY=${GOOGLE_IDENTITY_PLATFORM_KEY}
+      - DEBUG=${DEBUG}
 
   supabase:
     image: pgvector/pgvector:pg15

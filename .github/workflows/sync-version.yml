@@ -1,0 +1,65 @@
+name: Sync Version from VERSION file
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'VERSION'
+  workflow_dispatch:  # Manual trigger
+
+jobs:
+  sync-version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Needed to commit changes
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Read VERSION file
+        id: version
+        run: |
+          VERSION=$(cat VERSION | tr -d '[:space:]')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Read version: $VERSION"
+
+      - name: Update Frontend Version
+        working-directory: ./frontend
+        run: |
+          # Update package.json version
+          npm version ${{ steps.version.outputs.version }} --no-git-tag-version
+          echo "Updated frontend/package.json to version ${{ steps.version.outputs.version }}"
+
+      - name: Update Backend pyproject.toml Version
+        working-directory: ./backend
+        run: |
+          # Update pyproject.toml version using sed (works on Linux)
+          sed -i "s/^version = \".*\"/version = \"${{ steps.version.outputs.version }}\"/" pyproject.toml
+          echo "Updated backend/pyproject.toml to version ${{ steps.version.outputs.version }}"
+
+      - name: Update Backend config.yaml Version
+        working-directory: ./backend/app
+        run: |
+          # Update config.yaml app_version field
+          sed -i "s/^  app_version: \".*\"/  app_version: \"${{ steps.version.outputs.version }}\"/" config.yaml
+          echo "Updated backend/app/config.yaml app_version to ${{ steps.version.outputs.version }}"
+
+      - name: Check for changes
+        id: changes
+        run: |
+          git diff --exit-code frontend/package.json backend/pyproject.toml backend/app/config.yaml || echo "changed=true" >> $GITHUB_OUTPUT
+
+      - name: Commit and push changes
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add frontend/package.json backend/pyproject.toml backend/app/config.yaml
+          git commit -m "chore: sync version to ${{ steps.version.outputs.version }} from VERSION file"
+          git push
+

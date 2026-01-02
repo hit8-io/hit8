@@ -1,0 +1,52 @@
+---
+alwaysApply: true
+---
+# Docker with OrbStack
+
+This project uses **OrbStack** as the Docker runtime instead of Docker Desktop. OrbStack is a faster, more efficient Docker alternative for macOS.
+
+## Guidelines
+
+- **Use OrbStack for all Docker operations** - The project is configured to work with OrbStack
+- OrbStack provides a drop-in replacement for Docker Desktop with better performance
+- All `docker` and `docker-compose` commands work the same way with OrbStack
+- OrbStack automatically starts when Docker commands are executed
+
+## Docker Commands
+
+All standard Docker commands work with OrbStack:
+
+```bash
+# Start services with docker-compose
+docker-compose up api web
+
+# Start services with Doppler (secrets management)
+doppler run -- docker-compose up api web
+
+# Check running containers
+docker ps
+
+# View logs
+docker-compose logs -f api
+```
+
+## Starting Services
+
+To start the frontend and backend services:
+
+```bash
+# With Doppler (recommended for production secrets)
+doppler run -- docker-compose up api web --build
+
+# Without Doppler (for local development with default values)
+docker-compose up api web --build
+```
+
+## Notes
+
+- OrbStack must be installed and running on your system
+- If you see "Cannot connect to the Docker daemon" errors, ensure OrbStack is running
+- OrbStack provides the same Docker socket at `/var/run/docker.sock` as Docker Desktop
+- No special configuration is needed - OrbStack is compatible with standard Docker tooling
+- Use `orbctl status` to check if OrbStack is running
+- Use `orbctl restart --all` to restart all OrbStack machines if needed

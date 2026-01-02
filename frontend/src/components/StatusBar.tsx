@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { CheckCircle2, XCircle, AlertCircle, Wifi, WifiOff } from 'lucide-react'
 import { getApiHeaders } from '../utils/api'
 
@@ -16,13 +16,34 @@ interface ErrorItem {
 
 export default function StatusBar({ apiUrl, token, userName }: StatusBarProps) {
   const [apiHealth, setApiHealth] = useState<'healthy' | 'unhealthy' | 'unknown'>('unknown')
-  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected'>('disconnected')
+  // Initialize connection status based on apiUrl and token
+  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected'>(() => 
+    apiUrl && token ? 'disconnected' : 'disconnected'
+  )
   const [errors, setErrors] = useState<ErrorItem[]>([])
   const [metadata, setMetadata] = useState<{ account?: string; org?: string; project?: string; environment?: string; log_level?: string } | null>(null)
+  const [version, setVersion] = useState<string | null>(null)
+
+  // Define addError before useEffect to avoid hoisting issues
+  const addError = useCallback((message: string) => {
+    const errorItem: ErrorItem = {
+      id: Date.now().toString(),
+      message,
+      timestamp: new Date(),
+    }
+    setErrors((prev) => [...prev.slice(-4), errorItem]) // Keep last 5 errors
+
+    // Auto-dismiss after 10 seconds
+    setTimeout(() => {
+      setErrors((prev) => prev.filter((e) => e.id !== errorItem.id))
+    }, 10000)
+  }, [])
+
+  // Derive connection status from apiUrl and token instead of setting in effect
+  const shouldBeConnected = !!(apiUrl && token)
 
   useEffect(() => {
-    if (!apiUrl || !token) {
-      setConnectionStatus('disconnected')
+    if (!shouldBeConnected) {
       return
     }
 
@@ -80,33 +101,46 @@ export default function StatusBar({ apiUrl, token, userName }: StatusBarProps) {
       }
     }
 
+    const fetchVersion = async () => {
+      try {
+        const response = await fetch(`${apiUrl}/version`, {
+          method: 'GET',
+          headers: getApiHeaders(null),
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          setVersion(data.version)
+        } else {
+          // Log version fetch failure but don't show error to user (non-critical)
+          if (import.meta.env.DEV) {
+            console.error('Failed to fetch version:', response.status, response.statusText)
+          }
+        }
+      } catch (error) {
+        // Log version fetch error but don't show to user (non-critical)
+        if (import.meta.env.DEV) {
+          console.error('Error fetching version:', error)
+        }
+      }
+    }
+
     // Initial checks
     checkHealth()
     fetchMetadata()
+    fetchVersion()
 
     // Poll every 5 seconds
     const interval = setInterval(checkHealth, 5000)
     const metadataInterval = setInterval(fetchMetadata, 30000) // Fetch metadata every 30 seconds
+    const versionInterval = setInterval(fetchVersion, 30000) // Fetch version every 30 seconds
 
     return () => {
       clearInterval(interval)
       clearInterval(metadataInterval)
+      clearInterval(versionInterval)
     }
-  }, [apiUrl, token])
-
-  const addError = (message: string) => {
-    const errorItem: ErrorItem = {
-      id: Date.now().toString(),
-      message,
-      timestamp: new Date(),
-    }
-    setErrors((prev) => [...prev.slice(-4), errorItem]) // Keep last 5 errors
-
-    // Auto-dismiss after 10 seconds
-    setTimeout(() => {
-      setErrors((prev) => prev.filter((e) => e.id !== errorItem.id))
-    }, 10000)
-  }
+  }, [apiUrl, token, addError, shouldBeConnected])
 
   const getHealthIcon = () => {
     switch (apiHealth) {
@@ -171,6 +205,13 @@ export default function StatusBar({ apiUrl, token, userName }: StatusBarProps) {
         </div>
       )}
 
+      {version && (
+        <div className="flex items-center gap-2">
+          <span className="text-muted-foreground">Version:</span>
+          <span className="font-medium">{version}</span>
+        </div>
+      )}
+
       <div className="flex items-center gap-2">
         {getHealthIcon()}
         <span className="text-muted-foreground">API:</span>
@@ -180,11 +221,21 @@ export default function StatusBar({ apiUrl, token, userName }: StatusBarProps) {
       </div>
 
       <div className="flex items-center gap-2">
-        {getConnectionIcon()}
-        <span className="text-muted-foreground">Connection:</span>
-        <span className={connectionStatus === 'connected' ? 'text-green-600' : 'text-red-600'}>
-          {connectionStatus === 'connected' ? 'Connected' : 'Disconnected'}
-        </span>
+        {shouldBeConnected ? (
+          <>
+            {getConnectionIcon()}
+            <span className="text-muted-foreground">Connection:</span>
+            <span className={connectionStatus === 'connected' ? 'text-green-600' : 'text-red-600'}>
+              {connectionStatus === 'connected' ? 'Connected' : 'Disconnected'}
+            </span>
+          </>
+        ) : (
+          <>
+            <WifiOff className="h-4 w-4 text-red-500" />
+            <span className="text-muted-foreground">Connection:</span>
+            <span className="text-red-600">Disconnected</span>
+          </>
+        )}
       </div>
 
       {errors.length > 0 && (

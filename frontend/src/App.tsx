@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app'
 import { getAuth, User, signOut, onAuthStateChanged } from 'firebase/auth'
 import ChatInterface from './components/ChatInterface'
@@ -28,11 +28,11 @@ function App() {
   const [isChatActive, setIsChatActive] = useState(false)
   const [executionState, setExecutionState] = useState<ExecutionState | null>(null)
 
-  const firebaseConfig = {
+  const firebaseConfig = useMemo(() => ({
     apiKey: import.meta.env.VITE_GOOGLE_IDENTITY_PLATFORM_KEY,
     authDomain: import.meta.env.VITE_GOOGLE_IDENTITY_PLATFORM_DOMAIN,
     projectId: import.meta.env.VITE_GCP_PROJECT,
-  }
+  }), [])
   const isConfigValid = !!(firebaseConfig.apiKey && firebaseConfig.authDomain && firebaseConfig.projectId)
 
   useEffect(() => {
@@ -91,7 +91,7 @@ function App() {
     })
 
     return unsubscribe
-  }, [])
+  }, [firebaseConfig, isConfigValid])
 
   const handleLogout = async () => {
     await signOut(getAuth(firebaseApp!))
@@ -180,10 +180,7 @@ function App() {
             <GraphView
               apiUrl={API_URL}
               token={idToken}
-              threadId={threadId}
-              isChatActive={isChatActive}
               executionState={executionState}
-              onExecutionStateChange={handleExecutionStateUpdate}
             />
           </div>
 

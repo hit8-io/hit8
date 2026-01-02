@@ -4,6 +4,7 @@ steps:
       - '--dockerfile=Dockerfile'
       - '--context=dir://.'
       - '--destination=${_IMAGE_NAME}:${_TAG}'
+      - '--destination=${_IMAGE_NAME}:${_VERSION}'
       - '--destination=${_IMAGE_NAME}:latest'
       - '--build-arg=PRODUCTION=true'
       - '--cache=true'

@@ -8,6 +8,7 @@ import math
 from typing import Any
 
 import psycopg
+from psycopg import sql as psql
 import structlog
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
@@ -99,19 +100,22 @@ def _vector_search_raw_sql(
                 # Use cosine distance operator (<=>) and convert to similarity score
                 # Cosine distance: 0 = identical, 1 = orthogonal, 2 = opposite
                 # Similarity: 1 - distance (higher is more similar)
-                # Note: table_name is validated above, so f-string is safe
-                cursor.execute(f"""
+                # Use psycopg.sql to safely compose SQL with identifiers
+                # This properly quotes and escapes the table name, preventing SQL injection
+                query_sql = psql.SQL("""
                     SELECT 
                         content,
                         metadata,
                         doc,
                         chunk,
                         1 - (embedding <=> %s::vector) as similarity_score
-                    FROM {table_name}
+                    FROM {table}
                     WHERE embedding IS NOT NULL
                     ORDER BY embedding <=> %s::vector
                     LIMIT %s
-                """, (embedding_array, embedding_array, k))
+                """).format(table=psql.Identifier(table_name))
+                
+                cursor.execute(query_sql, (embedding_array, embedding_array, k))
                 
                 results = []
                 for row in cursor.fetchall():

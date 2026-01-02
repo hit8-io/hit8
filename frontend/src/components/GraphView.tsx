@@ -1,6 +1,21 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import ReactFlow, { Node, Edge, Background, Controls, useNodesState, useEdgesState, useReactFlow, Position } from 'reactflow'
 import 'reactflow/dist/style.css'
+
+// Suppress React Flow's false positive warning about nodeTypes/edgeTypes
+// This warning is triggered by React Strict Mode even when props are stable
+// We're not using custom nodeTypes/edgeTypes, so this warning is not applicable
+if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+  const originalWarn = console.warn
+  console.warn = (...args: unknown[]) => {
+    const message = typeof args[0] === 'string' ? args[0] : String(args[0])
+    // Suppress the specific React Flow warning about nodeTypes/edgeTypes
+    if (message.includes('[React Flow]: It looks like you\'ve created a new nodeTypes or edgeTypes object')) {
+      return // Suppress this specific warning
+    }
+    originalWarn.apply(console, args)
+  }
+}
 import dagre from 'dagre'
 import axios from 'axios'
 import { Card, CardContent } from './ui/card'
@@ -10,10 +25,7 @@ import type { ExecutionState } from '../types/execution'
 interface GraphViewProps {
   apiUrl: string
   token: string | null
-  threadId?: string | null
-  isChatActive?: boolean
-  executionState?: ExecutionState | null // Accept execution state from parent (streaming)
-  onExecutionStateChange?: (state: ExecutionState | null) => void
+  executionState?: ExecutionState | null // Execution state from stream events
 }
 
 interface GraphStructure {
@@ -24,6 +36,9 @@ interface GraphStructure {
 
 const nodeWidth = 150
 const nodeHeight = 50
+
+// Removed all nodeTypes/edgeTypes code since we're using React Flow's defaults
+// No custom node or edge types are needed for this implementation
 
 // Component to fit view when nodes are loaded (must be inside ReactFlow context)
 function FitViewOnLoad({ nodeCount }: { nodeCount: number }) {
@@ -70,17 +85,33 @@ function getLayoutedElements(nodes: Node[], edges: Edge[], direction = 'TB') {
   return { nodes, edges }
 }
 
-export default function GraphView({ apiUrl, token, threadId, isChatActive, executionState: propExecutionState, onExecutionStateChange }: GraphViewProps) {
-  const [graphStructure, setGraphStructure] = useState<GraphStructure | null>(null)
-  const [executionState, setExecutionState] = useState<ExecutionState | null>(null)
+export default function GraphView({ apiUrl, token, executionState }: GraphViewProps) {
   
-  // Use prop execution state (from streaming) when available, otherwise use internal state (from polling)
-  const currentExecutionState = propExecutionState ?? executionState
+  const [graphStructure, setGraphStructure] = useState<GraphStructure | null>(null)
+  
+  // Use execution state from stream events (no polling)
+  const currentExecutionState = executionState
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
+
+  // React Flow's useNodeOrEdgeTypes hook warns when it detects "new" objects
+  // React Strict Mode can cause false positives for this warning
+  // Memoize proOptions separately to ensure it's stable
+  const proOptions = useMemo(() => ({ hideAttribution: true }), [])
+  
+  // Memoize the entire ReactFlow props object to ensure stable references
+  // This prevents React Flow from detecting "new" props objects on each render
+  const reactFlowProps = useMemo(() => ({
+    nodes,
+    edges,
+    onNodesChange,
+    onEdgesChange,
+    // Explicitly omit nodeTypes and edgeTypes - React Flow will use defaults
+    proOptions,
+  }), [nodes, edges, onNodesChange, onEdgesChange, proOptions])
 
 
   // Fetch graph structure on mount
@@ -134,7 +165,6 @@ export default function GraphView({ apiUrl, token, threadId, isChatActive, execu
         graphNodes = graphStructure.nodes.map((node: { id: string; name?: string; [key: string]: unknown }) => ({
           id: node.id,
           data: { label: node.name || node.id },
-          type: 'default',
           position: { x: 0, y: 0 }, // Temporary position, will be updated by dagre
         }))
       } else if (graphStructure.channels) {
@@ -143,7 +173,6 @@ export default function GraphView({ apiUrl, token, threadId, isChatActive, execu
         graphNodes = channelNodes.map((id) => ({
           id,
           data: { label: id },
-          type: 'default',
           position: { x: 0, y: 0 }, // Temporary position, will be updated by dagre
         }))
       } else {
@@ -154,7 +183,6 @@ export default function GraphView({ apiUrl, token, threadId, isChatActive, execu
           graphNodes = nodeKeys.map((id) => ({
             id,
             data: { label: id },
-            type: 'default',
             position: { x: 0, y: 0 },
           }))
         }
@@ -165,7 +193,6 @@ export default function GraphView({ apiUrl, token, threadId, isChatActive, execu
           id: `${edge.source}-${edge.target}`,
           source: edge.source,
           target: edge.target,
-          type: 'smoothstep',
           animated: false,
         }))
       } else if (graphStructure.channels) {
@@ -179,7 +206,6 @@ export default function GraphView({ apiUrl, token, threadId, isChatActive, execu
                 id: `${source}-${target}`,
                 source,
                 target,
-                type: 'smoothstep',
                 animated: false,
               })
             })
@@ -192,46 +218,12 @@ export default function GraphView({ apiUrl, token, threadId, isChatActive, execu
       const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(graphNodes, graphEdges)
       setNodes(layoutedNodes)
       setEdges(layoutedEdges)
-    } catch (err) {
+    } catch {
       setError('Failed to process graph structure')
     }
   }, [graphStructure, setNodes, setEdges])
 
-  // Poll for execution state when chat is active
-  useEffect(() => {
-    if (!isChatActive || !threadId || !apiUrl || !token) return
-
-    let lastStateHash = ''
-    
-    const pollState = async () => {
-      try {
-        const response = await axios.get(`${apiUrl}/graph/state`, {
-          params: { thread_id: threadId },
-          headers: getApiHeaders(token),
-        })
-
-        // Only update and log if state actually changed
-        const stateHash = JSON.stringify(response.data)
-        if (stateHash !== lastStateHash) {
-          lastStateHash = stateHash
-          setExecutionState(response.data)
-          // Notify parent of state changes
-          onExecutionStateChange?.(response.data)
-        }
-      } catch (err) {
-        // Silently fail - state polling is optional
-        // Errors are handled silently to avoid noise
-      }
-    }
-
-    // Initial poll
-    pollState()
-
-    // Poll every 2-3 seconds
-    const interval = setInterval(pollState, 2500)
-
-    return () => clearInterval(interval)
-  }, [isChatActive, threadId, apiUrl, token])
+  // No polling needed - rely entirely on stream events for updates
 
   // Update node styles based on execution state
   useEffect(() => {
@@ -340,13 +332,7 @@ export default function GraphView({ apiUrl, token, threadId, isChatActive, execu
     <Card className="h-full flex flex-col overflow-hidden">
       <CardContent className="flex-1 min-h-0 p-0 overflow-hidden">
         <div className="w-full h-full min-h-[400px]">
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            proOptions={{ hideAttribution: true }}
-          >
+          <ReactFlow {...reactFlowProps}>
             <Background />
             <Controls />
             <FitViewOnLoad nodeCount={nodes.length} />

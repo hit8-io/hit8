@@ -16,6 +16,8 @@ import structlog
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
+from langchain_core.callbacks import BaseCallbackHandler
+from langchain_core.outputs import LLMResult
 
 from app.agents.common import get_langfuse_handler
 from app.agents.opgroeien.constants import NODE_AGENT, NODE_TOOLS
@@ -24,8 +26,13 @@ from app.api.constants import (
     EVENT_CONTENT_CHUNK,
     EVENT_GRAPH_END,
     EVENT_GRAPH_START,
+    EVENT_LLM_END,
+    EVENT_LLM_START,
     EVENT_NODE_END,
     EVENT_NODE_START,
+    EVENT_STATE_UPDATE,
+    EVENT_TOOL_END,
+    EVENT_TOOL_START,
     EVENT_ERROR,
     QUEUE_CHUNK,
     QUEUE_ERROR,
@@ -42,6 +49,424 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 router = APIRouter()
+
+
+class EventCaptureCallbackHandler(BaseCallbackHandler):
+    """Callback handler to capture LLM and tool events for real-time streaming."""
+    
+    def __init__(self, event_queue: queue.Queue, thread_id: str):
+        super().__init__()
+        self.event_queue = event_queue
+        self.thread_id = thread_id
+        # Store prompts and model name from on_llm_start to use in on_llm_end
+        self._llm_prompts: dict[str, list[str]] = {}  # run_id -> prompts
+        self._llm_model_names: dict[str, str] = {}  # run_id -> model_name
+    
+    def on_llm_start(self, serialized: dict[str, Any], prompts: list[str], **kwargs: Any) -> None:
+        """Capture LLM start event."""
+        try:
+            # Extract model name from invocation_params (most reliable source)
+            model_name = "unknown"
+            if "invocation_params" in kwargs:
+                inv_params = kwargs["invocation_params"]
+                if isinstance(inv_params, dict):
+                    # Try various keys for model name
+                    model_name = (
+                        inv_params.get("model_name") or
+                        inv_params.get("model") or
+                        inv_params.get("model_id") or
+                        model_name
+                    )
+            
+            # Fallback to serialized config if invocation_params didn't have it
+            if model_name == "unknown":
+                if isinstance(serialized.get("id"), list) and serialized.get("id"):
+                    # serialized.id is like ['langchain_google_genai', 'chat_models', 'ChatGoogleGenerativeAI']
+                    # We want the actual model, not the class name
+                    pass  # Skip this, it's just the class name
+                elif serialized.get("name"):
+                    model_name = serialized["name"]
+                elif serialized.get("_type"):
+                    model_name = serialized["_type"]
+            
+            # Store prompts and model name for use in on_llm_end
+            run_id = kwargs.get("run_id", "")
+            if run_id:
+                if prompts:
+                    self._llm_prompts[str(run_id)] = prompts
+                if model_name != "unknown":
+                    self._llm_model_names[str(run_id)] = model_name
+            
+            # Extract input preview from prompts
+            input_preview = ""
+            if prompts:
+                # Join all prompts if multiple, otherwise use first
+                if len(prompts) == 1:
+                    input_preview = _truncate_preview(prompts[0], 300)
+                else:
+                    input_preview = _truncate_preview(f"[{len(prompts)} prompts]", 300)
+            
+            self.event_queue.put((QUEUE_EVENT, {
+                "type": EVENT_LLM_START,
+                "model": model_name,
+                "input_preview": input_preview,
+                "thread_id": self.thread_id,
+            }))
+        except Exception as e:
+            logger.error("callback_llm_start_error", error=str(e), thread_id=self.thread_id, exc_info=True)
+    
+    def on_llm_end(self, response: Any, **kwargs: Any) -> None:
+        """Capture LLM end event."""
+        try:
+            # Extract model name from stored value (from on_llm_start)
+            model_name = "unknown"
+            run_id = kwargs.get("run_id", "")
+            if run_id and str(run_id) in self._llm_model_names:
+                model_name = self._llm_model_names[str(run_id)]
+                # Clean up stored model name
+                del self._llm_model_names[str(run_id)]
+            
+            # Fallback: try invocation_params if not stored (shouldn't happen, but safety)
+            if model_name == "unknown" and "invocation_params" in kwargs:
+                inv_params = kwargs["invocation_params"]
+                if isinstance(inv_params, dict):
+                    model_name = (
+                        inv_params.get("model_name") or
+                        inv_params.get("model") or
+                        inv_params.get("model_id") or
+                        model_name
+                    )
+            
+            # Extract input preview from stored prompts (from on_llm_start)
+            input_preview = ""
+            if run_id and str(run_id) in self._llm_prompts:
+                prompts = self._llm_prompts[str(run_id)]
+                if prompts and isinstance(prompts, list):
+                    if len(prompts) == 1:
+                        input_preview = _truncate_preview(prompts[0], 300)
+                    else:
+                        input_preview = _truncate_preview(f"[{len(prompts)} prompts]", 300)
+                # Clean up stored prompts
+                del self._llm_prompts[str(run_id)]
+            
+            # Extract output preview, token usage and tool calls from LLMResult
+            output_preview = ""
+            token_usage = None
+            tool_calls = []
+            
+            if isinstance(response, LLMResult):
+                # LLMResult has generations: list[list[Generation]]
+                if response.generations and len(response.generations) > 0:
+                    # Get first generation from first prompt
+                    first_gen_list = response.generations[0]
+                    if first_gen_list and len(first_gen_list) > 0:
+                        first_gen = first_gen_list[0]
+                        # Extract output preview and tool calls from message if available
+                        if hasattr(first_gen, "message"):
+                            msg = first_gen.message
+                            # Extract output preview from message content
+                            if hasattr(msg, "content"):
+                                content = msg.content
+                                if isinstance(content, str):
+                                    output_preview = _truncate_preview(content, 500)
+                                elif isinstance(content, list):
+                                    # Content might be a list of content blocks (e.g., [{"type": "text", "text": "..."}])
+                                    text_parts = []
+                                    for block in content:
+                                        if isinstance(block, dict):
+                                            # Try various keys for text content
+                                            text = (
+                                                block.get("text") or
+                                                block.get("content") or
+                                                (str(block) if block else "")
+                                            )
+                                            if text:
+                                                text_parts.append(str(text))
+                                        elif isinstance(block, str):
+                                            text_parts.append(block)
+                                        else:
+                                            # Fallback: convert to string
+                                            text_parts.append(str(block))
+                                    if text_parts:
+                                        output_preview = _truncate_preview(" ".join(text_parts), 500)
+                                else:
+                                    output_preview = _truncate_preview(str(content), 500)
+                            # Extract tool calls from message
+                            if hasattr(msg, "tool_calls") and msg.tool_calls:
+                                for tool_call in msg.tool_calls:
+                                    tool_call_dict: dict[str, Any] = {}
+                                    if hasattr(tool_call, "name"):
+                                        tool_call_dict["name"] = tool_call.name
+                                    if hasattr(tool_call, "args"):
+                                        tool_call_dict["args"] = tool_call.args
+                                    if hasattr(tool_call, "id"):
+                                        tool_call_dict["id"] = tool_call.id
+                                    # Also check for function format
+                                    if hasattr(tool_call, "function"):
+                                        func = tool_call.function
+                                        if hasattr(func, "name"):
+                                            tool_call_dict["name"] = func.name
+                                        if hasattr(func, "arguments"):
+                                            import json
+                                            try:
+                                                tool_call_dict["args"] = json.loads(func.arguments)
+                                            except (json.JSONDecodeError, TypeError):
+                                                tool_call_dict["args"] = func.arguments
+                                    tool_calls.append(tool_call_dict)
+                        # Fallback: try to extract text from generation
+                        elif hasattr(first_gen, "text") and first_gen.text:
+                            output_preview = _truncate_preview(first_gen.text, 500)
+                
+                # Extract token usage from llm_output
+                if response.llm_output:
+                    if isinstance(response.llm_output, dict):
+                        token_usage = response.llm_output.get("token_usage") or response.llm_output.get("usage_metadata")
+                        # Also check for model name in llm_output
+                        if model_name == "unknown":
+                            model_name = response.llm_output.get("model_name") or model_name
+            elif hasattr(response, "content"):
+                # Direct message-like object (AIMessage)
+                output_preview = _truncate_preview(str(response.content), 500)
+                if hasattr(response, "response_metadata"):
+                    metadata = response.response_metadata or {}
+                    token_usage = metadata.get("token_usage") or metadata.get("usage_metadata")
+                    if model_name == "unknown":
+                        model_name = metadata.get("model_name", model_name)
+            elif hasattr(response, "text"):
+                # Simple text response
+                output_preview = _truncate_preview(str(response.text), 500)
+            
+            event_data = {
+                "type": EVENT_LLM_END,
+                "model": model_name,
+                "input_preview": input_preview,
+                "output_preview": output_preview,
+                "thread_id": self.thread_id,
+            }
+            if token_usage:
+                event_data["token_usage"] = token_usage
+            if tool_calls:
+                event_data["tool_calls"] = tool_calls
+            
+            self.event_queue.put((QUEUE_EVENT, event_data))
+        except Exception as e:
+            logger.error("callback_llm_end_error", error=str(e), thread_id=self.thread_id, exc_info=True)
+    
+    def on_tool_start(self, serialized: dict[str, Any], input_str: str, **kwargs: Any) -> None:
+        """Capture tool start event."""
+        try:
+            tool_name = serialized.get("name", "unknown")
+            args_preview = _truncate_preview(input_str, 200)
+            
+            self.event_queue.put((QUEUE_EVENT, {
+                "type": EVENT_TOOL_START,
+                "tool_name": tool_name,
+                "args_preview": args_preview,
+                "thread_id": self.thread_id,
+            }))
+        except Exception as e:
+            logger.error("callback_tool_start_error", error=str(e), thread_id=self.thread_id)
+    
+    def on_tool_end(self, output: str, **kwargs: Any) -> None:
+        """Capture tool end event."""
+        try:
+            tool_name = kwargs.get("name", "unknown")
+            args_preview = _truncate_preview(str(kwargs.get("input", "")), 200)
+            result_preview = _truncate_preview(str(output), 500)
+            
+            self.event_queue.put((QUEUE_EVENT, {
+                "type": EVENT_TOOL_END,
+                "tool_name": tool_name,
+                "args_preview": args_preview,
+                "result_preview": result_preview,
+                "thread_id": self.thread_id,
+            }))
+        except Exception as e:
+            logger.error("callback_tool_end_error", error=str(e), thread_id=self.thread_id)
+
+
+def _truncate_preview(content: str, max_length: int = 200) -> str:
+    """Truncate content to preview length."""
+    if not content:
+        return ""
+    if len(content) <= max_length:
+        return content
+    return content[:max_length] + "..."
+
+
+def _extract_llm_event_data(event: dict[str, Any], event_type: str) -> dict[str, Any] | None:
+    """Extract LLM call details from stream_events event.
+    
+    Args:
+        event: Event dictionary from stream_events
+        event_type: "on_llm_start" or "on_llm_end"
+        
+    Returns:
+        Dictionary with LLM event data or None if not applicable
+    """
+    data = event.get("data", {})
+    if not isinstance(data, dict):
+        return None
+    
+    # Extract model information
+    model_name = data.get("name", "") or data.get("model_name", "") or "unknown"
+    
+    # Extract input (prompts/messages)
+    input_data = data.get("input", {})
+    input_preview = ""
+    if isinstance(input_data, dict):
+        # Try to extract messages or prompts
+        messages = input_data.get("messages", input_data.get("prompts", []))
+        if messages and isinstance(messages, list) and len(messages) > 0:
+            last_msg = messages[-1]
+            if isinstance(last_msg, dict):
+                content = last_msg.get("content", "")
+            elif hasattr(last_msg, "content"):
+                content = str(last_msg.content)
+            else:
+                content = str(last_msg)
+            input_preview = _truncate_preview(content, 200)
+        else:
+            input_preview = _truncate_preview(str(input_data), 200)
+    elif input_data:
+        input_preview = _truncate_preview(str(input_data), 200)
+    
+    # Extract output (only for on_llm_end)
+    output_preview = ""
+    token_usage = None
+    if event_type == "on_llm_end":
+        output_data = data.get("output", {})
+        if isinstance(output_data, dict):
+            content = output_data.get("content", "")
+            if not content and "messages" in output_data:
+                messages = output_data.get("messages", [])
+                if messages and len(messages) > 0:
+                    last_msg = messages[-1]
+                    if isinstance(last_msg, dict):
+                        content = last_msg.get("content", "")
+                    elif hasattr(last_msg, "content"):
+                        content = str(last_msg.content)
+            output_preview = _truncate_preview(content, 200)
+        elif output_data:
+            output_preview = _truncate_preview(str(output_data), 200)
+        
+        # Extract token usage if available
+        token_usage = data.get("token_usage") or data.get("usage_metadata")
+        if not token_usage and "response_metadata" in data:
+            metadata = data.get("response_metadata", {})
+            token_usage = metadata.get("token_usage") or metadata.get("usage_metadata")
+    
+    return {
+        "model": model_name,
+        "input_preview": input_preview,
+        "output_preview": output_preview if event_type == "on_llm_end" else "",
+        "token_usage": token_usage if isinstance(token_usage, dict) else None,
+    }
+
+
+def _extract_tool_event_data(event: dict[str, Any], event_type: str) -> dict[str, Any] | None:
+    """Extract tool invocation details from stream_events event.
+    
+    Args:
+        event: Event dictionary from stream_events
+        event_type: "on_tool_start" or "on_tool_end"
+        
+    Returns:
+        Dictionary with tool event data or None if not applicable
+    """
+    data = event.get("data", {})
+    if not isinstance(data, dict):
+        return None
+    
+    # Extract tool name
+    tool_name = data.get("name", "") or event.get("name", "") or "unknown"
+    
+    # Extract input (tool arguments)
+    input_data = data.get("input", {})
+    args_preview = ""
+    if isinstance(input_data, dict):
+        # Try to extract arguments
+        args = input_data.get("input", input_data.get("args", input_data))
+        if args:
+            args_str = json.dumps(args) if not isinstance(args, str) else args
+            args_preview = _truncate_preview(args_str, 200)
+        else:
+            args_preview = _truncate_preview(json.dumps(input_data), 200)
+    elif input_data:
+        args_str = json.dumps(input_data) if not isinstance(input_data, str) else str(input_data)
+        args_preview = _truncate_preview(args_str, 200)
+    
+    # Extract output (tool result, only for on_tool_end)
+    result_preview = ""
+    if event_type == "on_tool_end":
+        output_data = data.get("output", {})
+        if isinstance(output_data, dict):
+            result_preview = _truncate_preview(json.dumps(output_data), 500)
+        elif output_data:
+            result_str = json.dumps(output_data) if not isinstance(output_data, str) else str(output_data)
+            result_preview = _truncate_preview(result_str, 500)
+    
+    return {
+        "tool_name": tool_name,
+        "args_preview": args_preview,
+        "result_preview": result_preview if event_type == "on_tool_end" else "",
+    }
+
+
+def _extract_state_update(event: dict[str, Any]) -> dict[str, Any] | None:
+    """Extract state update information from stream_events event.
+    
+    Args:
+        event: Event dictionary from stream_events
+        
+    Returns:
+        Dictionary with state update data or None if not applicable
+    """
+    data = event.get("data", {})
+    if not isinstance(data, dict):
+        return None
+    
+    # Try to extract state from different possible locations
+    # on_chain_stream might have chunk in data.output or data.chunk
+    # on_chain_end might have output with state information
+    state_info = data.get("output", {})
+    if not isinstance(state_info, dict):
+        state_info = data
+    
+    # Extract next nodes from various possible locations
+    next_nodes = []
+    if "next" in state_info:
+        next_nodes = state_info.get("next", [])
+        if not isinstance(next_nodes, list):
+            next_nodes = []
+    elif "next" in data:
+        next_nodes = data.get("next", [])
+        if not isinstance(next_nodes, list):
+            next_nodes = []
+    
+    # Extract message count from various possible locations
+    message_count = 0
+    if "messages" in state_info:
+        messages = state_info.get("messages", [])
+        if isinstance(messages, list):
+            message_count = len(messages)
+    elif "messages" in data:
+        messages = data.get("messages", [])
+        if isinstance(messages, list):
+            message_count = len(messages)
+    elif "message_count" in state_info:
+        message_count = state_info.get("message_count", 0)
+    elif "message_count" in data:
+        message_count = data.get("message_count", 0)
+    
+    # Only send state update if we have meaningful data
+    if next_nodes or message_count > 0:
+        return {
+            "next": next_nodes,
+            "message_count": message_count,
+        }
+    
+    return None
 
 
 def _run_content_stream(
@@ -116,6 +541,21 @@ def _run_content_stream(
                         item_type=type(state_update).__name__,
                     )
                     continue
+                
+                # Send state update event for real-time updates
+                messages = state_update.get("messages", [])
+                message_count = len(messages) if isinstance(messages, list) else 0
+                # Extract next nodes from state (if available)
+                next_nodes = []
+                # Note: stream() doesn't provide next nodes directly, but we can infer from execution
+                
+                if message_count > 0:
+                    event_queue.put((QUEUE_EVENT, {
+                        "type": EVENT_STATE_UPDATE,
+                        "next": next_nodes,  # Will be updated by node tracking if available
+                        "message_count": message_count,
+                        "thread_id": thread_id,
+                    }))
                 
                 # If state has 'tools' key but no 'messages', it's likely a tools node execution
                 # The final state will have messages after tools complete
@@ -302,9 +742,11 @@ def _run_node_tracking_stream(
         )
         
         # Use stream_events() to get node-level execution events
-        # Check if stream_events method exists (may not be available on all graph types)
         graph = get_graph()
-        if not hasattr(graph, "stream_events"):
+        
+        # Try to get stream_events method - it might be available but not detected by hasattr
+        stream_events_method = getattr(graph, "stream_events", None)
+        if stream_events_method is None:
             logger.warning(
                 "node_tracking_not_available",
                 thread_id=thread_id,
@@ -312,13 +754,103 @@ def _run_node_tracking_stream(
             )
             return
         
-        for event in graph.stream_events(initial_state, config=config, version="v2"):
+        event_count = 0
+        # Use the method we found (should be stream_events)
+        for event in stream_events_method(initial_state, config=config, version="v2"):
+            event_count += 1
             if not isinstance(event, dict):
                 continue
             
             # Extract event type and node name
             event_type = event.get("event", "")
             node_name = event.get("name", "")
+            
+            # Handle LLM call events
+            if event_type == "on_llm_start":
+                llm_data = _extract_llm_event_data(event, "on_llm_start")
+                if llm_data:
+                    event_queue.put((QUEUE_EVENT, {
+                        "type": EVENT_LLM_START,
+                        "model": llm_data["model"],
+                        "input_preview": llm_data["input_preview"],
+                        "thread_id": thread_id,
+                    }))
+                    logger.debug(
+                        "llm_start_event",
+                        thread_id=thread_id,
+                        model=llm_data["model"],
+                    )
+            
+            elif event_type == "on_llm_end":
+                llm_data = _extract_llm_event_data(event, "on_llm_end")
+                if llm_data:
+                    event_data = {
+                        "type": EVENT_LLM_END,
+                        "model": llm_data["model"],
+                        "input_preview": llm_data["input_preview"],
+                        "output_preview": llm_data["output_preview"],
+                        "thread_id": thread_id,
+                    }
+                    if llm_data["token_usage"]:
+                        event_data["token_usage"] = llm_data["token_usage"]
+                    event_queue.put((QUEUE_EVENT, event_data))
+                    logger.debug(
+                        "llm_end_event",
+                        thread_id=thread_id,
+                        model=llm_data["model"],
+                        has_token_usage=bool(llm_data["token_usage"]),
+                    )
+            
+            # Handle tool invocation events
+            elif event_type == "on_tool_start":
+                tool_data = _extract_tool_event_data(event, "on_tool_start")
+                if tool_data:
+                    event_queue.put((QUEUE_EVENT, {
+                        "type": EVENT_TOOL_START,
+                        "tool_name": tool_data["tool_name"],
+                        "args_preview": tool_data["args_preview"],
+                        "thread_id": thread_id,
+                    }))
+                    logger.debug(
+                        "tool_start_event",
+                        thread_id=thread_id,
+                        tool_name=tool_data["tool_name"],
+                    )
+            
+            elif event_type == "on_tool_end":
+                tool_data = _extract_tool_event_data(event, "on_tool_end")
+                if tool_data:
+                    event_queue.put((QUEUE_EVENT, {
+                        "type": EVENT_TOOL_END,
+                        "tool_name": tool_data["tool_name"],
+                        "args_preview": tool_data["args_preview"],
+                        "result_preview": tool_data["result_preview"],
+                        "thread_id": thread_id,
+                    }))
+                    logger.debug(
+                        "tool_end_event",
+                        thread_id=thread_id,
+                        tool_name=tool_data["tool_name"],
+                    )
+            
+            # Handle state update events (from on_chain_stream or on_chain_end)
+            # Extract state from both on_chain_stream (intermediate) and on_chain_end (final)
+            if event_type in ("on_chain_stream", "on_chain_end"):
+                state_data = _extract_state_update(event)
+                if state_data:
+                    event_queue.put((QUEUE_EVENT, {
+                        "type": EVENT_STATE_UPDATE,
+                        "next": state_data["next"],
+                        "message_count": state_data["message_count"],
+                        "thread_id": thread_id,
+                    }))
+                    logger.debug(
+                        "state_update_event",
+                        thread_id=thread_id,
+                        event_type=event_type,
+                        next_nodes=state_data["next"],
+                        message_count=state_data["message_count"],
+                    )
             
             # Handle node execution start events
             if event_type == "on_chain_start":
@@ -419,6 +951,17 @@ def _create_stream_thread(
     # Send graph start event
     event_queue.put((QUEUE_EVENT, {"type": EVENT_GRAPH_START, "thread_id": thread_id}))
     
+    # Create event capture callback handler for LLM and tool events
+    # This works even when stream_events is not available on the graph
+    event_callback = EventCaptureCallbackHandler(event_queue, thread_id)
+    
+    # Add event callback to config callbacks (create list if needed)
+    if "callbacks" not in config:
+        config["callbacks"] = []
+    if not isinstance(config["callbacks"], list):
+        config["callbacks"] = [config["callbacks"]]
+    config["callbacks"].append(event_callback)
+    
     # Error tracking for both threads
     content_error: list[Exception | None] = [None]
     node_error: list[Exception | None] = [None]
@@ -436,7 +979,7 @@ def _create_stream_thread(
     )
     content_thread.start()
     
-    # Create and start node tracking thread
+    # Create and start node tracking thread (may not work if stream_events unavailable, but try anyway)
     node_thread = threading.Thread(
         target=_run_node_tracking_stream,
         args=(initial_state, config, thread_id, event_queue, node_done, node_error),
