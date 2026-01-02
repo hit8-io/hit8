@@ -9,7 +9,7 @@ services:
     command: >
       sh -c "
       if [ \"$$DEBUG\" = \"true\" ]; then
-        python -m debugpy --listen 0.0.0.0:5678 --wait-for-client -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+        python -m debugpy --listen 0.0.0.0:8888 --wait-for-client -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
       else
         uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
       fi
@@ -18,7 +18,7 @@ services:
       - ./backend:/app
     ports:
       - "8000:8000"
-      - "5678:5678"  # Debug port for debugpy
+      - "8888:8888"  # Debug port for debugpy
     depends_on:
       supabase:
         condition: service_healthy
