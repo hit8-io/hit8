@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Card, CardContent } from './ui/card'
 import { ScrollArea } from './ui/scroll-area'
-import type { ExecutionState } from '../types/execution'
+import type { ExecutionState, StreamEvent } from '../types/execution'
 
 interface LogEntry {
   id: string
@@ -721,7 +721,7 @@ export default function StatusWindow({ executionState, isLoading }: StatusWindow
             }
           }
           if (llmEvent.tool_calls && llmEvent.tool_calls.length > 0) {
-            const toolNames = llmEvent.tool_calls.map(tc => tc.name).join(', ')
+            const toolNames = llmEvent.tool_calls.map((tc: { name: string }) => tc.name).join(', ')
             message += ` | tools=[${toolNames}]`
           }
           message += ` | input="${inputPreview}" | output="${outputPreview}"`

@@ -24,7 +24,6 @@ function App() {
   const [idToken, setIdToken] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [firebaseApp, setFirebaseApp] = useState<FirebaseApp | null>(null)
-  const [threadId, setThreadId] = useState<string | null>(null)
   const [isChatActive, setIsChatActive] = useState(false)
   const [executionState, setExecutionState] = useState<ExecutionState | null>(null)
 
@@ -97,11 +96,8 @@ function App() {
     await signOut(getAuth(firebaseApp!))
   }
 
-  const handleChatStateChange = (active: boolean, threadId?: string | null) => {
+  const handleChatStateChange = (active: boolean, _threadId?: string | null) => {
     setIsChatActive(active)
-    if (threadId) {
-      setThreadId(threadId)
-    }
   }
 
   const handleExecutionStateUpdate = useCallback((state: ExecutionState | null) => {
