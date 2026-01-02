@@ -4,11 +4,12 @@ LangGraph agent with tools and memory for the n8n workflow conversion.
 from __future__ import annotations
 
 import json
+import operator
 from typing import TYPE_CHECKING, Annotated, Optional, TypedDict
 
 import structlog
 from google.oauth2 import service_account
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_google_genai import ChatGoogleGenerativeAI
 import psycopg
@@ -32,7 +33,7 @@ logger = structlog.get_logger(__name__)
 
 class AgentState(TypedDict):
     """State for the agent graph with messages and memory."""
-    messages: Annotated[list[BaseMessage], "The conversation messages"]
+    messages: Annotated[list[BaseMessage], operator.add]
 
 
 # Cache model and credentials at module level
@@ -90,6 +91,16 @@ def agent_node(state: AgentState, config: Optional[RunnableConfig] = None) -> Ag
     # Get messages from state
     messages = state["messages"]
     
+    # Log all messages in state for debugging
+    logger.debug(
+        "agent_node_state_messages",
+        message_count=len(messages),
+        message_types=[type(m).__name__ for m in messages],
+        has_human=any(isinstance(m, HumanMessage) for m in messages),
+        has_ai=any(isinstance(m, AIMessage) for m in messages),
+        has_tool=any(isinstance(m, ToolMessage) for m in messages),
+    )
+    
     # Check if system message is already in messages
     has_system_message = any(isinstance(msg, SystemMessage) for msg in messages)
     
@@ -97,6 +108,72 @@ def agent_node(state: AgentState, config: Optional[RunnableConfig] = None) -> Ag
     if not has_system_message:
         system_prompt = get_system_prompt()
         messages = [SystemMessage(content=system_prompt)] + messages
+    
+    # Filter and validate messages before invoking model
+    # Ensure all messages have valid content (ToolMessages should be handled by LangChain automatically)
+    # But Google GenAI might have issues with empty or malformed ToolMessages
+    filtered_messages = []
+    message_types = []
+    for msg in messages:
+        msg_type = type(msg).__name__
+        message_types.append(msg_type)
+        
+        # Skip messages without content (shouldn't happen, but safety check)
+        if hasattr(msg, "content") and msg.content is None:
+            logger.warning(
+                "skipping_message_without_content",
+                message_type=msg_type,
+            )
+            continue
+        
+        # ToolMessages should have content - if not, log a warning
+        if isinstance(msg, ToolMessage):
+            content = getattr(msg, "content", None)
+            tool_call_id = getattr(msg, "tool_call_id", None)
+            if not content:
+                logger.warning(
+                    "tool_message_missing_content",
+                    tool_call_id=tool_call_id,
+                    message_type=msg_type,
+                )
+                continue
+            # Log ToolMessage details for debugging
+            logger.debug(
+                "tool_message_included",
+                tool_call_id=tool_call_id,
+                content_length=len(str(content)) if content else 0,
+            )
+        
+        filtered_messages.append(msg)
+    
+    if not filtered_messages:
+        logger.error(
+            "no_valid_messages_after_filtering",
+            original_message_count=len(messages),
+            original_message_types=message_types,
+        )
+        raise ValueError("No valid messages to send to model")
+    
+    # Log message details before invoking model
+    logger.debug(
+        "invoking_model_with_messages",
+        message_count=len(filtered_messages),
+        message_types=[type(m).__name__ for m in filtered_messages],
+        has_tool_messages=any(isinstance(m, ToolMessage) for m in filtered_messages),
+    )
+    
+    # Google GenAI requires at least one HumanMessage or AIMessage (not just ToolMessages)
+    # If we only have SystemMessage and ToolMessages, we need to ensure we have context
+    has_human_or_ai = any(isinstance(m, (HumanMessage, AIMessage)) for m in filtered_messages)
+    if not has_human_or_ai and any(isinstance(m, ToolMessage) for m in filtered_messages):
+        logger.error(
+            "missing_human_or_ai_message",
+            message_count=len(filtered_messages),
+            message_types=[type(m).__name__ for m in filtered_messages],
+        )
+        raise ValueError(
+            "Cannot invoke model with only ToolMessages. State must include HumanMessage or AIMessage for context."
+        )
     
     # Convert config to dict for metadata injection
     config_dict: dict[str, Any] = {}
@@ -109,11 +186,24 @@ def agent_node(state: AgentState, config: Optional[RunnableConfig] = None) -> Ag
         config_dict["metadata"] = {}
     config_dict["metadata"].update(metadata)
     
-    # Invoke model with messages
-    response = model_with_tools.invoke(messages, config=config_dict if config_dict else config)
+    # Invoke model with filtered messages
+    try:
+        response = model_with_tools.invoke(filtered_messages, config=config_dict if config_dict else config)
+    except Exception as e:
+        logger.error(
+            "model_invoke_failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            message_count=len(filtered_messages),
+            message_types=[type(m).__name__ for m in filtered_messages],
+        )
+        raise
     
-    # Add response to messages
-    return {"messages": [response]}
+    # Return state with new response appended
+    # LangGraph will automatically merge this with existing state when using Annotated[list[...], ...]
+    # But to be safe, we preserve all existing messages and append the new response
+    # This ensures the full conversation history is maintained
+    return {"messages": state["messages"] + [response]}
 
 
 def should_continue(state: AgentState) -> str:
@@ -139,9 +229,13 @@ def create_agent_graph() -> CompiledGraph:
             settings.database_connection_string,
             prepare_threshold=None,  # Disable prepared statements for connection pooling
         )
+        # Enable autocommit for setup() - CREATE INDEX CONCURRENTLY cannot run in a transaction
+        conn.autocommit = True
         # PostgresSaver can be initialized with a connection object directly
         _agent_checkpointer = PostgresSaver(conn)
         _agent_checkpointer.setup()
+        # Disable autocommit after setup for normal operations
+        conn.autocommit = False
         # Store connection as context manager to keep it alive for the application lifetime
         _agent_checkpointer_cm = conn
         logger.info(

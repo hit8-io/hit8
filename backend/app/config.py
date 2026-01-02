@@ -55,7 +55,8 @@ class Settings(BaseSettings):
     langfuse_secret_key: str | None = Field(None, validation_alias="LANGFUSE_SECRET_KEY")
     langfuse_base_url: str | None = Field(None, validation_alias="LANGFUSE_BASE_URL")
     # Centralized metadata
-    customer: str = Field(...)
+    account: str = Field(...)
+    org: str = Field(...)
     project: str = Field(...)
     # API token for X-Source-Token header validation
     api_token: str = Field(..., validation_alias="API_TOKEN")
@@ -159,16 +160,17 @@ settings = get_settings()
 
 def get_metadata() -> dict[str, str]:
     """
-    Get centralized metadata (environment, customer, project).
+    Get centralized metadata (environment, account, org, project).
     
     Returns:
-        dict with keys: environment, customer, project
+        dict with keys: environment, account, org, project
     """
     import os
     environment = "prd" if os.getenv("ENVIRONMENT") == "prd" else "dev"
     return {
         "environment": environment,
-        "customer": settings.customer,
+        "account": settings.account,
+        "org": settings.org,
         "project": settings.project,
     }
 

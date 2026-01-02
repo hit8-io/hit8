@@ -79,11 +79,21 @@ def setup_logging() -> None:
 
 
 def setup_debugpy() -> None:
-    """Enable debugpy for remote debugging if log_level is DEBUG."""
+    """Enable debugpy for remote debugging if log_level is DEBUG and DEBUG env var is not set.
+    
+    Note: If DEBUG=true is set, debugpy is already started via command line in docker-compose.yml,
+    so we skip initialization here to avoid conflicts.
+    """
     try:
+        # If DEBUG env var is set, debugpy is already running via command line
+        if os.getenv("DEBUG") == "true":
+            structlog.get_logger(__name__).debug("debugpy_already_running_via_command")
+            return
+        
         from app.config import settings
         import debugpy
         
+        # Only initialize if log_level is DEBUG and DEBUG env var is not set
         if settings.log_level.upper() == "DEBUG":
             debugpy.listen(("0.0.0.0", 5678))
             structlog.get_logger(__name__).info("debugpy_listening", port=5678)

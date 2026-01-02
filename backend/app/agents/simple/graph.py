@@ -11,6 +11,7 @@ from google.oauth2 import service_account
 from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_google_genai import ChatGoogleGenerativeAI
+import psycopg
 from langgraph.checkpoint.postgres import PostgresSaver
 from langgraph.graph import END, StateGraph
 
@@ -104,16 +105,24 @@ def create_graph() -> CompiledGraph:
     global _checkpointer, _checkpointer_cm
     
     # Initialize PostgreSQL checkpointer for persistent state storage
-    # PostgresSaver.from_conn_string returns a context manager that must be kept alive
-    # We store both the context manager and the instance to prevent connection closure
+    # Disable prepared statements for Supabase connection pooling compatibility
     try:
-        # Create the context manager and keep it alive for the application lifetime
-        _checkpointer_cm = PostgresSaver.from_conn_string(settings.database_connection_string)
-        # Enter the context manager to get the PostgresSaver instance
-        # The context manager must stay alive to keep the connection open
-        _checkpointer = _checkpointer_cm.__enter__()
+        # Create connection with prepare_threshold=None to disable prepared statements
+        # This is required for Supabase connection pooling which doesn't support prepared statements
+        conn = psycopg.connect(
+            settings.database_connection_string,
+            prepare_threshold=None,  # Disable prepared statements for connection pooling
+        )
+        # Enable autocommit for setup() - CREATE INDEX CONCURRENTLY cannot run in a transaction
+        conn.autocommit = True
+        # PostgresSaver can be initialized with a connection object directly
+        _checkpointer = PostgresSaver(conn)
         # Initialize database schema (idempotent - safe to call multiple times)
         _checkpointer.setup()
+        # Disable autocommit after setup for normal operations
+        conn.autocommit = False
+        # Store connection to keep it alive for the application lifetime
+        _checkpointer_cm = conn
         logger.info(
             "postgres_checkpointer_initialized",
             database_url=settings.database_connection_string.split("@")[-1] if "@" in settings.database_connection_string else "configured",

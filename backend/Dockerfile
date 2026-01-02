@@ -18,8 +18,11 @@ WORKDIR /app
 # Dependencies only need to be reinstalled if pyproject.toml changes
 COPY pyproject.toml uv.lock* ./
 
-# Install dependencies (cached unless pyproject.toml or uv.lock changes)
+# Install dependencies
 RUN uv pip install --system .
+
+# Install debugpy for local development debugging
+RUN uv pip install --system debugpy>=1.8.0
 
 # Copy application code last (changes most frequently)
 # This layer will be rebuilt on code changes, but dependencies layer stays cached

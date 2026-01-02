@@ -45,10 +45,23 @@ def get_langfuse_client() -> Langfuse | None:
                     
                     env = "prd" if os.getenv("ENVIRONMENT") == "prd" else "dev"
                     
+                    # Convert Docker service names to localhost when running locally
+                    langfuse_url = settings.langfuse_base_url
+                    # Check if running outside Docker (no DOCKER_CONTAINER env var or not in container)
+                    if not os.getenv("DOCKER_CONTAINER") and not os.path.exists("/.dockerenv"):
+                        # Replace Docker service names with localhost
+                        if langfuse_url and "langfuse:" in langfuse_url:
+                            langfuse_url = langfuse_url.replace("langfuse:", "localhost:")
+                            logger.debug(
+                                "langfuse_url_converted_for_local",
+                                original=settings.langfuse_base_url,
+                                converted=langfuse_url,
+                            )
+                    
                     _langfuse_client = Langfuse(
                         public_key=settings.langfuse_public_key,
                         secret_key=settings.langfuse_secret_key,
-                        host=settings.langfuse_base_url,
+                        host=langfuse_url,
                     )
                     logger.info(
                         "langfuse_client_initialized",

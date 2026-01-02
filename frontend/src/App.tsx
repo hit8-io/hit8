@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app'
 import { getAuth, User, signOut, onAuthStateChanged } from 'firebase/auth'
 import ChatInterface from './components/ChatInterface'
@@ -104,9 +104,9 @@ function App() {
     }
   }
 
-  const handleExecutionStateUpdate = (state: ExecutionState | null) => {
+  const handleExecutionStateUpdate = useCallback((state: ExecutionState | null) => {
     setExecutionState(state)
-  }
+  }, [])
 
   if (loading) {
     return (

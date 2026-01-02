@@ -267,7 +267,8 @@ def test_agent_node_metadata_injection():
     
     test_metadata = {
         "environment": "test",
-        "customer": "test-customer",
+        "account": "test-customer",
+        "org": "test-org",
         "project": "test-project"
     }
     

@@ -18,7 +18,7 @@ export default function StatusBar({ apiUrl, token, userName }: StatusBarProps) {
   const [apiHealth, setApiHealth] = useState<'healthy' | 'unhealthy' | 'unknown'>('unknown')
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected'>('disconnected')
   const [errors, setErrors] = useState<ErrorItem[]>([])
-  const [metadata, setMetadata] = useState<{ customer?: string; project?: string; environment?: string; log_level?: string } | null>(null)
+  const [metadata, setMetadata] = useState<{ account?: string; org?: string; project?: string; environment?: string; log_level?: string } | null>(null)
 
   useEffect(() => {
     if (!apiUrl || !token) {
@@ -136,10 +136,17 @@ export default function StatusBar({ apiUrl, token, userName }: StatusBarProps) {
         </div>
       )}
 
-      {metadata?.customer && (
+      {metadata?.account && (
         <div className="flex items-center gap-2">
-          <span className="text-muted-foreground">Customer:</span>
-          <span className="font-medium">{metadata.customer}</span>
+          <span className="text-muted-foreground">Account:</span>
+          <span className="font-medium">{metadata.account}</span>
+        </div>
+      )}
+
+      {metadata?.org && (
+        <div className="flex items-center gap-2">
+          <span className="text-muted-foreground">Org:</span>
+          <span className="font-medium">{metadata.org}</span>
         </div>
       )}
 

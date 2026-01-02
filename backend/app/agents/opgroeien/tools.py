@@ -17,8 +17,7 @@ from langchain_core.tools import tool
 from openpyxl import Workbook
 
 from app.agents.opgroeien.utils import (
-    _get_procedures_vector_store,
-    _get_regelgeving_vector_store,
+    _vector_search_raw_sql,
 )
 
 logger = structlog.get_logger(__name__)
@@ -37,19 +36,35 @@ def procedures_vector_search(query: str) -> str:
         JSON string with search results and metadata
     """
     try:
-        vector_store = _get_procedures_vector_store()
-        results = vector_store.similarity_search_with_score(query, k=40)
+        results = _vector_search_raw_sql(query, "embeddings_proc", k=40)
+        
+        if not results:
+            logger.warning(
+                "procedures_vector_search_empty",
+                query=query,
+                message="No results found - vector store may be empty",
+            )
+            return json.dumps({
+                "error": "No results found. The procedures vector store appears to be empty. Please populate it with data first.",
+                "results": []
+            }, ensure_ascii=False)
         
         formatted_results = []
-        for doc, score in results:
-            result_dict = {
-                "content": doc.page_content,
-                "score": float(score),
+        for result_dict, score in results:
+            formatted_result = {
+                "content": result_dict.get("content", ""),
+                "score": score,
             }
             # Add metadata if available
-            if doc.metadata:
-                result_dict["metadata"] = doc.metadata
-            formatted_results.append(result_dict)
+            if result_dict.get("metadata"):
+                formatted_result["metadata"] = result_dict["metadata"]
+            formatted_results.append(formatted_result)
+        
+        logger.info(
+            "procedures_vector_search_success",
+            query=query,
+            result_count=len(formatted_results),
+        )
         
         return json.dumps(formatted_results, ensure_ascii=False)
     except Exception as e:
@@ -73,19 +88,35 @@ def regelgeving_vector_search(query: str) -> str:
         JSON string with search results
     """
     try:
-        vector_store = _get_regelgeving_vector_store()
-        results = vector_store.similarity_search_with_score(query, k=40)
+        results = _vector_search_raw_sql(query, "embeddings_regel", k=40)
+        
+        if not results:
+            logger.warning(
+                "regelgeving_vector_search_empty",
+                query=query,
+                message="No results found - vector store may be empty",
+            )
+            return json.dumps({
+                "error": "No results found. The regelgeving vector store appears to be empty. Please populate it with data first.",
+                "results": []
+            }, ensure_ascii=False)
         
         formatted_results = []
-        for doc, score in results:
-            result_dict = {
-                "content": doc.page_content,
-                "score": float(score),
+        for result_dict, score in results:
+            formatted_result = {
+                "content": result_dict.get("content", ""),
+                "score": score,
             }
             # Add metadata if available
-            if doc.metadata:
-                result_dict["metadata"] = doc.metadata
-            formatted_results.append(result_dict)
+            if result_dict.get("metadata"):
+                formatted_result["metadata"] = result_dict["metadata"]
+            formatted_results.append(formatted_result)
+        
+        logger.info(
+            "regelgeving_vector_search_success",
+            query=query,
+            result_count=len(formatted_results),
+        )
         
         return json.dumps(formatted_results, ensure_ascii=False)
     except Exception as e:
@@ -302,19 +333,19 @@ def get_procedure(doc: str) -> str:
         JSON string with doc, content, and metadata
     """
     try:
-        # This would query the database for the full procedure content
-        # For now, search in vector store and return the most relevant chunks
-        vector_store = _get_procedures_vector_store()
-        results = vector_store.similarity_search(f"procedure {doc}", k=10)
+        # Search for procedure by doc name
+        results = _vector_search_raw_sql(f"procedure {doc}", "embeddings_proc", k=10)
         
         # Combine all chunks for this procedure
         content_parts = []
         metadata_dict = {}
         
-        for result in results:
-            content_parts.append(result.page_content)
-            if result.metadata:
-                metadata_dict.update(result.metadata)
+        for result_dict, _ in results:
+            content = result_dict.get("content", "")
+            if content:
+                content_parts.append(content)
+            if result_dict.get("metadata"):
+                metadata_dict.update(result_dict["metadata"])
         
         result = {
             "doc": doc,
@@ -344,19 +375,19 @@ def get_regelgeving(doc: str) -> str:
         JSON string with doc, content, and metadata
     """
     try:
-        # This would query the database for the full regelgeving content
-        # For now, search in vector store and return the most relevant chunks
-        vector_store = _get_regelgeving_vector_store()
-        results = vector_store.similarity_search(f"regelgeving {doc}", k=10)
+        # Search for regelgeving by doc name
+        results = _vector_search_raw_sql(f"regelgeving {doc}", "embeddings_regel", k=10)
         
         # Combine all chunks for this document
         content_parts = []
         metadata_dict = {}
         
-        for result in results:
-            content_parts.append(result.page_content)
-            if result.metadata:
-                metadata_dict.update(result.metadata)
+        for result_dict, _ in results:
+            content = result_dict.get("content", "")
+            if content:
+                content_parts.append(content)
+            if result_dict.get("metadata"):
+                metadata_dict.update(result_dict["metadata"])
         
         result = {
             "doc": doc,

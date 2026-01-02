@@ -6,7 +6,14 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: >
+      sh -c "
+      if [ \"$$DEBUG\" = \"true\" ]; then
+        python -m debugpy --listen 0.0.0.0:5678 --wait-for-client -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      else
+        uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      fi
+      "
     volumes:
       - ./backend:/app
     ports:
@@ -23,9 +30,12 @@ services:
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
       - GCP_PROJECT=${GCP_PROJECT}
       - GOOGLE_IDENTITY_PLATFORM_DOMAIN=${GOOGLE_IDENTITY_PLATFORM_DOMAIN}
+      - DATABASE_CONNECTION_STRING=${DATABASE_CONNECTION_STRING}
+      - API_TOKEN=${API_TOKEN}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
       - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL}
+      - DEBUG=${DEBUG:-true}  # Default to true for local dev, set to false in production
 
   supabase:
     image: pgvector/pgvector:pg15
@@ -34,6 +44,8 @@ services:
     environment:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -193,8 +205,11 @@ services:
       - VITE_GOOGLE_IDENTITY_PLATFORM_DOMAIN=${GOOGLE_IDENTITY_PLATFORM_DOMAIN}
       - VITE_GCP_PROJECT=${GCP_PROJECT}
       - VITE_API_URL=${VITE_API_URL}
+      - VITE_API_TOKEN=${API_TOKEN}
 
 volumes:
+  postgres-data:
+    driver: local
   langfuse-data:
   langfuse-clickhouse-data:
   langfuse-clickhouse-logs:

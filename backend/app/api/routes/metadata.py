@@ -17,7 +17,7 @@ router = APIRouter()
 async def get_metadata_endpoint(
     user_payload: dict = Depends(verify_google_token)
 ):
-    """Get application metadata (customer, project, environment, log_level)."""
+    """Get application metadata (account, org, project, environment, log_level)."""
     try:
         metadata = get_metadata()
         # Add log_level to metadata

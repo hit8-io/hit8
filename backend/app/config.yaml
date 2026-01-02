@@ -7,7 +7,8 @@ defaults:
   langfuse_enabled: true
   log_level: INFO
   log_format: json
-  customer: "hit8"
+  account: "hit8"
+  org: "hit8"
   project: "hit8-poc"
   # Database connection string must be provided via DATABASE_CONNECTION_STRING environment variable
   # Format: postgresql://user:password@host:port/database?sslmode=require

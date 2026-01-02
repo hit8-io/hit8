@@ -14,6 +14,7 @@ EVENT_NODE_START = "node_start"
 EVENT_NODE_END = "node_end"
 EVENT_GRAPH_END = "graph_end"
 EVENT_ERROR = "error"
+EVENT_CONTENT_CHUNK = "content_chunk"
 
 # Node names (for simple agent)
 NODE_GENERATE = "generate"
