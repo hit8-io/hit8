@@ -17,16 +17,16 @@ steps:
            exit 0
         fi
 
-        # Extract DIRECT_DB_CONNECTION_STRING from JSON secret
-        DIRECT_DB_CONNECTION_STRING=$(node -e "console.log(JSON.parse(process.env.DOPPLER_SECRETS_JSON).DIRECT_DB_CONNECTION_STRING)")
+        # Extract connection string from JSON secret
+        DB_URL=$(node -e "console.log(JSON.parse(process.env.DOPPLER_SECRETS_JSON).DIRECT_DB_CONNECTION_STRING)")
         
-        if [ -z "$DIRECT_DB_CONNECTION_STRING" ]; then
+        if [ -z "$DB_URL" ]; then
            echo "❌ Error: DIRECT_DB_CONNECTION_STRING not found in secrets."
            exit 1
         fi
 
         # Run migration
-        supabase db push --db-url "$DIRECT_DB_CONNECTION_STRING"
+        supabase db push --db-url "$DB_URL"
     
     secretEnv: ['DOPPLER_SECRETS_JSON']
 
