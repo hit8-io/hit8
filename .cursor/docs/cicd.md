@@ -52,7 +52,6 @@ env:
 **Step 5: Build and Push Docker Image**
 ```yaml
 - name: Build and Push Docker Image
-  working-directory: ./backend
   run: |-
     gcloud builds submit \
       --config cloudbuild.yaml \
@@ -71,7 +70,7 @@ env:
       }
 ```
 
-**Build Configuration**: [`backend/cloudbuild.yaml`](backend/cloudbuild.yaml)
+**Build Configuration**: [`cloudbuild.yaml`](cloudbuild.yaml)
 
 **Build Process:**
 - Uses Kaniko executor for container builds
@@ -107,7 +106,7 @@ env:
 
 ### Build Configuration
 
-**File**: [`backend/cloudbuild.yaml`](backend/cloudbuild.yaml)
+**File**: [`cloudbuild.yaml`](cloudbuild.yaml)
 
 **Configuration:**
 ```yaml

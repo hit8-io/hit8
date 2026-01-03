@@ -70,11 +70,11 @@ gcloud auth login
 gcloud config set project hit8-poc
 
 # Build and push image
-cd backend
 gcloud builds submit \
   --config cloudbuild.yaml \
   --region=europe-west1 \
-  --substitutions=_IMAGE_NAME=gcr.io/hit8-poc/hit8-api,_TAG=manual-$(date +%s),_PROJECT_ID=hit8-poc
+  --substitutions=_IMAGE_NAME=gcr.io/hit8-poc/hit8-api,_TAG=manual-$(date +%s),_PROJECT_ID=hit8-poc \
+  .
 
 # Deploy to Cloud Run
 gcloud run deploy hit8-api \
