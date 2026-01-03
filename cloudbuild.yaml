@@ -8,25 +8,18 @@ steps:
     args:
       - '-c'
       - |
-        echo "🚀 Installing Supabase CLI..."
         npm install -g supabase
         
-        echo "🚀 Starting Supabase Migration..."
-        if [ ! -d "supabase/migrations" ]; then
-           echo "⚠️  No 'supabase/migrations' folder found. Skipping."
-           exit 0
-        fi
-
-        # Extract connection string from JSON secret
-        DB_URL=$(node -e "console.log(JSON.parse(process.env.DOPPLER_SECRETS_JSON).DIRECT_DB_CONNECTION_STRING)")
+        # Extract DIRECT_DB_CONNECTION_STRING from JSON secret
+        DIRECT_DB_CONNECTION_STRING=$(node -e "console.log(JSON.parse(process.env.DOPPLER_SECRETS_JSON).DIRECT_DB_CONNECTION_STRING)")
         
-        if [ -z "$DB_URL" ]; then
+        if [ -z "$$DIRECT_DB_CONNECTION_STRING" ]; then
            echo "❌ Error: DIRECT_DB_CONNECTION_STRING not found in secrets."
            exit 1
         fi
 
         # Run migration
-        supabase db push --db-url "$DB_URL"
+        supabase db push --db-url "$$DIRECT_DB_CONNECTION_STRING"
     
     secretEnv: ['DOPPLER_SECRETS_JSON']
 
