@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Send, LogOut } from 'lucide-react'
+import { Send, LogOut, Maximize2, Minimize2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Button } from './ui/button'
@@ -28,11 +28,13 @@ interface ChatInterfaceProps {
   onLogout: () => void
   onChatStateChange?: (active: boolean, threadId?: string | null) => void
   onExecutionStateUpdate?: (state: ExecutionState | null) => void
+  isExpanded?: boolean
+  onToggleExpand?: () => void
 }
 
 const API_URL = import.meta.env.VITE_API_URL
 
-export default function ChatInterface({ token, user: _user, onLogout, onChatStateChange, onExecutionStateUpdate }: ChatInterfaceProps) {
+export default function ChatInterface({ token, user: _user, onLogout, onChatStateChange, onExecutionStateUpdate, isExpanded = false, onToggleExpand }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -356,6 +358,11 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
             <Button variant="outline" size="icon" onClick={onLogout} title="Sign out">
               <LogOut className="h-4 w-4" />
             </Button>
+            {onToggleExpand && (
+              <Button variant="outline" size="icon" onClick={onToggleExpand} title={isExpanded ? "Show graph and status" : "Expand chat"}>
+                {isExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+              </Button>
+            )}
           </div>
         </div>
         

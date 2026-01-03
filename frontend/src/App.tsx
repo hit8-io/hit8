@@ -26,6 +26,10 @@ function App() {
   const [firebaseApp, setFirebaseApp] = useState<FirebaseApp | null>(null)
   const [isChatActive, setIsChatActive] = useState(false)
   const [executionState, setExecutionState] = useState<ExecutionState | null>(null)
+  const [isChatExpanded, setIsChatExpanded] = useState(() => {
+    const saved = localStorage.getItem('chatExpanded')
+    return saved === 'true'
+  })
 
   const firebaseConfig = useMemo(() => ({
     apiKey: import.meta.env.VITE_GOOGLE_IDENTITY_PLATFORM_KEY,
@@ -104,6 +108,19 @@ function App() {
     setExecutionState(state)
   }, [])
 
+  const toggleChatExpanded = useCallback(() => {
+    setIsChatExpanded((prev) => {
+      const newValue = !prev
+      localStorage.setItem('chatExpanded', String(newValue))
+      return newValue
+    })
+  }, [])
+
+  // Persist state to localStorage when it changes
+  useEffect(() => {
+    localStorage.setItem('chatExpanded', String(isChatExpanded))
+  }, [isChatExpanded])
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -159,34 +176,40 @@ function App() {
     <ErrorBoundary>
       <div className="h-screen bg-background flex flex-col overflow-hidden">
         {/* Grid Layout */}
-        <div className="flex-1 min-h-0 grid grid-cols-12 grid-rows-[auto_1fr] gap-4 p-4 overflow-hidden">
+        <div className="flex-1 min-h-0 grid grid-cols-12 grid-rows-[auto_1fr] gap-4 p-4 overflow-hidden transition-all duration-300 ease-in-out">
           {/* Chat Interface - Left Column */}
-          <div className="col-span-12 lg:col-span-7 row-span-2 flex flex-col min-h-0 overflow-hidden">
+          <div className={`${isChatExpanded ? 'col-span-12' : 'col-span-12 lg:col-span-7'} row-span-2 flex flex-col min-h-0 overflow-hidden transition-all duration-300 ease-in-out`}>
             <ChatInterface 
               token={idToken} 
               user={user} 
               onLogout={handleLogout}
               onChatStateChange={handleChatStateChange}
               onExecutionStateUpdate={handleExecutionStateUpdate}
+              isExpanded={isChatExpanded}
+              onToggleExpand={toggleChatExpanded}
             />
           </div>
 
           {/* Graph View - Top Right */}
-          <div className="col-span-12 lg:col-span-5 row-span-1 flex flex-col min-h-0 overflow-hidden">
-            <GraphView
-              apiUrl={API_URL}
-              token={idToken}
-              executionState={executionState}
-            />
-          </div>
+          {!isChatExpanded && (
+            <div className="col-span-12 lg:col-span-5 row-span-1 flex flex-col min-h-0 overflow-hidden transition-all duration-300 ease-in-out">
+              <GraphView
+                apiUrl={API_URL}
+                token={idToken}
+                executionState={executionState}
+              />
+            </div>
+          )}
 
           {/* Status Window - Bottom Right */}
-          <div className="col-span-12 lg:col-span-5 row-span-1 flex flex-col min-h-0 overflow-hidden">
-            <StatusWindow
-              executionState={executionState}
-              isLoading={isChatActive}
-            />
-          </div>
+          {!isChatExpanded && (
+            <div className="col-span-12 lg:col-span-5 row-span-1 flex flex-col min-h-0 overflow-hidden transition-all duration-300 ease-in-out">
+              <StatusWindow
+                executionState={executionState}
+                isLoading={isChatActive}
+              />
+            </div>
+          )}
         </div>
 
         {/* Status Bar - Bottom Full Width */}
