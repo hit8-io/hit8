@@ -3,7 +3,7 @@ steps:
   - name: 'gcr.io/kaniko-project/executor:latest'
     id: 'build-image'
     args:
-      - '--dockerfile=backend/Dockerfile'
+      - '--dockerfile=Dockerfile'
       - '--context=dir://backend'
       - '--destination=${_IMAGE_NAME}:${_TAG}'
       - '--destination=${_IMAGE_NAME}:${_VERSION}'
