@@ -1,32 +1,24 @@
 steps:
-  # -------------------------------------------------------------------------
-  # 1. Database Migration (Install CLI on the fly)
-  # -------------------------------------------------------------------------
-  - name: 'node:20-bullseye-slim'
+  # Database Migration
+  - name: 'node:20-alpine'
     id: 'db-migration'
-    entrypoint: 'bash'
+    entrypoint: 'sh'
     args:
       - '-c'
       - |
         set -e
-        npm install -g supabase
-        
-        # Extract DIRECT_DB_CONNECTION_STRING from JSON secret
-        DIRECT_DB_CONNECTION_STRING=$$(node -e "console.log(JSON.parse(process.env.DOPPLER_SECRETS_JSON).DIRECT_DB_CONNECTION_STRING)")
+        DIRECT_DB_CONNECTION_STRING=$$(node -e 'console.log(JSON.parse(process.env.DOPPLER_SECRETS_JSON).DIRECT_DB_CONNECTION_STRING)')
         
         if [ -z "$$DIRECT_DB_CONNECTION_STRING" ]; then
            echo "❌ Error: DIRECT_DB_CONNECTION_STRING not found in secrets."
            exit 1
         fi
 
-        # Run migration using npx (finds globally installed package)
-        npx --yes supabase db push --db-url "$$DIRECT_DB_CONNECTION_STRING"
+        npx -y supabase db push --db-url "$$DIRECT_DB_CONNECTION_STRING"
     
     secretEnv: ['DOPPLER_SECRETS_JSON']
 
-  # -------------------------------------------------------------------------
-  # 2. Build and Push (Kaniko)
-  # -------------------------------------------------------------------------
+  # Build and Push Docker Image
   - name: 'gcr.io/kaniko-project/executor:latest'
     id: 'build-image'
     waitFor: ['db-migration']
