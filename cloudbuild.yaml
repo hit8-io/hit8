@@ -8,18 +8,19 @@ steps:
     args:
       - '-c'
       - |
+        set -e
         npm install -g supabase
         
         # Extract DIRECT_DB_CONNECTION_STRING from JSON secret
-        DIRECT_DB_CONNECTION_STRING=$(node -e "console.log(JSON.parse(process.env.DOPPLER_SECRETS_JSON).DIRECT_DB_CONNECTION_STRING)")
+        DIRECT_DB_CONNECTION_STRING=$$(node -e "console.log(JSON.parse(process.env.DOPPLER_SECRETS_JSON).DIRECT_DB_CONNECTION_STRING)")
         
         if [ -z "$$DIRECT_DB_CONNECTION_STRING" ]; then
            echo "❌ Error: DIRECT_DB_CONNECTION_STRING not found in secrets."
            exit 1
         fi
 
-        # Run migration
-        supabase db push --db-url "$$DIRECT_DB_CONNECTION_STRING"
+        # Run migration using npx (finds globally installed package)
+        npx --yes supabase db push --db-url "$$DIRECT_DB_CONNECTION_STRING"
     
     secretEnv: ['DOPPLER_SECRETS_JSON']
 
