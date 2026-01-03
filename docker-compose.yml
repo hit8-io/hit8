@@ -40,7 +40,7 @@ services:
       - DEBUG=${DEBUG}
 
   supabase:
-    image: pgvector/pgvector:pg15
+    image: supabase/postgres:15.1.0.147
     ports:
       - "5432:5432"
     environment:
