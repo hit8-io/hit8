@@ -25,12 +25,27 @@ steps:
     secretEnv: ['DIRECT_DB_CONNECTION_STRING']
 
   # -------------------------------------------------------------------------
-  # 2. Build and Push (Kaniko) - Unchanged
+  # 2. Build and Push (Kaniko)
   # -------------------------------------------------------------------------
   - name: 'gcr.io/kaniko-project/executor:latest'
     id: 'build-image'
     waitFor: ['db-migration']
     args:
       - '--dockerfile=Dockerfile'
-      # ... (rest of your build args)
+      - '--context=dir://./backend'
+      - '--destination=${_IMAGE_NAME}:${_TAG}'
+      - '--destination=${_IMAGE_NAME}:${_VERSION}'
+      - '--destination=${_IMAGE_NAME}:latest'
+      - '--build-arg=PRODUCTION=true'
       - '--cache=true'
+      - '--cache-ttl=24h'
+      - '--cache-repo=gcr.io/${_PROJECT_ID}/cache'
+
+# Secrets Configuration
+availableSecrets:
+  secretManager:
+  - versionName: projects/${_PROJECT_ID}/secrets/DIRECT_DB_CONNECTION_STRING/versions/latest
+    env: 'DIRECT_DB_CONNECTION_STRING'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
