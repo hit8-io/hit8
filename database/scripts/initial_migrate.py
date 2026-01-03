@@ -7,16 +7,16 @@ By default, it migrates both. Use --schema-only or --data-only to migrate only o
 
 Usage:
     # Migrate both schema and data (default)
-    doppler run --config prd -- python supabase/scripts/initial_migrate.py
+    doppler run --config prd -- python database/scripts/initial_migrate.py
     
     # Migrate schema only
-    doppler run --config prd -- python supabase/scripts/initial_migrate.py --schema-only
+    doppler run --config prd -- python database/scripts/initial_migrate.py --schema-only
     
     # Migrate data only
-    doppler run --config prd -- python supabase/scripts/initial_migrate.py --data-only
+    doppler run --config prd -- python database/scripts/initial_migrate.py --data-only
     
     # Dry run
-    doppler run --config prd -- python supabase/scripts/initial_migrate.py --dry-run
+    doppler run --config prd -- python database/scripts/initial_migrate.py --dry-run
 """
 from __future__ import annotations
 
@@ -31,8 +31,8 @@ import structlog
 logger = structlog.get_logger(__name__)
 
 # Hardcoded local dev connection string
-# Note: Uses 'hit8' database, not 'postgres'
-DEV_CONNECTION_STRING = "postgresql://postgres:postgres@localhost:5432/hit8"
+# Uses default 'postgres' database
+DEV_CONNECTION_STRING = "postgresql://postgres:postgres@localhost:5432/postgres"
 
 # Production connection string from Doppler
 PRD_CONNECTION_STRING = os.getenv("DATABASE_CONNECTION_STRING")

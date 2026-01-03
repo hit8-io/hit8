@@ -4,12 +4,12 @@ set -e
 # Check for connection string
 if [ -z "$DIRECT_DB_CONNECTION_STRING" ]; then
     echo "❌ Error: DIRECT_DB_CONNECTION_STRING is not set."
-    echo "   Use: doppler run --config prd -- ./supabase/scripts/diff_prod.sh"
+    echo "   Use: doppler run --config prd -- ./database/scripts/diff_prod.sh"
     exit 1
 fi
 
 # Configuration
-LOCAL_DB_URL="postgres://postgres:postgres@localhost:5432/hit8"
+LOCAL_DB_URL="postgres://postgres:postgres@localhost:5432/postgres"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 OUTPUT_FILE="../migrations/${TIMESTAMP}_migration.sql"
 

@@ -2,7 +2,7 @@
 set -e
 
 # Configuration
-LOCAL_DB_URL="postgres://postgres:postgres@localhost:5432/hit8"
+LOCAL_DB_URL="postgres://postgres:postgres@localhost:5432/postgres"
 OUTPUT_FILE="../schema/10_schema.sql"
 
 echo "💾 Dumping Public Schema to $OUTPUT_FILE..."
