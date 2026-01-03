@@ -50,4 +50,4 @@ Thumbs.db
 doppler.yaml
 
 # DB
-database/backup/
+supabase/backup/
