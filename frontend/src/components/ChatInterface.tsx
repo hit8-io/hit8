@@ -123,6 +123,7 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
     let accumulatedContent = '' // Track accumulated content from chunks
     let finalResponse = ''
     let hasError = false
+    let graphEndReceived = false // Track if graph_end event was received
 
     try {
       // Use fetch for streaming SSE response
@@ -231,6 +232,7 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
                 setVisitedNodes(updatedVisitedNodes)
               } else if (data.type === 'graph_end') {
                 // Graph execution completed
+                graphEndReceived = true
                 finalResponse = data.response || accumulatedContent || ''
                 // Ensure any active node is marked as visited before clearing
                 const finalVisitedNodes = activeNode && !visitedNodes.includes(activeNode)
@@ -259,14 +261,30 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
                 const errorType = data.error_type || 'Error'
                 
                 // Some errors are benign (like connection closed after successful completion)
-                // Only treat as actual error if it's not a connection closure after we have content
-                const isConnectionClosed = errorMessage.toLowerCase().includes('connection is closed') || 
-                                          errorMessage.toLowerCase().includes('connection closed')
+                // OperationalError with "connection is closed" is often a normal closure after completion
+                const isConnectionClosed = (
+                  errorMessage.toLowerCase().includes('connection is closed') || 
+                  errorMessage.toLowerCase().includes('connection closed')
+                ) && (
+                  errorType === 'OperationalError' || 
+                  errorType === 'Operational'
+                )
                 
-                if (isConnectionClosed && accumulatedContent) {
-                  // Connection closed but we have content - likely normal completion
-                  console.warn('⚠️ Stream connection closed (likely normal):', errorMessage)
-                  // Don't set hasError, allow normal completion
+                // Suppress connection closed errors if:
+                // 1. We have accumulated content (stream completed successfully)
+                // 2. OR we've received a graph_end event (stream completed)
+                // 3. OR we have a final response
+                const hasCompleted = accumulatedContent.length > 0 || finalResponse.length > 0 || graphEndReceived
+                
+                if (isConnectionClosed && hasCompleted) {
+                  // Connection closed after successful completion - this is normal
+                  // Silently ignore - don't log, don't set error, just continue
+                  // The stream completed successfully, connection closure is expected
+                } else if (isConnectionClosed) {
+                  // Connection closed but no content - might be premature closure
+                  // Log as warning but don't treat as fatal error
+                  console.warn('⚠️ Stream connection closed (no content yet):', errorMessage)
+                  // Don't set hasError - allow stream to continue or complete gracefully
                 } else {
                   // Actual error - log and throw
                   hasError = true
