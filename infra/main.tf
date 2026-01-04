@@ -4,6 +4,12 @@ provider "google" {
   zone    = "europe-west1-b"
 }
 
+data "google_compute_image" "proxy_image" {
+  family  = "proxy-gateway"
+  project = "hit8-poc"
+}
+
+
 # 1. The Static IP (Crucial to import this first to save it)
 resource "google_compute_address" "egress_ip" {
   name   = "production-static-egress-ip"
@@ -62,68 +68,17 @@ resource "google_compute_instance" "proxy_vm" {
 
   boot_disk {
     initialize_params {
-      image = "debian-cloud/debian-12"
-      size  = 10
+      # Point to the specific SELF_LINK of the data source
+      image = data.google_compute_image.proxy_image.self_link
+      size  = 20
     }
   }
-
+  
   network_interface {
     network    = google_compute_network.vpc.name
     subnetwork = google_compute_subnetwork.subnet.name
     network_ip = "10.0.0.2"
-    # access_config {}
   }
-
-
-  metadata_startup_script = <<-EOT
-      #! /bin/bash
-      set -e  # Exit immediately if any command fails
-
-      # 1. Install packages
-      apt-get update
-      apt-get install -y squid dante-server iptables-persistent
-
-      # 2. Force-write Squid Config (Do not use sed)
-      # This ensures the file is exactly what we want, every time.
-      cat > /etc/squid/squid.conf << 'EOF'
-      acl localnet src 10.0.0.0/8
-      acl SSL_ports port 443
-      acl Safe_ports port 80
-      acl Safe_ports port 443
-      acl CONNECT method CONNECT
-      http_access deny !Safe_ports
-      http_access deny CONNECT !SSL_ports
-      http_access allow localhost manager
-      http_access deny manager
-      http_access allow localnet
-      http_access allow localhost
-      http_access deny all
-      http_port 3128
-      EOF
-
-      # 3. Force-write Dante Config
-      cat > /etc/danted.conf << 'DANTE_EOF'
-      logoutput: /var/log/socks.log
-      internal: 10.0.0.2 port = 1080
-      external: 10.0.0.2
-      socksmethod: none
-      client pass { from: 10.0.0.0/8 to: 0.0.0.0/0 }
-      socks pass { from: 10.0.0.0/8 to: 0.0.0.0/0 }
-      DANTE_EOF
-
-      # 4. Enable IP Forwarding (Critical for NAT/Routing)
-      echo "net.ipv4.ip_forward=1" > /etc/sysctl.d/99-gcp-nat.conf
-      sysctl -p /etc/sysctl.d/99-gcp-nat.conf
-
-      # 5. Configure IPTables for Masquerading (NAT)
-      # This allows the VM to act as a router if needed
-      iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
-      netfilter-persistent save
-
-      # 6. Restart Services to apply changes
-      systemctl enable squid danted
-      systemctl restart squid danted
-  EOT
 
   service_account {
     # Use the default compute SA or the specific one you listed
