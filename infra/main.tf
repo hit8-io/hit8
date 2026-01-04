@@ -76,65 +76,53 @@ resource "google_compute_instance" "proxy_vm" {
 
 
   metadata_startup_script = <<-EOT
-    #! /bin/bash
-    apt-get update
-    apt-get install -y squid dante-server iptables-persistent
+      #! /bin/bash
+      set -e  # Exit immediately if any command fails
 
-    # --- SQUID CONFIGURATION ---
-    # Backup original
-    cp /etc/squid/squid.conf /etc/squid/squid.conf.bak
+      # 1. Install packages
+      apt-get update
+      apt-get install -y squid dante-server iptables-persistent
 
-    # Create a simple, permissive config
-    cat > /etc/squid/squid.conf << 'EOF'
-    # Define local networks
-    acl localnet src 10.0.0.0/8     # RFC1918 possible internal network
-    acl localnet src 172.16.0.0/12  # RFC1918 possible internal network
-    acl localnet src 192.168.0.0/16 # RFC1918 possible internal network
+      # 2. Force-write Squid Config (Do not use sed)
+      # This ensures the file is exactly what we want, every time.
+      cat > /etc/squid/squid.conf << 'EOF'
+      acl localnet src 10.0.0.0/8
+      acl SSL_ports port 443
+      acl Safe_ports port 80
+      acl Safe_ports port 443
+      acl CONNECT method CONNECT
+      http_access deny !Safe_ports
+      http_access deny CONNECT !SSL_ports
+      http_access allow localhost manager
+      http_access deny manager
+      http_access allow localnet
+      http_access allow localhost
+      http_access deny all
+      http_port 3128
+      EOF
 
-    # SSL Ports allowed
-    acl SSL_ports port 443
-    acl Safe_ports port 80          # http
-    acl Safe_ports port 21          # ftp
-    acl Safe_ports port 443         # https
-    acl Safe_ports port 70          # gopher
-    acl Safe_ports port 210         # wais
-    acl Safe_ports port 1025-65535  # unregistered ports
-    acl Safe_ports port 280         # http-mgmt
-    acl Safe_ports port 488         # gss-http
-    acl Safe_ports port 591         # filemaker
-    acl Safe_ports port 777         # multiling http
-    acl CONNECT method CONNECT
+      # 3. Force-write Dante Config
+      cat > /etc/danted.conf << 'DANTE_EOF'
+      logoutput: /var/log/socks.log
+      internal: 10.0.0.2 port = 1080
+      external: 10.0.0.2
+      socksmethod: none
+      client pass { from: 10.0.0.0/8 to: 0.0.0.0/0 }
+      socks pass { from: 10.0.0.0/8 to: 0.0.0.0/0 }
+      DANTE_EOF
 
-    # Access Rules
-    http_access deny !Safe_ports
-    http_access deny CONNECT !SSL_ports
-    http_access allow localhost manager
-    http_access deny manager
+      # 4. Enable IP Forwarding (Critical for NAT/Routing)
+      echo "net.ipv4.ip_forward=1" > /etc/sysctl.d/99-gcp-nat.conf
+      sysctl -p /etc/sysctl.d/99-gcp-nat.conf
 
-    # ALLOW LOCALNET (This is the key fix)
-    http_access allow localnet
-    http_access allow localhost
+      # 5. Configure IPTables for Masquerading (NAT)
+      # This allows the VM to act as a router if needed
+      iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+      netfilter-persistent save
 
-    # Deny everything else
-    http_access deny all
-
-    # Port
-    http_port 3128
-    EOF
-
-    systemctl restart squid
-
-    # --- DANTE CONFIGURATION (Keep your existing Dante config below) ---
-    cat > /etc/danted.conf << 'DANTE_EOF'
-    logoutput: /var/log/socks.log
-    internal: 10.0.0.2 port = 1080
-    external: 10.0.0.2
-    socksmethod: none
-    client pass { from: 10.0.0.0/8 to: 0.0.0.0/0 }
-    socks pass { from: 10.0.0.0/8 to: 0.0.0.0/0 }
-    DANTE_EOF
-
-    systemctl restart danted
+      # 6. Restart Services to apply changes
+      systemctl enable squid danted
+      systemctl restart squid danted
   EOT
 
   service_account {
