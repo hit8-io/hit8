@@ -1,10 +1,7 @@
 substitutions:
-  # These must match the arguments passed by your CI command
   _PROXY_URL: 'http://10.0.0.2:3128'
-  _SOCKS5_PROXY: '10.0.0.2 1080' 
+  _SOCKS5_PROXY: '10.0.0.2 1080'
   _VERSION: 'latest'
-  
-  # Standard variables
   _IMAGE_NAME: 'europe-west1-docker.pkg.dev/${_PROJECT_ID}/backend/api'
   _TAG: 'latest'
   _SUPABASE_VERSION: '1.200.0'
@@ -25,8 +22,6 @@ steps:
       - '-c'
       - |
         set -e
-
-        # 1. Configure HTTP Proxy for apt-get and curl
         export http_proxy=$$PROXY_URL
         export https_proxy=$$PROXY_URL
 
@@ -40,16 +35,23 @@ steps:
 
         echo "🔌 Setting up Proxy Tunnel..."
         
-        # 2. Use Node to parse secrets and split the SOCKS proxy string
+        # 2. Robust Parsing Logic (Fixes the "3 parameters required" error)
         eval $(node -e '
           try {
             const secrets = JSON.parse(process.env.DOPPLER_SECRETS_JSON);
             const dbUrl = secrets.DIRECT_DB_CONNECTION_STRING;
             
-            // Parse SOCKS Proxy (Format: "IP PORT")
-            const proxyParts = process.env.SOCKS5_PROXY.split(" ");
+            // CLEAN THE PROXY STRING
+            // Handles "10.0.0.2 1080", "10.0.0.2:1080", and "socks5://10.0.0.2:1080"
+            let proxyRaw = process.env.SOCKS5_PROXY || "";
+            proxyRaw = proxyRaw.replace(/^(socks5:\/\/|http:\/\/)/, ""); // Remove scheme
+            proxyRaw = proxyRaw.replace(/:/g, " "); // Replace colons with spaces
+            
+            const proxyParts = proxyRaw.split(" ").filter(Boolean); // Split and remove empty
             const proxyIp = proxyParts[0];
             const proxyPort = proxyParts[1] || "1080";
+
+            if (!proxyIp) throw new Error("Could not extract Proxy IP");
 
             // Extract DB Host and Port
             const match = dbUrl.match(/@([^/:]+):?(\d+)?\//);
@@ -57,8 +59,6 @@ steps:
 
             const remoteHost = match[1];
             const remotePort = match[2] || "5432";
-            
-            // Rewrite URL for localhost
             const localUrl = dbUrl.replace(remoteHost, "127.0.0.1").replace(":" + remotePort, ":5432");
 
             console.log(`export PROXY_IP=${proxyIp}`);
@@ -72,6 +72,7 @@ steps:
         echo "Target: $$TARGET_HOST:$$TARGET_PORT via Proxy: $$PROXY_IP:$$PROXY_PORT"
 
         # 3. Start Tunnel (SOCKS4A)
+        # SOCKS4A:<proxy-ip>:<target-host>:<target-port>
         socat TCP4-LISTEN:5432,fork,bind=127.0.0.1 SOCKS4A:$$PROXY_IP:$$TARGET_HOST:$$TARGET_PORT,socksport=$$PROXY_PORT &
         SOCAT_PID=$$!
         
