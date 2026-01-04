@@ -42,4 +42,4 @@ availableSecrets:
 options:
   logging: CLOUD_LOGGING_ONLY
   pool:
-    name: 'projects/${_PROJECT_ID}/locations/europe-west1/workerPools/cloud-build-workers'
+    name: 'projects/${_PROJECT_ID}/locations/europe-west1/workerPools/private-pool-1'

@@ -1,0 +1,13 @@
+steps:
+  - name: 'alpine:latest'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - |
+        echo "Testing Connectivity..."
+        # Try to fetch Google's homepage. -T 5 means 5 sec timeout.
+        wget -q -T 5 -O - http://google.com > /dev/null && echo "✅ Success!" || echo "❌ Failed"
+        
+        # Trace where it dies
+        apk add --no-cache traceroute
+        traceroute 8.8.8.8

@@ -7,7 +7,7 @@ on:
     paths:
       - 'backend/**'
       - 'cloudbuild.yaml'
-      - '.github/workflows/deploy-backend.yml'
+      - '.github/workflows/deploy-backend.yaml'
   workflow_dispatch:  # Allows manual triggering from GitHub UI
 
 env:
