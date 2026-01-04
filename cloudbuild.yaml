@@ -14,11 +14,17 @@ steps:
         export http_proxy=$$PROXY_URL
         export https_proxy=$$PROXY_URL
         
-        echo "📦 Installing Supabase CLI..."
-        npx -y supabase --version || {
-          echo "❌ Failed to install/run Supabase CLI"
+        echo "📦 Installing wget and downloading Supabase CLI binary..."
+        apk add --no-cache wget >/dev/null 2>&1 || echo "⚠️  wget may already be installed"
+        
+        ARCH=$$(uname -m | sed 's/x86_64/amd64/')
+        wget -q "https://github.com/supabase/cli/releases/latest/download/supabase_linux_$${ARCH}.tar.gz" -O /tmp/supabase.tar.gz || {
+          echo "❌ Failed to download Supabase CLI binary"
           exit 1
         }
+        
+        tar -xzf /tmp/supabase.tar.gz -C /usr/local/bin
+        chmod +x /usr/local/bin/supabase
         
         echo "🔑 Extracting connection string from secrets..."
         DIRECT_DB_CONNECTION_STRING=$$(node -e 'try { console.log(JSON.parse(process.env.DOPPLER_SECRETS_JSON).DIRECT_DB_CONNECTION_STRING) } catch(e) { console.error("JSON parse error:", e.message); process.exit(1); }') || {
@@ -32,7 +38,7 @@ steps:
         fi
 
         echo "🚀 Running database migration..."
-        npx -y supabase db push --db-url "$$DIRECT_DB_CONNECTION_STRING" || {
+        supabase db push --db-url "$$DIRECT_DB_CONNECTION_STRING" || {
           echo "❌ Migration failed"
           exit 1
         }
