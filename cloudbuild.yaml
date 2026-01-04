@@ -5,11 +5,11 @@ steps:
     entrypoint: 'sh'
     env:
       # HTTP proxy for HTTP/HTTPS traffic (Squid)
-      # Uses substitution variable with default fallback
-      - 'PROXY_URL=${_PROXY_URL:-http://10.0.0.2:3128}'
+      # Uses substitution variables (defaults handled in script)
+      - 'PROXY_URL=${_PROXY_URL}'
       # SOCKS5 proxy for TCP traffic like PostgreSQL (Dante)
-      # Uses substitution variable with default fallback
-      - 'SOCKS5_PROXY=${_SOCKS5_PROXY:-socks5://10.0.0.2:1080}'
+      # Uses substitution variables (defaults handled in script)
+      - 'SOCKS5_PROXY=${_SOCKS5_PROXY}'
     args:
       - '-c'
       - |
@@ -20,6 +20,11 @@ steps:
         # SOCKS5 proxy (Dante) is used for TCP traffic (PostgreSQL connections)
         # Tools that use HTTP_PROXY/HTTPS_PROXY: curl, wget, apk (Alpine package manager)
         # Tools that use SOCKS5: proxychains (which wraps supabase CLI)
+        
+        # Set defaults if substitution variables are not provided
+        PROXY_URL=$${PROXY_URL:-http://10.0.0.2:3128}
+        SOCKS5_PROXY=$${SOCKS5_PROXY:-socks5://10.0.0.2:1080}
+        
         echo "⚙️ Configuring Proxy..."
         echo "   HTTP Proxy: $$PROXY_URL"
         echo "   SOCKS5 Proxy: $$SOCKS5_PROXY"
