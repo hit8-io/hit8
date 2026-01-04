@@ -3,10 +3,17 @@ steps:
   - name: 'node:20-alpine'
     id: 'db-migration'
     entrypoint: 'sh'
+    env:
+      # REPLACE THIS WITH YOUR PROXY VM IP
+      - 'PROXY_URL=http://10.0.0.2:3128'
     args:
       - '-c'
       - |
         set -e
+        echo "⚙️ Configuring Proxy..."
+        export http_proxy=$$PROXY_URL
+        export https_proxy=$$PROXY_URL
+        
         DIRECT_DB_CONNECTION_STRING=$$(node -e 'console.log(JSON.parse(process.env.DOPPLER_SECRETS_JSON).DIRECT_DB_CONNECTION_STRING)')
         
         if [ -z "$$DIRECT_DB_CONNECTION_STRING" ]; then

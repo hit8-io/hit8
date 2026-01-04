@@ -1,34 +1,34 @@
 steps:
   - name: 'alpine:latest'
     entrypoint: 'sh'
+    env:
+      # REPLACE THIS WITH YOUR PROXY VM IP
+      - 'PROXY_URL=http://10.0.0.2:3128'
     args:
       - '-c'
       - |
-        echo "⚙️ Installing tools..."
-        # Install curl and postgres client
-        apk add --no-cache curl postgresql-client
+        echo "⚙️ Configuring Proxy..."
+        export http_proxy=$$PROXY_URL
+        export https_proxy=$$PROXY_URL
 
-        DB_HOST="db.dxwwmmhfhsljkhftnzke.supabase.co"
-        DB_PORT="5432"
+        echo "⚙️ Installing tools (via Proxy)..."
+        # Alpine uses the environment variables automatically
+        apk add --no-cache curl
 
         echo "---------------------------------------------------"
-        echo "🔍 1. IP CHECK"
-        curl -s https://api.ipify.org || echo "❌ Failed to get IP"
+        echo "🔍 1. IP CHECK (Should be your Static IP)"
+        # This request goes: Container -> Proxy VM -> NAT -> Static IP -> Internet
+        curl -s https://api.ipify.org || echo "❌ Failed to reach Internet"
         echo ""
 
         echo "---------------------------------------------------"
-        echo "🔍 2. DATABASE REACHABILITY CHECK (No Auth)"
-        echo "Target: $$DB_HOST:$$DB_PORT"
+        echo "🔍 2. DATABASE CHECK"
+        DB_HOST="db.dxwwmmhfhsljkhftnzke.supabase.co"
+        DB_PORT="5432"
         
-        # pg_isready checks TCP reachability
-        pg_isready -h "$$DB_HOST" -p "$$DB_PORT" -t 5
-        
-        if [ $$? -eq 0 ]; then
-            echo "✅ SUCCESS: Supabase is reachable from Private Pool."
-        else
-            echo "❌ FAILED: Cannot reach Supabase."
-            exit 1
-        fi
+        echo "Testing TCP to $$DB_HOST:$$DB_PORT..."
+        # curl -v telnet:// uses the proxy for the CONNECT handshake
+        curl -v --proxy $$PROXY_URL telnet://$$DB_HOST:$$DB_PORT
 
 options:
   pool:
