@@ -4,6 +4,8 @@ substitutions:
   _SUPABASE_VERSION: '1.200.0'
   _IMAGE_NAME: 'europe-west1-docker.pkg.dev/${_PROJECT_ID}/backend/api'
   _TAG: 'latest'
+  _VERSION: 'latest'      # Added back to match your CLI args
+  _SOCKS5_PROXY: 'ignore' # Added back to match your CLI args (ignored in favor of _PROXY_IP/PORT)
 
 steps:
   # ---------------------------------------------------------
@@ -20,10 +22,9 @@ steps:
     args:
       - '-c'
       - |
-        set -e # Fail immediately if any command fails
+        set -e
 
         echo "🔧 Installing utilities..."
-        # We only need socat and curl. Node is already installed.
         apt-get update -qq && apt-get install -y -qq socat curl > /dev/null
 
         echo "📥 Downloading Supabase CLI..."
@@ -33,24 +34,20 @@ steps:
 
         echo "🔌 Setting up Proxy Tunnel..."
         
-        # We use a simple Node script to print the valid SOCAT command
-        # This prevents bash escaping issues and handles special characters in passwords
+        # Use Node to generate safe export commands
         eval $(node -e '
           try {
             const secrets = JSON.parse(process.env.DOPPLER_SECRETS_JSON);
             const dbUrl = secrets.DIRECT_DB_CONNECTION_STRING;
-            const proxyIp = process.env.PROXY_IP;
-            const proxyPort = process.env.PROXY_PORT;
-
-            // Extract Host and Port from DB URL
-            // Format: postgres://user:pass@HOST:PORT/db
+            
+            // Extract Host and Port
             const match = dbUrl.match(/@([^/:]+):?(\d+)?\//);
-            if (!match) throw new Error("Could not parse DB Host/Port from URL");
+            if (!match) throw new Error("Could not parse DB Host/Port");
 
             const remoteHost = match[1];
             const remotePort = match[2] || "5432";
             
-            // Construct Local URL (pointing to tunnel)
+            // Rewrite URL for localhost
             const localUrl = dbUrl.replace(remoteHost, "127.0.0.1").replace(":" + remotePort, ":5432");
 
             console.log(`export TARGET_HOST=${remoteHost}`);
@@ -59,23 +56,19 @@ steps:
           } catch(e) { console.error(e); process.exit(1); }
         ')
 
-        # Debug: Prove variables are set
         echo "Target: $$TARGET_HOST:$$TARGET_PORT via Proxy: $$PROXY_IP:$$PROXY_PORT"
 
-        # Start the Tunnel (SOCKS4A is required for remote DNS resolution)
-        # 127.0.0.1:5432  >>>  SOCKS Proxy  >>>  Supabase Host
+        # Start Tunnel (Escaped $$! for background PID)
         socat TCP4-LISTEN:5432,fork,bind=127.0.0.1 SOCKS4A:$$PROXY_IP:$$TARGET_HOST:$$TARGET_PORT,socksport=$$PROXY_PORT &
-        SOCAT_PID=$!
+        SOCAT_PID=$$!
         
-        # Wait for tunnel to be ready
         sleep 3
 
         echo "🚀 Running Supabase Migration..."
-        # Supabase connects to localhost:5432 -> socat tunnels it to real DB
         supabase db push --db-url "$$LOCAL_DB_URL"
 
-        # Cleanup
-        kill $SOCAT_PID
+        # Cleanup (Escaped $$SOCAT_PID)
+        kill $$SOCAT_PID
 
   # ---------------------------------------------------------
   # Step 2: Build Application
@@ -87,6 +80,7 @@ steps:
       - '--dockerfile=Dockerfile'
       - '--context=dir://./backend'
       - '--destination=${_IMAGE_NAME}:${_TAG}'
+      - '--destination=${_IMAGE_NAME}:${_VERSION}'
       - '--destination=${_IMAGE_NAME}:latest'
       - '--build-arg=PRODUCTION=true'
       - '--cache=true'
