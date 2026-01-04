@@ -1,12 +1,20 @@
+# Define variables so GCP accepts them from the command line
+substitutions:
+  _PROXY_URL: 'http://10.0.0.2:3128'
+  _SOCKS5_PROXY: '10.0.0.2 1080' # Note: Space separator for proxychains config
+  _IMAGE_NAME: 'europe-west1-docker.pkg.dev/${_PROJECT_ID}/backend/api'
+  _TAG: 'latest'
+  _VERSION: 'unknown'
+
 steps:
   # Database Migration
-  # We use a standard Debian image instead of Alpine because proxychains + dynamic linking works better
   - name: 'debian:bookworm-slim'
     id: 'db-migration'
     entrypoint: 'bash'
     env:
-      - 'PROXY_URL=http://10.0.0.2:3128'
-      - 'SOCKS5_PROXY=10.0.0.2 1080'
+      # Use the substitution variables here
+      - 'PROXY_URL=${_PROXY_URL}'
+      - 'SOCKS5_PROXY=${_SOCKS5_PROXY}'
     secretEnv: ['DOPPLER_SECRETS_JSON']
     args:
       - '-c'
@@ -14,18 +22,18 @@ steps:
         set -e
 
         echo "⚙️  Configuring environment..."
+        # Proxy URL for curl/apt
         export http_proxy=$$PROXY_URL
         export https_proxy=$$PROXY_URL
         
-        # 1. Install dependencies (curl, nodejs for parsing, proxychains, ca-certificates)
+        # 1. Install dependencies
         apt-get update -qq && apt-get install -y -qq curl nodejs proxychains4 ca-certificates > /dev/null
 
-        # 2. Install Supabase CLI (Use official script, it handles arch/version)
-        # We pipe to bash but ensure proxy env vars are set first
+        # 2. Install Supabase CLI
         curl -fsSL https://raw.githubusercontent.com/supabase/cli/main/install.sh | bash
 
-        # 3. Configure Proxychains (Simple one-liner)
-        # "quiet_mode" hides the endless 'S-chain' logs
+        # 3. Configure Proxychains
+        # Note: We use the SOCKS5_PROXY env var which is "10.0.0.2 1080"
         echo -e "strict_chain\nproxy_dns\nremote_dns_subnet 224\ntcp_read_time_out 15000\ntcp_connect_time_out 8000\n[ProxyList]\nsocks5 $$SOCKS5_PROXY" > /etc/proxychains4.conf
 
         # 4. Extract Connection String
@@ -33,7 +41,6 @@ steps:
 
         # 5. Run Migration
         echo "🚀 Running migration..."
-        # We force proxychains to route the Go binary's TCP connections
         proxychains4 -q supabase db push --db-url "$$DB_URL"
 
   # Build and Push Docker Image (Kaniko)
