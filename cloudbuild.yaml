@@ -1,10 +1,10 @@
 substitutions:
-  _PROXY_URL: 'http://10.0.0.2:3128'      # For HTTP requests (apt, curl)
-  _SOCKS_IP: '10.0.0.2'                   # For Database tunneling
+  _PROXY_URL: 'http://10.0.0.2:3128'
+  _SOCKS_IP: '10.0.0.2'
   _SOCKS_PORT: '1080'
   _IMAGE_NAME: 'europe-west1-docker.pkg.dev/${_PROJECT_ID}/backend/api'
   _TAG: 'latest'
-  _SUPABASE_VERSION: '1.200.0'            # Pin Supabase version for stability
+  _SUPABASE_VERSION: '1.200.0'
 
 steps:
   # ---------------------------------------------------------
@@ -28,8 +28,6 @@ steps:
 
         echo "⚙️  Installing migration tools..."
         # 1. Install dependencies
-        # socat: creates the TCP tunnel through SOCKS
-        # nodejs: safely parses the JSON secrets
         apt-get update -qq && apt-get install -y -qq curl nodejs socat ca-certificates > /dev/null
 
         # 2. Download Supabase CLI (Direct Binary)
@@ -42,23 +40,18 @@ steps:
         echo "🔧 Configuring Database Tunnel..."
         
         # 3. Parse Secrets & Prepare Environment Variables
-        # This Node script extracts the DB Host/Port and creates a Localhost Connection String
         eval $(node -e '
           try {
             const secrets = JSON.parse(process.env.DOPPLER_SECRETS_JSON);
             const dbUrl = secrets.DIRECT_DB_CONNECTION_STRING;
             
-            // Regex to parse: postgres://user:pass@host:port/db
             const regex = /^(postgres(?:ql)?:\/\/[^@]+@)([^:\/]+)(?::(\d+))?(\/.*)$/;
             const match = dbUrl.match(regex);
             
             if (!match) throw new Error("Invalid DB URL format");
 
-            // Parts: [1]=user:pass@  [2]=host  [3]=port  [4]=/db options
             const remoteHost = match[2];
             const remotePort = match[3] || "5432";
-            
-            // Create the URL Supabase will actually use (pointing to localhost)
             const localUrl = `${match[1]}127.0.0.1:5432${match[4]}`;
 
             console.log(`export DB_REMOTE_HOST=${remoteHost}`);
@@ -68,23 +61,21 @@ steps:
         ')
 
         # 4. Start Socat Tunnel
-        # Listens on Localhost:5432 -> Tunnels via SOCKS -> To Real DB Host
-        # fork: handles multiple connections | bind: only listen locally
+        # Note the use of $$! to capture the background PID in Cloud Build
         socat TCP4-LISTEN:5432,fork,bind=127.0.0.1 SOCKS5:$$SOCKS_IP:$$DB_REMOTE_HOST:$$DB_REMOTE_PORT,socksport=$$SOCKS_PORT &
-        SOCAT_PID=$!
+        SOCAT_PID=$$!
         
-        # Wait briefly for the tunnel to initialize
         sleep 2
 
         echo "🚀 Running migration..."
         # 5. Run Migration against Localhost
         /usr/local/bin/supabase db push --db-url "$$LOCAL_DB_URL"
 
-        # Cleanup: Kill the background tunnel
-        kill $SOCAT_PID
+        # Cleanup: Note the use of $$SOCAT_PID
+        kill $$SOCAT_PID
 
   # ---------------------------------------------------------
-  # Step 2: Build and Push Docker Image (Standard)
+  # Step 2: Build and Push Docker Image
   # ---------------------------------------------------------
   - name: 'gcr.io/kaniko-project/executor:latest'
     id: 'build-image'
