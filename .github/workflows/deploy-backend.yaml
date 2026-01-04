@@ -53,7 +53,7 @@ jobs:
           gcloud builds submit \
             --config cloudbuild.yaml \
             --region=europe-west1 \
-            --substitutions=_IMAGE_NAME=gcr.io/$PROJECT_ID/$SERVICE_NAME,_TAG=$GITHUB_SHA,_VERSION=${{ steps.version.outputs.version }},_PROJECT_ID=$PROJECT_ID \
+            --substitutions=_IMAGE_NAME=gcr.io/$PROJECT_ID/$SERVICE_NAME,_TAG=$GITHUB_SHA,_VERSION=${{ steps.version.outputs.version }},_PROJECT_ID=$PROJECT_ID,_PROXY_URL=http://10.0.0.2:3128,_SOCKS5_PROXY=socks5://10.0.0.2:1080 \
             . || {
               # Check if the image was actually created (build may have succeeded despite log streaming error)
               if gcloud container images describe gcr.io/$PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA --format="value(image_summary.fully_qualified_digest)" 2>/dev/null; then

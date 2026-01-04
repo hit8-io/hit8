@@ -5,35 +5,85 @@ steps:
     entrypoint: 'sh'
     env:
       # HTTP proxy for HTTP/HTTPS traffic (Squid)
-      - 'PROXY_URL=http://10.0.0.2:3128'
+      # Uses substitution variable with default fallback
+      - 'PROXY_URL=${_PROXY_URL:-http://10.0.0.2:3128}'
       # SOCKS5 proxy for TCP traffic like PostgreSQL (Dante)
-      - 'SOCKS5_PROXY=socks5://10.0.0.2:1080'
+      # Uses substitution variable with default fallback
+      - 'SOCKS5_PROXY=${_SOCKS5_PROXY:-socks5://10.0.0.2:1080}'
     args:
       - '-c'
       - |
         set -e
+        
+        # Proxy Configuration
+        # HTTP proxy (Squid) is used for HTTP/HTTPS traffic (package downloads, GitHub releases)
+        # SOCKS5 proxy (Dante) is used for TCP traffic (PostgreSQL connections)
+        # Tools that use HTTP_PROXY/HTTPS_PROXY: curl, wget, apk (Alpine package manager)
+        # Tools that use SOCKS5: proxychains (which wraps supabase CLI)
         echo "⚙️ Configuring Proxy..."
+        echo "   HTTP Proxy: $$PROXY_URL"
+        echo "   SOCKS5 Proxy: $$SOCKS5_PROXY"
         export http_proxy=$$PROXY_URL
         export https_proxy=$$PROXY_URL
+        export HTTP_PROXY=$$PROXY_URL
+        export HTTPS_PROXY=$$PROXY_URL
         
         echo "📦 Installing curl and downloading Supabase CLI binary..."
-        apk add --no-cache curl >/dev/null 2>&1 || echo "⚠️  curl may already be installed"
+        # Configure apk to use proxy and install curl
+        apk add --no-cache curl || {
+          echo "❌ Failed to install curl (apk may be blocked by proxy)"
+          exit 1
+        }
         
-        ARCH=$$(uname -m | sed 's/x86_64/amd64/')
+        # Verify curl is installed
+        if ! command -v curl >/dev/null 2>&1; then
+          echo "❌ curl is not available after installation"
+          exit 1
+        fi
+        
+        # Detect and validate architecture
+        RAW_ARCH=$$(uname -m)
+        case "$$RAW_ARCH" in
+          x86_64)
+            ARCH=amd64
+            ;;
+          aarch64|arm64)
+            ARCH=arm64
+            ;;
+          *)
+            echo "❌ Unsupported architecture: $$RAW_ARCH"
+            echo "   Supported architectures: x86_64 (amd64), aarch64/arm64"
+            exit 1
+            ;;
+        esac
+        echo "📐 Detected architecture: $$RAW_ARCH -> $$ARCH"
         
         # Download with curl (better proxy support) and proper headers
+        # Add timeout to prevent hanging (60 seconds)
         echo "🔍 Downloading Supabase CLI (architecture: $$ARCH)..."
-        curl -f -L --proxy "$$PROXY_URL" \
+        curl -f -L --max-time 60 --proxy "$$PROXY_URL" \
           -H "User-Agent: Mozilla/5.0 (Linux; Alpine)" \
           -H "Accept: application/octet-stream" \
           "https://github.com/supabase/cli/releases/latest/download/supabase_linux_$${ARCH}.tar.gz" \
           -o /tmp/supabase.tar.gz || {
-          echo "❌ Failed to download Supabase CLI binary"
+          echo "❌ Failed to download Supabase CLI binary (timeout or network error)"
           exit 1
         }
         
         tar -xzf /tmp/supabase.tar.gz -C /usr/local/bin
         chmod +x /usr/local/bin/supabase
+        
+        # Verify Supabase CLI is installed and working
+        echo "🔍 Verifying Supabase CLI installation..."
+        if ! supabase --version >/dev/null 2>&1; then
+          echo "❌ Supabase CLI verification failed"
+          exit 1
+        fi
+        SUPABASE_VERSION=$$(supabase --version)
+        echo "✅ Supabase CLI installed: $$SUPABASE_VERSION"
+        
+        # Clean up downloaded archive
+        rm -f /tmp/supabase.tar.gz
         
         echo "🔑 Extracting connection string from secrets..."
         DIRECT_DB_CONNECTION_STRING=$$(node -e 'try { console.log(JSON.parse(process.env.DOPPLER_SECRETS_JSON).DIRECT_DB_CONNECTION_STRING) } catch(e) { console.error("JSON parse error:", e.message); process.exit(1); }') || {
@@ -47,20 +97,44 @@ steps:
         fi
 
         echo "🚀 Running database migration through SOCKS5 proxy..."
-        # Use proxychains or similar to route PostgreSQL through SOCKS5 proxy
+        # Use proxychains to route PostgreSQL through SOCKS5 proxy
         # Install proxychains for SOCKS5 support
-        apk add --no-cache proxychains-ng >/dev/null 2>&1 || echo "⚠️  proxychains may already be installed"
+        echo "📦 Installing proxychains..."
+        apk add --no-cache proxychains-ng || {
+          echo "❌ Failed to install proxychains"
+          exit 1
+        }
+        
+        # Verify proxychains is installed
+        if ! command -v proxychains4 >/dev/null 2>&1; then
+          echo "❌ proxychains4 is not available after installation"
+          exit 1
+        fi
         
         # Configure proxychains to use SOCKS5 proxy
         PROXY_HOST=$$(echo "$$SOCKS5_PROXY" | sed 's|socks5://||' | cut -d: -f1)
         PROXY_PORT=$$(echo "$$SOCKS5_PROXY" | sed 's|socks5://||' | cut -d: -f2)
-        echo "socks5 $$PROXY_HOST $$PROXY_PORT" > /etc/proxychains.conf
-        echo "strict_chain" >> /etc/proxychains.conf
-        echo "proxy_dns" >> /etc/proxychains.conf
         
-        # Run migration through proxychains
-        proxychains4 -q supabase db push --db-url "$$DIRECT_DB_CONNECTION_STRING" --debug || {
-          echo "❌ Migration failed"
+        if [ -z "$$PROXY_HOST" ] || [ -z "$$PROXY_PORT" ]; then
+          echo "❌ Failed to parse SOCKS5 proxy URL: $$SOCKS5_PROXY"
+          exit 1
+        fi
+        
+        # Write proxychains configuration
+        echo "📝 Configuring proxychains ($$PROXY_HOST:$$PROXY_PORT)..."
+        {
+          echo "socks5 $$PROXY_HOST $$PROXY_PORT"
+          echo "strict_chain"
+          echo "proxy_dns"
+        } > /etc/proxychains.conf || {
+          echo "❌ Failed to write proxychains configuration"
+          exit 1
+        }
+        
+        # Run migration through proxychains with timeout
+        echo "🔄 Starting database migration..."
+        timeout 300 proxychains4 -q supabase db push --db-url "$$DIRECT_DB_CONNECTION_STRING" --debug || {
+          echo "❌ Migration failed or timed out"
           exit 1
         }
         
