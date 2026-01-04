@@ -8,7 +8,7 @@ on:
       - 'backend/**'
       - 'cloudbuild.yaml'
       - '.github/workflows/deploy-backend.yaml'
-  workflow_dispatch:  # Allows manual triggering from GitHub UI
+  workflow_dispatch:
 
 env:
   PROJECT_ID: hit8-poc
@@ -16,11 +16,12 @@ env:
   SERVICE_NAME: hit8-api
   REGION: europe-west1
   SECRET_NAME: doppler-hit8-prod
+  # Use Artifact Registry (faster & modern) instead of legacy gcr.io
+  IMAGE_REPO: europe-west1-docker.pkg.dev/hit8-poc/backend/api
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    
     permissions:
       contents: read
       id-token: write
@@ -37,26 +38,28 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Configure Docker for GCR
-        run: gcloud auth configure-docker
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker europe-west1-docker.pkg.dev
 
       - name: Read VERSION file
         id: version
         run: |
           VERSION=$(cat VERSION | tr -d '[:space:]')
+          # Fallback to 'latest' if file is empty
+          if [ -z "$VERSION" ]; then VERSION="latest"; fi
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Read version: $VERSION"
 
       - name: Build and Push Docker Image
         run: |-
-          # Run build synchronously - log streaming errors are harmless, build still completes
+          # Using Artifact Registry path and clean Proxy format
           gcloud builds submit \
             --config cloudbuild.yaml \
             --region=europe-west1 \
-            --substitutions=_IMAGE_NAME=gcr.io/$PROJECT_ID/$SERVICE_NAME,_TAG=$GITHUB_SHA,_VERSION=${{ steps.version.outputs.version }},_PROJECT_ID=$PROJECT_ID,_PROXY_URL=http://10.0.0.2:3128,_SOCKS5_PROXY=socks5://10.0.0.2:1080 \
+            --substitutions=_IMAGE_NAME=$IMAGE_REPO,_TAG=$GITHUB_SHA,_VERSION=${{ steps.version.outputs.version }},_PROJECT_ID=$PROJECT_ID,_PROXY_URL=http://10.0.0.2:3128,_SOCKS5_PROXY="10.0.0.2 1080" \
             . || {
-              # Check if the image was actually created (build may have succeeded despite log streaming error)
-              if gcloud container images describe gcr.io/$PROJECT_ID/$SERVICE_NAME:$GITHUB_SHA --format="value(image_summary.fully_qualified_digest)" 2>/dev/null; then
+              # Check if build succeeded despite log streaming errors
+              if gcloud artifacts docker images describe $IMAGE_REPO:$GITHUB_SHA --format="value(image_summary.digest)" 2>/dev/null; then
                 echo "Build succeeded (image exists), ignoring log streaming error"
                 exit 0
               else
@@ -67,27 +70,22 @@ jobs:
 
       - name: Deploy to Cloud Run
         run: |-
-          # Extract metadata from config.yaml for labels
-          CUSTOMER=$(grep "^  customer:" backend/app/config.yaml | head -1 | sed 's/^  customer: *"\(.*\)"$/\1/' | sed 's/^  customer: *\(.*\)$/\1/')
-          PROJECT=$(grep "^  project:" backend/app/config.yaml | head -1 | sed 's/^  project: *"\(.*\)"$/\1/' | sed 's/^  project: *\(.*\)$/\1/')
+          # Simple Label Extraction (Fail-safe)
+          CUSTOMER=$(grep "customer:" backend/app/config.yaml | cut -d '"' -f 2 || echo "unknown")
+          PROJECT=$(grep "project:" backend/app/config.yaml | cut -d '"' -f 2 || echo "unknown")
           
-          # Set defaults if empty
-          CUSTOMER=${CUSTOMER:-""}
-          PROJECT=${PROJECT:-""}
-          
-          # Use version tag for deployment (fallback to SHA if version not available)
+          # Use version tag for deployment
           IMAGE_TAG="${{ steps.version.outputs.version }}"
-          if [ -z "$IMAGE_TAG" ]; then
-            IMAGE_TAG="$GITHUB_SHA"
-          fi
+          
+          echo "Deploying $IMAGE_REPO:$IMAGE_TAG to Cloud Run..."
           
           gcloud run deploy $SERVICE_NAME \
-            --image gcr.io/$PROJECT_ID/$SERVICE_NAME:$IMAGE_TAG \
+            --image $IMAGE_REPO:$IMAGE_TAG \
             --platform managed \
             --region $REGION \
             --allow-unauthenticated \
-            --network=prd \
-            --subnet=prd-europe-west1 \
+            --network=production-vpc \
+            --subnet=production-subnet \
             --vpc-egress=all-traffic \
             --set-env-vars="ENVIRONMENT=prd" \
             --set-secrets="DOPPLER_SECRETS_JSON=projects/$PROJECT_NUMBER/secrets/$SECRET_NAME:latest" \
@@ -97,4 +95,3 @@ jobs:
             --timeout=300 \
             --max-instances=3 \
             --min-instances=0
-    
