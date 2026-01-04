@@ -35,51 +35,50 @@ steps:
 
         echo "🔌 Setting up Proxy Tunnel..."
         
-        # 2. Robust Parsing Logic (Fixes the "3 parameters required" error)
+        # Parse Config
         eval $(node -e '
           try {
             const secrets = JSON.parse(process.env.DOPPLER_SECRETS_JSON);
             const dbUrl = secrets.DIRECT_DB_CONNECTION_STRING;
             
-            // CLEAN THE PROXY STRING
-            // Handles "10.0.0.2 1080", "10.0.0.2:1080", and "socks5://10.0.0.2:1080"
             let proxyRaw = process.env.SOCKS5_PROXY || "";
-            proxyRaw = proxyRaw.replace(/^(socks5:\/\/|http:\/\/)/, ""); // Remove scheme
-            proxyRaw = proxyRaw.replace(/:/g, " "); // Replace colons with spaces
+            proxyRaw = proxyRaw.replace(/^(socks5:\/\/|http:\/\/)/, "").replace(/:/g, " ");
+            const proxyParts = proxyRaw.split(" ").filter(Boolean);
             
-            const proxyParts = proxyRaw.split(" ").filter(Boolean); // Split and remove empty
-            const proxyIp = proxyParts[0];
-            const proxyPort = proxyParts[1] || "1080";
+            const remoteHost = dbUrl.match(/@([^/:]+):?(\d+)?\//)[1];
+            const localUrl = dbUrl.replace(remoteHost, "127.0.0.1").replace(/:\d+\//, ":5432/");
 
-            if (!proxyIp) throw new Error("Could not extract Proxy IP");
-
-            // Extract DB Host and Port
-            const match = dbUrl.match(/@([^/:]+):?(\d+)?\//);
-            if (!match) throw new Error("Could not parse DB Host/Port");
-
-            const remoteHost = match[1];
-            const remotePort = match[2] || "5432";
-            const localUrl = dbUrl.replace(remoteHost, "127.0.0.1").replace(":" + remotePort, ":5432");
-
-            console.log(`export PROXY_IP=${proxyIp}`);
-            console.log(`export PROXY_PORT=${proxyPort}`);
+            console.log(`export PROXY_IP=${proxyParts[0]}`);
+            console.log(`export PROXY_PORT=${proxyParts[1] || "1080"}`);
             console.log(`export TARGET_HOST=${remoteHost}`);
-            console.log(`export TARGET_PORT=${remotePort}`);
             console.log(`export LOCAL_DB_URL="${localUrl}"`);
           } catch(e) { console.error(e); process.exit(1); }
         ')
 
-        echo "Target: $$TARGET_HOST:$$TARGET_PORT via Proxy: $$PROXY_IP:$$PROXY_PORT"
+        echo "Tunneling 127.0.0.1:5432 -> $$TARGET_HOST:5432 via $$PROXY_IP:$$PROXY_PORT"
 
-        # 3. Start Tunnel (SOCKS4A)
-        # SOCKS4A:<proxy-ip>:<target-host>:<target-port>
-        socat TCP4-LISTEN:5432,fork,bind=127.0.0.1 SOCKS4A:$$PROXY_IP:$$TARGET_HOST:$$TARGET_PORT,socksport=$$PROXY_PORT &
+        # Start Tunnel with logging to a file
+        # -d -d -d enables verbose logging to see handshake errors
+        # -lf /tmp/socat.log writes logs to file
+        socat -d -d -d -lf /tmp/socat.log TCP4-LISTEN:5432,fork,bind=0.0.0.0 SOCKS4A:$$PROXY_IP:$$TARGET_HOST:5432,socksport=$$PROXY_PORT &
         SOCAT_PID=$$!
         
-        sleep 3
+        # Wait longer for tunnel to stabilize
+        sleep 5
+
+        # CHECK IF TUNNEL IS ALIVE
+        if ! kill -0 $$SOCAT_PID > /dev/null 2>&1; then
+            echo "❌ Socat failed to start. Logs:"
+            cat /tmp/socat.log
+            exit 1
+        fi
 
         echo "🚀 Running Supabase Migration..."
-        supabase db push --db-url "$$LOCAL_DB_URL"
+        if ! supabase db push --db-url "$$LOCAL_DB_URL"; then
+            echo "❌ Migration Failed. Socat Logs:"
+            cat /tmp/socat.log
+            exit 1
+        fi
 
         # Cleanup
         kill $$SOCAT_PID
