@@ -4,10 +4,32 @@ steps:
     args:
       - '-c'
       - |
-        echo "Testing Connectivity..."
-        # Try to fetch Google's homepage. -T 5 means 5 sec timeout.
-        wget -q -T 5 -O - http://google.com > /dev/null && echo "✅ Success!" || echo "❌ Failed"
+        echo "⚙️ Installing tools..."
+        # Install curl and postgres client
+        apk add --no-cache curl postgresql-client
+
+        DB_HOST="db.dxwwmmhfhsljkhftnzke.supabase.co"
+        DB_PORT="5432"
+
+        echo "---------------------------------------------------"
+        echo "🔍 1. IP CHECK"
+        curl -s https://api.ipify.org || echo "❌ Failed to get IP"
+        echo ""
+
+        echo "---------------------------------------------------"
+        echo "🔍 2. DATABASE REACHABILITY CHECK (No Auth)"
+        echo "Target: $$DB_HOST:$$DB_PORT"
         
-        # Trace where it dies
-        apk add --no-cache traceroute
-        traceroute 8.8.8.8
+        # pg_isready checks TCP reachability
+        pg_isready -h "$$DB_HOST" -p "$$DB_PORT" -t 5
+        
+        if [ $$? -eq 0 ]; then
+            echo "✅ SUCCESS: Supabase is reachable from Private Pool."
+        else
+            echo "❌ FAILED: Cannot reach Supabase."
+            exit 1
+        fi
+
+options:
+  pool:
+    name: 'projects/hit8-poc/locations/europe-west1/workerPools/private-pool-1'
