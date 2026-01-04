@@ -487,10 +487,11 @@ def _run_content_stream(
         content_done: Event to signal content stream completion
         content_error: List to store any errors
     """
+    # Initialize accumulated_content outside try block so exception handler can access it
+    accumulated_content = ""
     try:
         previous_messages: list[Any] = initial_state.get("messages", [])
         previous_message_count = len(previous_messages)
-        accumulated_content = ""
         
         logger.info(
             "content_stream_started",
@@ -695,21 +696,46 @@ def _run_content_stream(
             )
             
     except Exception as e:
-        content_error[0] = e
-        event_queue.put((QUEUE_ERROR, e))
-        logger.exception(
-            "content_stream_error",
-            error=str(e),
-            error_type=type(e).__name__,
-            thread_id=thread_id,
-            exc_info=True,
+        error_str = str(e).lower()
+        error_type_name = type(e).__name__
+        
+        # Check if this is a benign connection closure after successful completion
+        # This can happen with connection poolers (like Supabase) that close idle connections
+        is_connection_closed = (
+            "connection is closed" in error_str or 
+            "connection closed" in error_str or
+            error_type_name == "OperationalError"
         )
-        import traceback
-        logger.error(
-            "content_stream_traceback",
-            traceback=traceback.format_exc(),
-            thread_id=thread_id,
-        )
+        
+        # Only treat as error if we don't have accumulated content
+        # If we have content, the stream completed successfully and connection closure is benign
+        if is_connection_closed and accumulated_content:
+            logger.warning(
+                "content_stream_connection_closed_after_completion",
+                error=str(e),
+                error_type=error_type_name,
+                thread_id=thread_id,
+                accumulated_content_length=len(accumulated_content),
+                message="Connection closed after successful stream completion - this is normal with connection poolers",
+            )
+            # Don't put error in queue - stream completed successfully
+        else:
+            # Actual error - log and send to frontend
+            content_error[0] = e
+            event_queue.put((QUEUE_ERROR, e))
+            logger.exception(
+                "content_stream_error",
+                error=str(e),
+                error_type=error_type_name,
+                thread_id=thread_id,
+                exc_info=True,
+            )
+            import traceback
+            logger.error(
+                "content_stream_traceback",
+                traceback=traceback.format_exc(),
+                thread_id=thread_id,
+            )
     finally:
         logger.info("content_stream_finally", thread_id=thread_id)
         content_done.set()
