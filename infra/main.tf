@@ -76,67 +76,65 @@ resource "google_compute_instance" "proxy_vm" {
 
 
   metadata_startup_script = <<-EOT
-      #! /bin/bash
-      apt-get update
-      
-      # Install Squid for HTTP/HTTPS traffic
-      apt-get install -y squid
-      sed -i "s/http_access allow localhost/http_access allow localhost\nacl allowed_networks src 10.0.0.0\/24 10.1.0.0\/24\nhttp_access allow allowed_networks/g" /etc/squid/squid.conf
-      
-      # Install Dante SOCKS5 proxy for TCP traffic (PostgreSQL, etc.)
-      apt-get install -y dante-server
-      
-      # Configure Dante SOCKS5 proxy
-      cat > /etc/danted.conf << 'DANTE_EOF'
-      # Logging
-      logoutput: /var/log/socks.log
-      
-      # Internal interface (VPC subnet)
-      internal: 10.0.0.2 port = 1080
-      
-      # External interface (same as internal since no public IP)
-      external: 10.0.0.2
-      
-      # Authentication method (none for internal VPC)
-      socksmethod: none
-      
-      # Allow connections from VPC and peering networks
-      client pass {
-          from: 10.0.0.0/24 to: 0.0.0.0/0
-          log: error connect disconnect
-      }
-      client pass {
-          from: 10.1.0.0/24 to: 0.0.0.0/0
-          log: error connect disconnect
-      }
-      
-      # Allow outbound connections to any destination
-      socks pass {
-          from: 10.0.0.0/24 to: 0.0.0.0/0
-          log: error connect disconnect
-      }
-      socks pass {
-          from: 10.1.0.0/24 to: 0.0.0.0/0
-          log: error connect disconnect
-      }
-      DANTE_EOF
-      
-      # Enable IP forwarding for routing
-      echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
-      sysctl -p
-      
-      # Configure iptables for NAT (since NAT gateway isn't working)
-      iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
-      iptables -A FORWARD -i eth0 -o eth0 -m state --state RELATED,ESTABLISHED -j ACCEPT
-      iptables -A FORWARD -i eth0 -o eth0 -j ACCEPT
-      
-      # Save iptables rules
-      apt-get install -y iptables-persistent
-      netfilter-persistent save || true
-      
-      # Start services
-      systemctl enable squid danted
-      systemctl restart squid danted
+    #! /bin/bash
+    apt-get update
+    apt-get install -y squid dante-server iptables-persistent
+
+    # --- SQUID CONFIGURATION ---
+    # Backup original
+    cp /etc/squid/squid.conf /etc/squid/squid.conf.bak
+
+    # Create a simple, permissive config
+    cat > /etc/squid/squid.conf << 'EOF'
+    # Define local networks
+    acl localnet src 10.0.0.0/8     # RFC1918 possible internal network
+    acl localnet src 172.16.0.0/12  # RFC1918 possible internal network
+    acl localnet src 192.168.0.0/16 # RFC1918 possible internal network
+
+    # SSL Ports allowed
+    acl SSL_ports port 443
+    acl Safe_ports port 80          # http
+    acl Safe_ports port 21          # ftp
+    acl Safe_ports port 443         # https
+    acl Safe_ports port 70          # gopher
+    acl Safe_ports port 210         # wais
+    acl Safe_ports port 1025-65535  # unregistered ports
+    acl Safe_ports port 280         # http-mgmt
+    acl Safe_ports port 488         # gss-http
+    acl Safe_ports port 591         # filemaker
+    acl Safe_ports port 777         # multiling http
+    acl CONNECT method CONNECT
+
+    # Access Rules
+    http_access deny !Safe_ports
+    http_access deny CONNECT !SSL_ports
+    http_access allow localhost manager
+    http_access deny manager
+
+    # ALLOW LOCALNET (This is the key fix)
+    http_access allow localnet
+    http_access allow localhost
+
+    # Deny everything else
+    http_access deny all
+
+    # Port
+    http_port 3128
+    EOF
+
+    systemctl restart squid
+
+    # --- DANTE CONFIGURATION (Keep your existing Dante config below) ---
+    cat > /etc/danted.conf << 'DANTE_EOF'
+    logoutput: /var/log/socks.log
+    internal: 10.0.0.2 port = 1080
+    external: 10.0.0.2
+    socksmethod: none
+    client pass { from: 10.0.0.0/8 to: 0.0.0.0/0 }
+    socks pass { from: 10.0.0.0/8 to: 0.0.0.0/0 }
+    DANTE_EOF
+
+    systemctl restart danted
   EOT
 
   service_account {
