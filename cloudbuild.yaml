@@ -16,11 +16,18 @@ steps:
         export http_proxy=$$PROXY_URL
         export https_proxy=$$PROXY_URL
         
-        echo "📦 Installing wget and downloading Supabase CLI binary..."
-        apk add --no-cache wget >/dev/null 2>&1 || echo "⚠️  wget may already be installed"
+        echo "📦 Installing curl and downloading Supabase CLI binary..."
+        apk add --no-cache curl >/dev/null 2>&1 || echo "⚠️  curl may already be installed"
         
         ARCH=$$(uname -m | sed 's/x86_64/amd64/')
-        wget -q "https://github.com/supabase/cli/releases/latest/download/supabase_linux_$${ARCH}.tar.gz" -O /tmp/supabase.tar.gz || {
+        
+        # Download with curl (better proxy support) and proper headers
+        echo "🔍 Downloading Supabase CLI (architecture: $$ARCH)..."
+        curl -f -L --proxy "$$PROXY_URL" \
+          -H "User-Agent: Mozilla/5.0 (Linux; Alpine)" \
+          -H "Accept: application/octet-stream" \
+          "https://github.com/supabase/cli/releases/latest/download/supabase_linux_$${ARCH}.tar.gz" \
+          -o /tmp/supabase.tar.gz || {
           echo "❌ Failed to download Supabase CLI binary"
           exit 1
         }
