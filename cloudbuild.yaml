@@ -14,14 +14,30 @@ steps:
         export http_proxy=$$PROXY_URL
         export https_proxy=$$PROXY_URL
         
-        DIRECT_DB_CONNECTION_STRING=$$(node -e 'console.log(JSON.parse(process.env.DOPPLER_SECRETS_JSON).DIRECT_DB_CONNECTION_STRING)')
+        echo "📦 Installing Supabase CLI..."
+        npx -y supabase --version || {
+          echo "❌ Failed to install/run Supabase CLI"
+          exit 1
+        }
+        
+        echo "🔑 Extracting connection string from secrets..."
+        DIRECT_DB_CONNECTION_STRING=$$(node -e 'try { console.log(JSON.parse(process.env.DOPPLER_SECRETS_JSON).DIRECT_DB_CONNECTION_STRING) } catch(e) { console.error("JSON parse error:", e.message); process.exit(1); }') || {
+          echo "❌ Failed to parse secrets JSON"
+          exit 1
+        }
         
         if [ -z "$$DIRECT_DB_CONNECTION_STRING" ]; then
            echo "❌ Error: DIRECT_DB_CONNECTION_STRING not found in secrets."
            exit 1
         fi
 
-        npx -y supabase db push --db-url "$$DIRECT_DB_CONNECTION_STRING"
+        echo "🚀 Running database migration..."
+        npx -y supabase db push --db-url "$$DIRECT_DB_CONNECTION_STRING" || {
+          echo "❌ Migration failed"
+          exit 1
+        }
+        
+        echo "✅ Migration completed successfully"
     
     secretEnv: ['DOPPLER_SECRETS_JSON']
 

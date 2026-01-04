@@ -81,7 +81,7 @@ def setup_logging() -> None:
 def setup_debugpy() -> None:
     """Enable debugpy for remote debugging if log_level is DEBUG and DEBUG env var is not set.
     
-    Note: If DEBUG=true is set, debugpy is already started via command line in docker-compose.yml,
+    Note: If DEBUG=true is set, debugpy is already started via command line in docker-compose.yaml,
     so we skip initialization here to avoid conflicts.
     """
     try:
