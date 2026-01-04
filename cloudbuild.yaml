@@ -8,7 +8,7 @@ substitutions:
 
 steps:
   # ---------------------------------------------------------
-  # Step 1: Database Migration (Proxy Tunnel)
+  # Step 1: Database Migration (SOCKS5 Tunnel with Ncat)
   # ---------------------------------------------------------
   - name: 'node:20-bookworm-slim'
     id: 'db-migration'
@@ -26,25 +26,28 @@ steps:
         export https_proxy=$$PROXY_URL
 
         echo "🔧 Installing utilities..."
-        apt-get update -qq && apt-get install -y -qq socat curl > /dev/null
+        # Install ncat (supports SOCKS5) instead of socat
+        apt-get update -qq && apt-get install -y -qq ncat curl > /dev/null
 
         echo "📥 Downloading Supabase CLI..."
         curl -fSL "https://github.com/supabase/cli/releases/download/v${_SUPABASE_VERSION}/supabase_linux_amd64.tar.gz" -o supabase.tar.gz
         tar -xzf supabase.tar.gz -C /usr/local/bin
         chmod +x /usr/local/bin/supabase
 
-        echo "🔌 Setting up Proxy Tunnel..."
+        echo "🔌 Setting up SOCKS5 Tunnel..."
         
-        # Parse Config
+        # 1. Parse Config safely in Node
         eval $(node -e '
           try {
             const secrets = JSON.parse(process.env.DOPPLER_SECRETS_JSON);
             const dbUrl = secrets.DIRECT_DB_CONNECTION_STRING;
             
+            // Clean Proxy String
             let proxyRaw = process.env.SOCKS5_PROXY || "";
             proxyRaw = proxyRaw.replace(/^(socks5:\/\/|http:\/\/)/, "").replace(/:/g, " ");
             const proxyParts = proxyRaw.split(" ").filter(Boolean);
             
+            // Extract DB Target
             const remoteHost = dbUrl.match(/@([^/:]+):?(\d+)?\//)[1];
             const localUrl = dbUrl.replace(remoteHost, "127.0.0.1").replace(/:\d+\//, ":5432/");
 
@@ -55,33 +58,35 @@ steps:
           } catch(e) { console.error(e); process.exit(1); }
         ')
 
-        echo "Tunneling 127.0.0.1:5432 -> $$TARGET_HOST:5432 via $$PROXY_IP:$$PROXY_PORT"
+        echo "Tunneling: 127.0.0.1:5432 -> SOCKS5($$PROXY_IP:$$PROXY_PORT) -> $$TARGET_HOST:5432"
 
-        # Start Tunnel with logging to a file
-        # -d -d -d enables verbose logging to see handshake errors
-        # -lf /tmp/socat.log writes logs to file
-        socat -d -d -d -lf /tmp/socat.log TCP4-LISTEN:5432,fork,bind=0.0.0.0 SOCKS4A:$$PROXY_IP:$$TARGET_HOST:5432,socksport=$$PROXY_PORT &
-        SOCAT_PID=$$!
+        # 2. Start Ncat SOCKS5 Tunnel
+        # -l 5432: Listen on local port 5432
+        # -k: Keep listening (don't quit after one connection)
+        # -v: Verbose logging
+        # -c: On connection, run another ncat that talks to the proxy
+        #     This "double ncat" trick is the standard way to tunnel TCP via SOCKS5
+        ncat -v -l 5432 -k -c "ncat -v --proxy $$PROXY_IP:$$PROXY_PORT --proxy-type socks5 $$TARGET_HOST 5432" > /tmp/tunnel.log 2>&1 &
+        TUNNEL_PID=$$!
         
-        # Wait longer for tunnel to stabilize
         sleep 5
 
-        # CHECK IF TUNNEL IS ALIVE
-        if ! kill -0 $$SOCAT_PID > /dev/null 2>&1; then
-            echo "❌ Socat failed to start. Logs:"
-            cat /tmp/socat.log
+        # Check if tunnel crashed immediately
+        if ! kill -0 $$TUNNEL_PID > /dev/null 2>&1; then
+            echo "❌ Tunnel crashed on startup. Logs:"
+            cat /tmp/tunnel.log
             exit 1
         fi
 
         echo "🚀 Running Supabase Migration..."
         if ! supabase db push --db-url "$$LOCAL_DB_URL"; then
-            echo "❌ Migration Failed. Socat Logs:"
-            cat /tmp/socat.log
+            echo "❌ Migration Failed. Tunnel Logs:"
+            cat /tmp/tunnel.log
             exit 1
         fi
 
         # Cleanup
-        kill $$SOCAT_PID
+        kill $$TUNNEL_PID
 
   # ---------------------------------------------------------
   # Step 2: Build Application
