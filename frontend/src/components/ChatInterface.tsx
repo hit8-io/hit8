@@ -255,17 +255,28 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
                 // Update prevStateRef to ensure useEffect recognizes the change
                 prevStateRef.current = { visitedNodes: finalVisitedNodes, activeNode: null }
               } else if (data.type === 'error') {
-                hasError = true
                 const errorMessage = data.error && data.error.trim() ? data.error : 'Unknown error occurred'
                 const errorType = data.error_type || 'Error'
                 
-                // Log error to console for debugging with full details
-                console.error('🚨 Stream error received:', errorMessage)
-                console.error('Error type:', errorType)
-                console.error('Thread ID:', data.thread_id)
-                console.error('Full error data:', JSON.stringify(data, null, 2))
+                // Some errors are benign (like connection closed after successful completion)
+                // Only treat as actual error if it's not a connection closure after we have content
+                const isConnectionClosed = errorMessage.toLowerCase().includes('connection is closed') || 
+                                          errorMessage.toLowerCase().includes('connection closed')
                 
-                throw new Error(errorMessage)
+                if (isConnectionClosed && accumulatedContent) {
+                  // Connection closed but we have content - likely normal completion
+                  console.warn('⚠️ Stream connection closed (likely normal):', errorMessage)
+                  // Don't set hasError, allow normal completion
+                } else {
+                  // Actual error - log and throw
+                  hasError = true
+                  console.error('🚨 Stream error received:', errorMessage)
+                  console.error('Error type:', errorType)
+                  console.error('Thread ID:', data.thread_id)
+                  console.error('Full error data:', JSON.stringify(data, null, 2))
+                  
+                  throw new Error(errorMessage)
+                }
               }
             } catch {
               // Silently skip malformed SSE data
