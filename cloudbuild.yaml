@@ -4,7 +4,7 @@ substitutions:
   _VERSION: 'latest'
   _IMAGE_NAME: 'europe-west1-docker.pkg.dev/${_PROJECT_ID}/backend/api'
   _TAG: 'latest'
-  _SUPABASE_VERSION: '1.200.0'
+  _SUPABASE_VERSION: '2.67.1' # Updated to latest version
 
 steps:
   # ---------------------------------------------------------
@@ -26,10 +26,10 @@ steps:
         export https_proxy=$$PROXY_URL
 
         echo "🔧 Installing utilities..."
-        # Install ncat (supports SOCKS5) instead of socat
+        # Install ncat (supports SOCKS5)
         apt-get update -qq && apt-get install -y -qq ncat curl > /dev/null
 
-        echo "📥 Downloading Supabase CLI..."
+        echo "📥 Downloading Supabase CLI v$$SUPABASE_VERSION..."
         curl -fSL "https://github.com/supabase/cli/releases/download/v${_SUPABASE_VERSION}/supabase_linux_amd64.tar.gz" -o supabase.tar.gz
         tar -xzf supabase.tar.gz -C /usr/local/bin
         chmod +x /usr/local/bin/supabase
@@ -61,17 +61,12 @@ steps:
         echo "Tunneling: 127.0.0.1:5432 -> SOCKS5($$PROXY_IP:$$PROXY_PORT) -> $$TARGET_HOST:5432"
 
         # 2. Start Ncat SOCKS5 Tunnel
-        # -l 5432: Listen on local port 5432
-        # -k: Keep listening (don't quit after one connection)
-        # -v: Verbose logging
-        # -c: On connection, run another ncat that talks to the proxy
-        #     This "double ncat" trick is the standard way to tunnel TCP via SOCKS5
         ncat -v -l 5432 -k -c "ncat -v --proxy $$PROXY_IP:$$PROXY_PORT --proxy-type socks5 $$TARGET_HOST 5432" > /tmp/tunnel.log 2>&1 &
         TUNNEL_PID=$$!
         
         sleep 5
 
-        # Check if tunnel crashed immediately
+        # Check if tunnel is alive
         if ! kill -0 $$TUNNEL_PID > /dev/null 2>&1; then
             echo "❌ Tunnel crashed on startup. Logs:"
             cat /tmp/tunnel.log
@@ -89,11 +84,17 @@ steps:
         kill $$TUNNEL_PID
 
   # ---------------------------------------------------------
-  # Step 2: Build Application
+  # Step 2: Build Application (Kaniko with Proxy)
   # ---------------------------------------------------------
   - name: 'gcr.io/kaniko-project/executor:latest'
     id: 'build-image'
     waitFor: ['db-migration']
+    # Kaniko needs the proxy to pull the base image (python:3.11)
+    env:
+      - 'HTTP_PROXY=${_PROXY_URL}'
+      - 'HTTPS_PROXY=${_PROXY_URL}'
+      # NO_PROXY is critical so Kaniko doesn't proxy internal Google calls (like pushing images)
+      - 'NO_PROXY=169.254.169.254,metadata.google.internal,googleapis.com,gcr.io,pkg.dev'
     args:
       - '--dockerfile=Dockerfile'
       - '--context=dir://./backend'
@@ -102,6 +103,10 @@ steps:
       - '--destination=${_IMAGE_NAME}:latest'
       - '--build-arg=PRODUCTION=true'
       - '--cache=true'
+      # Pass proxy args to the build process (so pip/apt work inside Dockerfile)
+      - '--build-arg=http_proxy=${_PROXY_URL}'
+      - '--build-arg=https_proxy=${_PROXY_URL}'
+      - '--build-arg=no_proxy=169.254.169.254,metadata.google.internal,googleapis.com,gcr.io,pkg.dev'
 
 availableSecrets:
   secretManager:
