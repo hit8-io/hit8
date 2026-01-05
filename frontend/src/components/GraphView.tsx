@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { flushSync } from 'react-dom'
 import ReactFlow, { Node, Edge, Background, Controls, useNodesState, useEdgesState, useReactFlow } from 'reactflow'
 import 'reactflow/dist/style.css'
 import axios from 'axios'
@@ -7,6 +8,21 @@ import { getApiHeaders } from '../utils/api'
 import { getLayoutedElements } from '../utils/graphLayout'
 import { GRAPH_VIEW_FIT_DELAY } from '../constants'
 import type { ExecutionState } from '../types/execution'
+
+// Suppress React Flow's false positive warning about nodeTypes/edgeTypes in React Strict Mode
+// This is a known issue: https://github.com/xyflow/xyflow/issues/3923
+// The warning appears even when nodeTypes/edgeTypes are properly defined outside the component
+if (import.meta.env.DEV) {
+  const originalWarn = console.warn
+  console.warn = (...args: unknown[]) => {
+    const message = typeof args[0] === 'string' ? args[0] : String(args[0])
+    // Suppress only the specific React Flow nodeTypes/edgeTypes warning
+    if (message.includes('[React Flow]: It looks like you\'ve created a new nodeTypes or edgeTypes object')) {
+      return // Suppress this specific warning
+    }
+    originalWarn.apply(console, args)
+  }
+}
 
 interface GraphViewProps {
   apiUrl: string
@@ -33,8 +49,11 @@ interface GraphStructure {
 }
 
 
-// Removed all nodeTypes/edgeTypes code since we're using React Flow's defaults
-// No custom node or edge types are needed for this implementation
+// Define stable empty nodeTypes and edgeTypes objects outside the component
+// This prevents React Flow from detecting "new" objects on each render
+// React Flow will use its default node/edge types when these are empty objects
+const nodeTypes = {}
+const edgeTypes = {}
 
 // Component to fit view when nodes are loaded (must be inside ReactFlow context)
 function FitViewOnLoad({ nodeCount }: { nodeCount: number }) {
@@ -55,7 +74,6 @@ function FitViewOnLoad({ nodeCount }: { nodeCount: number }) {
 
 
 export default function GraphView({ apiUrl, token, executionState }: GraphViewProps) {
-  
   const [graphStructure, setGraphStructure] = useState<GraphStructure | null>(null)
   
   // Use execution state from stream events (no polling)
@@ -65,22 +83,31 @@ export default function GraphView({ apiUrl, token, executionState }: GraphViewPr
 
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
+  const nodeUpdateVersionRef = useRef(0) // Track update version to force React Flow re-render
 
   // React Flow's useNodeOrEdgeTypes hook warns when it detects "new" objects
   // React Strict Mode can cause false positives for this warning
   // Memoize proOptions separately to ensure it's stable
-  const proOptions = useMemo(() => ({ hideAttribution: true }), [])
+  const proOptions = useMemo(() => {
+    return { hideAttribution: true };
+  }, [])
   
-  // Memoize the entire ReactFlow props object to ensure stable references
-  // This prevents React Flow from detecting "new" props objects on each render
-  const reactFlowProps = useMemo(() => ({
-    nodes,
-    edges,
-    onNodesChange,
-    onEdgesChange,
-    // Explicitly omit nodeTypes and edgeTypes - React Flow will use defaults
-    proOptions,
-  }), [nodes, edges, onNodesChange, onEdgesChange, proOptions])
+  // Memoize all ReactFlow props including stable nodeTypes/edgeTypes
+  // Include nodeTypes and edgeTypes in the memoized object using stable external references
+  // This ensures React Flow sees consistent prop object structure
+  const prevNodesRef = useRef(nodes)
+  const reactFlowProps = useMemo(() => {
+    prevNodesRef.current = nodes
+    return {
+      nodes,
+      edges,
+      onNodesChange,
+      onEdgesChange,
+      nodeTypes, // Use stable external reference
+      edgeTypes, // Use stable external reference
+      proOptions,
+    };
+  }, [nodes, edges, onNodesChange, onEdgesChange, proOptions])
 
 
   // Fetch graph structure on mount
@@ -247,34 +274,81 @@ export default function GraphView({ apiUrl, token, executionState }: GraphViewPr
 
     // Update node and edge styles based on execution state
     // Use functional updates to avoid needing nodes/edges in dependency array
-    setNodes((nds) =>
-      nds.map((node) => {
+    // Force new array reference to ensure React Flow detects the change
+    // Increment version to force React Flow to treat nodes as completely new
+    nodeUpdateVersionRef.current += 1
+    const updateVersion = nodeUpdateVersionRef.current
+    
+    // Add a small delay to allow React Flow to process previous updates
+    // This prevents updates from being batched together
+    const updateDelay = 50 // 50ms delay between updates
+    setTimeout(() => {
+      // Use flushSync to force immediate visual update (not batched)
+      flushSync(() => {
+      setNodes((nds) => {
+      // Create a new array to force React Flow to detect the change
+      const updatedNodes = nds.map((node) => {
         const isActive = activeNodes.includes(node.id)
         const isVisited = visitedNodes.includes(node.id)
 
-        return {
+        // Only update nodes that have changed state (active or visited)
+        // This prevents unnecessary updates to all nodes
+        const needsUpdate = isActive || isVisited || 
+          (node.style?.border !== (isActive ? '2px solid #22c55e' : isVisited ? '1px solid #94a3b8' : '1px solid #e2e8f0')) ||
+          (node.style?.backgroundColor !== (isActive ? '#dcfce7' : isVisited ? '#f1f5f9' : '#ffffff'))
+        
+        if (!needsUpdate) {
+          return node // Return unchanged node to avoid unnecessary re-renders
+        }
+        
+        // Create new node object with updated style and className to force React Flow re-render
+        // Use both style and className to ensure React Flow detects the change
+        const updatedNode = {
           ...node,
+          data: {
+            ...node.data,
+            _updateVersion: updateVersion, // Use version number to force re-render
+          },
+          // Add className to force React Flow to update the DOM element
+          className: isActive ? 'node-active' : isVisited ? 'node-visited' : 'node-default',
+          // Create completely new style object (don't spread old style)
           style: {
-            ...node.style,
             border: isActive ? '2px solid #22c55e' : isVisited ? '1px solid #94a3b8' : '1px solid #e2e8f0',
             backgroundColor: isActive ? '#dcfce7' : isVisited ? '#f1f5f9' : '#ffffff',
+            transition: 'border 0.1s ease-in-out, background-color 0.1s ease-in-out', // Add transition to force repaint
           },
         }
+        return updatedNode
       })
-    )
+      return updatedNodes
+      })
+    })
 
-    setEdges((eds) =>
-      eds.map((edge) => {
-        const isActive = activeNodes.includes(edge.target)
-        return {
-          ...edge,
-          animated: isActive,
-          style: {
-            stroke: isActive ? '#22c55e' : '#b1b1b7',
-          },
-        }
-      })
-    )
+    flushSync(() => {
+      setEdges((eds) =>
+        eds.map((edge) => {
+          const isActive = activeNodes.includes(edge.target)
+          return {
+            ...edge,
+            animated: isActive,
+            style: {
+              stroke: isActive ? '#22c55e' : '#b1b1b7',
+            },
+          }
+        })
+      )
+    })
+    
+    // Use requestAnimationFrame to ensure browser has a chance to repaint
+    // This gives the browser a frame to render the visual updates
+    requestAnimationFrame(() => {
+      // Force a repaint by reading a layout property
+      // This ensures the browser actually renders the changes
+      if (document.body) {
+        void document.body.offsetHeight
+      }
+    })
+    }, updateDelay)
   }, [currentExecutionState, setNodes, setEdges])
 
   if (loading) {

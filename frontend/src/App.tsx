@@ -24,7 +24,18 @@ function App() {
   }
 
   const handleExecutionStateUpdate = useCallback((state: ExecutionState | null) => {
-    setExecutionState(state)
+    // Always create a new object reference to ensure React detects the change
+    // This is important for triggering useEffect in GraphView
+    if (state === null) {
+      setExecutionState(null)
+    } else {
+      setExecutionState({
+        ...state,
+        history: state.history ? [...state.history] : undefined,
+        next: state.next ? [...state.next] : [],
+        streamEvents: state.streamEvents ? [...state.streamEvents] : undefined,
+      })
+    }
   }, [])
 
   const toggleChatExpanded = useCallback(() => {

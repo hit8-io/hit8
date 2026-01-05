@@ -290,6 +290,66 @@ class EventCaptureCallbackHandler(BaseCallbackHandler):
                 event_data["tool_calls"] = tool_calls
             
             self.event_queue.put((QUEUE_EVENT, event_data))
+            
+            # Send state update after LLM execution to track progress
+            # This provides real-time updates even when stream() only yields final state
+            # Use a shorter delay to send update immediately while node is still active
+            try:
+                import time
+                time.sleep(0.05)  # Shorter delay to send update while node is still active
+                # Construct config with thread_id (required for get_state)
+                config = {"configurable": {"thread_id": self.thread_id}}
+                current_state = get_graph().get_state(config)
+                
+                # Extract next nodes
+                next_nodes = []
+                if hasattr(current_state, "next") and current_state.next:
+                    next_nodes = list(current_state.next) if isinstance(current_state.next, (list, set, tuple)) else []
+                    if not isinstance(next_nodes, list):
+                        next_nodes = [next_nodes] if next_nodes else []
+                
+                # Extract visited nodes from state tasks
+                visited_nodes = []
+                if hasattr(current_state, "tasks") and current_state.tasks:
+                    tasks = current_state.tasks if isinstance(current_state.tasks, list) else list(current_state.tasks)
+                    for task in tasks:
+                        if hasattr(task, "name") and task.name:
+                            if task.name not in visited_nodes:
+                                visited_nodes.append(task.name)
+                
+                # Add agent node to visited nodes if not already there
+                if "agent" not in visited_nodes:
+                    visited_nodes.append("agent")
+                
+                # Extract message count
+                message_count = 0
+                if hasattr(current_state, "values") and isinstance(current_state.values, dict):
+                    messages = current_state.values.get("messages", [])
+                    if isinstance(messages, list):
+                        message_count = len(messages)
+                
+                # Send state update
+                self.event_queue.put((QUEUE_EVENT, {
+                    "type": EVENT_STATE_UPDATE,
+                    "next": next_nodes,
+                    "message_count": message_count,
+                    "thread_id": self.thread_id,
+                    "visited_nodes": visited_nodes,
+                }))
+                logger.debug(
+                    "state_update_from_llm_end",
+                    thread_id=self.thread_id,
+                    visited_nodes=visited_nodes,
+                    next_nodes=next_nodes,
+                    message_count=message_count,
+                )
+            except Exception as e:
+                logger.debug(
+                    "failed_to_send_state_update_from_llm",
+                    thread_id=self.thread_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
         except Exception as e:
             logger.error("callback_llm_end_error", error=str(e), thread_id=self.thread_id, exc_info=True)
     
@@ -322,6 +382,80 @@ class EventCaptureCallbackHandler(BaseCallbackHandler):
                 "result_preview": result_preview,
                 "thread_id": self.thread_id,
             }))
+            
+            # Send state update after tool execution to track progress
+            # This provides real-time updates even when stream() only yields final state
+            # Use a shorter delay to send update immediately while node is still active
+            try:
+                import time
+                time.sleep(0.05)  # Shorter delay to send update while node is still active
+                # Construct config with thread_id (required for get_state)
+                config = {"configurable": {"thread_id": self.thread_id}}
+                current_state = get_graph().get_state(config)
+                
+                # Extract next nodes and visited nodes
+                next_nodes = []
+                if hasattr(current_state, "next") and current_state.next:
+                    next_nodes = list(current_state.next) if isinstance(current_state.next, (list, set, tuple)) else []
+                    if not isinstance(next_nodes, list):
+                        next_nodes = [next_nodes] if next_nodes else []
+                
+                # Extract visited nodes from state tasks
+                visited_nodes = []
+                if hasattr(current_state, "tasks") and current_state.tasks:
+                    tasks = current_state.tasks if isinstance(current_state.tasks, list) else list(current_state.tasks)
+                    for task in tasks:
+                        if hasattr(task, "name") and task.name:
+                            if task.name not in visited_nodes:
+                                visited_nodes.append(task.name)
+                
+                # Extract message count
+                message_count = 0
+                if hasattr(current_state, "values") and isinstance(current_state.values, dict):
+                    messages = current_state.values.get("messages", [])
+                    if isinstance(messages, list):
+                        message_count = len(messages)
+                
+                # Map tool name to graph node name
+                tool_to_node_map = {
+                    "procedures_vector_search": "node_procedures_vector_search",
+                    "regelgeving_vector_search": "node_regelgeving_vector_search",
+                    "fetch_webpage": "node_fetch_webpage",
+                    "generate_docx": "node_generate_docx",
+                    "generate_xlsx": "node_generate_xlsx",
+                    "extract_entities": "node_extract_entities",
+                    "query_knowledge_graph": "node_query_knowledge_graph",
+                    "get_procedure": "node_get_procedure",
+                    "get_regelgeving": "node_get_regelgeving",
+                }
+                node_name = tool_to_node_map.get(tool_name)
+                if node_name and node_name not in visited_nodes:
+                    visited_nodes.append(node_name)
+                
+                # Send state update
+                self.event_queue.put((QUEUE_EVENT, {
+                    "type": EVENT_STATE_UPDATE,
+                    "next": next_nodes,
+                    "message_count": message_count,
+                    "thread_id": self.thread_id,
+                    "visited_nodes": visited_nodes,
+                }))
+                logger.debug(
+                    "state_update_from_tool_end",
+                    thread_id=self.thread_id,
+                    tool_name=tool_name,
+                    node_name=node_name,
+                    visited_nodes=visited_nodes,
+                    next_nodes=next_nodes,
+                    message_count=message_count,
+                )
+            except Exception as e:
+                logger.debug(
+                    "failed_to_send_state_update_from_tool",
+                    thread_id=self.thread_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
         except Exception as e:
             logger.error("callback_tool_end_error", error=str(e), thread_id=self.thread_id)
 
@@ -553,23 +687,58 @@ def _run_content_stream(
         
         stream_count = 0
         try:
+            # Track visited nodes to infer next nodes
+            # Since stream() doesn't give us node names, we'll track execution progress
+            # by monitoring message count changes and using graph structure
+            visited_nodes: list[str] = []
+            # Track the maximum message count we've seen (not just the last one)
+            # This handles cases where stream() yields intermediate states with 0 messages
+            max_message_count_seen = previous_message_count
+            last_message_count = previous_message_count
+            
             for stream_item in stream_iter:
                 stream_count += 1
-                logger.debug("stream_item_received", thread_id=thread_id, item_count=stream_count, item_type=type(stream_item).__name__)
+                # #region agent log
+                logger.debug(
+                    "stream_item_received",
+                    location="chat.py:565",
+                    thread_id=thread_id,
+                    item_count=stream_count,
+                    item_type=type(stream_item).__name__,
+                    is_dict=isinstance(stream_item, dict),
+                    is_tuple=isinstance(stream_item, tuple),
+                    tuple_len=len(stream_item) if isinstance(stream_item, tuple) else None,
+                    item_repr=str(stream_item)[:200],
+                    session_id="debug-session",
+                    run_id="backend-debug",
+                    hypothesis_id="P",
+                )
+                # #endregion
                 
-                # stream() yields state dictionaries directly (not tuples)
-                # Format: {"messages": [...], ...} - the full state after each node execution
+                # stream() can yield either:
+                # 1. State dictionaries directly: {"messages": [...]}
+                # 2. Tuples with node name: (node_name, {"messages": [...]})
+                node_name: str | None = None
                 if isinstance(stream_item, dict):
                     state_update = stream_item
-                    node_name = None  # We don't get node name from stream(), only from stream_events()
+                    node_name = None
                 elif isinstance(stream_item, tuple) and len(stream_item) == 2:
-                    # Fallback: handle tuple format if it ever changes
+                    # Tuple format: (node_name, state)
                     node_name, state_update = stream_item
+                    if node_name and node_name not in visited_nodes:
+                        visited_nodes.append(node_name)
+                        logger.debug(
+                            "node_executed_from_stream",
+                            thread_id=thread_id,
+                            node_name=node_name,
+                            visited_nodes=visited_nodes,
+                        )
                 else:
                     logger.debug(
                         "unexpected_stream_item_format",
                         thread_id=thread_id,
                         item_type=type(stream_item).__name__,
+                        item_repr=str(stream_item)[:100],
                     )
                     continue
                 
@@ -585,19 +754,217 @@ def _run_content_stream(
                     continue
                 
                 # Send state update event for real-time updates
+                # Check for messages in different possible locations
                 messages = state_update.get("messages", [])
-                message_count = len(messages) if isinstance(messages, list) else 0
-                # Extract next nodes from state (if available)
-                next_nodes = []
-                # Note: stream() doesn't provide next nodes directly, but we can infer from execution
+                if not messages:
+                    # Try nested in 'agent' key
+                    agent_data = state_update.get("agent", {})
+                    if isinstance(agent_data, dict):
+                        messages = agent_data.get("messages", [])
                 
-                if message_count > 0:
-                    event_queue.put((QUEUE_EVENT, {
-                        "type": EVENT_STATE_UPDATE,
-                        "next": next_nodes,  # Will be updated by node tracking if available
-                        "message_count": message_count,
-                        "thread_id": thread_id,
-                    }))
+                message_count = len(messages) if isinstance(messages, list) else 0
+                
+                # #region agent log
+                agent_data_type = type(state_update.get("agent", None)).__name__ if "agent" in state_update else None
+                agent_data_keys = list(state_update.get("agent", {}).keys())[:5] if isinstance(state_update.get("agent"), dict) else None
+                logger.debug(
+                    "messages_in_state_update",
+                    location="chat.py:608",
+                    thread_id=thread_id,
+                    message_count=message_count,
+                    messages_type=type(messages).__name__,
+                    first_message_type=type(messages[0]).__name__ if messages and len(messages) > 0 else None,
+                    first_message_repr=str(messages[0])[:100] if messages and len(messages) > 0 else None,
+                    state_update_keys=list(state_update.keys())[:10],
+                    agent_data_type=agent_data_type,
+                    agent_data_keys=agent_data_keys,
+                    agent_data_repr=str(state_update.get("agent"))[:200] if "agent" in state_update else None,
+                    session_id="debug-session",
+                    run_id="backend-debug",
+                    hypothesis_id="O",
+                )
+                # #endregion
+                
+                # Track node execution by examining message types
+                # This is more reliable than message count since we can identify specific node types
+                # Import message types for type checking
+                from langchain_core.messages import AIMessage, ToolMessage, HumanMessage
+                
+                # Check messages to infer which nodes executed
+                # Messages from stream() should be LangChain message objects
+                for msg in messages:
+                    # Handle both message objects and dictionaries (if serialized)
+                    msg_type = None
+                    tool_name = None
+                    
+                    if isinstance(msg, AIMessage):
+                        msg_type = "AIMessage"
+                    elif isinstance(msg, ToolMessage):
+                        msg_type = "ToolMessage"
+                        tool_name = getattr(msg, "name", None) or getattr(msg, "tool", None)
+                    elif isinstance(msg, dict):
+                        # Handle serialized messages
+                        msg_type = msg.get("type") or msg.get("__class__")
+                        if msg_type == "AIMessage" or "AIMessage" in str(msg_type):
+                            msg_type = "AIMessage"
+                        elif msg_type == "ToolMessage" or "ToolMessage" in str(msg_type):
+                            msg_type = "ToolMessage"
+                            tool_name = msg.get("name") or msg.get("tool")
+                    
+                    # If we see an AIMessage, the agent node executed
+                    if msg_type == "AIMessage" and "agent" not in visited_nodes:
+                        visited_nodes.append("agent")
+                        logger.debug(
+                            "agent_node_tracked_from_aimessage",
+                            thread_id=thread_id,
+                            visited_nodes=visited_nodes,
+                            msg_type=type(msg).__name__ if not isinstance(msg, dict) else "dict",
+                        )
+                    
+                    # If we see ToolMessage, a tool node executed
+                    # Map tool names to graph node names
+                    if msg_type == "ToolMessage" and tool_name:
+                        tool_to_node_map = {
+                            "procedures_vector_search": "node_procedures_vector_search",
+                            "regelgeving_vector_search": "node_regelgeving_vector_search",
+                            "fetch_webpage": "node_fetch_webpage",
+                            "generate_docx": "node_generate_docx",
+                            "generate_xlsx": "node_generate_xlsx",
+                            "extract_entities": "node_extract_entities",
+                            "query_knowledge_graph": "node_query_knowledge_graph",
+                            "get_procedure": "node_get_procedure",
+                            "get_regelgeving": "node_get_regelgeving",
+                        }
+                        node_name = tool_to_node_map.get(tool_name)
+                        if node_name and node_name not in visited_nodes:
+                            visited_nodes.append(node_name)
+                            logger.debug(
+                                "tool_node_tracked_from_toolmessage",
+                                thread_id=thread_id,
+                                tool_name=tool_name,
+                                node_name=node_name,
+                                visited_nodes=visited_nodes,
+                                msg_type=type(msg).__name__ if not isinstance(msg, dict) else "dict",
+                            )
+                
+                # #region agent log
+                logger.debug(
+                    "message_count_check",
+                    location="chat.py:608",
+                    thread_id=thread_id,
+                    last_message_count=last_message_count,
+                    max_message_count_seen=max_message_count_seen,
+                    current_message_count=message_count,
+                    message_count_increased=message_count > max_message_count_seen,
+                    visited_nodes_after=visited_nodes.copy(),
+                    session_id="debug-session",
+                    run_id="backend-debug",
+                    hypothesis_id="N",
+                )
+                # #endregion
+                # Update max_message_count_seen
+                if message_count > max_message_count_seen:
+                    max_message_count_seen = message_count
+                # Update last_message_count for next iteration
+                last_message_count = message_count
+                
+                # Get next nodes from current graph state
+                # Try get_state() with a longer delay to allow checkpoint to update
+                next_nodes = []
+                try:
+                    import time
+                    time.sleep(0.05)  # Longer delay to allow checkpoint to be committed
+                    current_state = get_graph().get_state(config)
+                    
+                    # Extract next nodes
+                    if hasattr(current_state, "next") and current_state.next:
+                        next_nodes = list(current_state.next) if isinstance(current_state.next, (list, set, tuple)) else []
+                        if not isinstance(next_nodes, list):
+                            # If it's a single value, convert to list
+                            next_nodes = [next_nodes] if next_nodes else []
+                    
+                    # Try to extract visited nodes from state index/count
+                    # The index might indicate which checkpoint we're at
+                    if hasattr(current_state, "index"):
+                        # Index is a method that returns the checkpoint index
+                        try:
+                            state_index = current_state.index() if callable(current_state.index) else current_state.index
+                            # Index increases as nodes execute - use this as a proxy for progress
+                            logger.debug(
+                                "state_index_tracked",
+                                thread_id=thread_id,
+                                state_index=state_index,
+                                visited_nodes=visited_nodes,
+                            )
+                        except Exception:
+                            pass
+                    
+                    # #region agent log
+                    # Try to get state_index value (it's a method)
+                    state_index_value = None
+                    if hasattr(current_state, "index"):
+                        try:
+                            state_index_value = current_state.index() if callable(current_state.index) else current_state.index
+                        except Exception:
+                            pass
+                    
+                    logger.debug(
+                        "get_state_called",
+                        location="chat.py:591",
+                        has_next=hasattr(current_state, "next"),
+                        next_value=current_state.next if hasattr(current_state, "next") else None,
+                        next_type=type(current_state.next).__name__ if hasattr(current_state, "next") else None,
+                        state_type=type(current_state).__name__,
+                        has_index=hasattr(current_state, "index"),
+                        state_index=state_index_value,
+                        node_name=node_name,
+                        visited_nodes=visited_nodes,
+                        last_message_count=last_message_count,
+                        current_message_count=message_count,
+                        message_count_increased=message_count > last_message_count,
+                        session_id="debug-session",
+                        run_id="backend-debug",
+                        hypothesis_id="M",
+                    )
+                    # #endregion
+                except Exception as e:
+                    logger.debug(
+                        "failed_to_get_next_nodes",
+                        thread_id=thread_id,
+                        error=str(e),
+                        error_type=type(e).__name__,
+                        exc_info=True,
+                    )
+                
+                # #region agent log
+                logger.debug(
+                    "content_stream_state_update",
+                    location="chat.py:587",
+                    message_count=message_count,
+                    next_nodes=next_nodes,
+                    next_nodes_count=len(next_nodes),
+                    visited_nodes=visited_nodes,
+                    node_name=node_name,
+                    session_id="debug-session",
+                    run_id="backend-debug",
+                    hypothesis_id="L",
+                )
+                # #endregion
+                
+                # Only send state update from content stream if we haven't received updates from callbacks
+                # Callbacks send more accurate real-time updates, so we skip content stream updates
+                # to avoid overwriting callback updates
+                # Only send if this is the final state (no more stream items expected)
+                # This prevents overwriting real-time callback updates
+                # Skip intermediate state updates from content stream - let callbacks handle them
+                logger.debug(
+                    "content_stream_state_update_skipped",
+                    thread_id=thread_id,
+                    next_nodes=next_nodes,
+                    visited_nodes=visited_nodes,
+                    message_count=message_count,
+                    reason="callbacks_handle_real_time_updates",
+                )
                 
                 # If state has 'tools' key but no 'messages', it's likely a tools node execution
                 # The final state will have messages after tools complete
@@ -681,6 +1048,93 @@ def _run_content_stream(
             total_stream_items=stream_count,
             final_message_count=previous_message_count,
         )
+        
+        # After stream completes, get final state and extract complete history
+        # This is the best we can do since stream() doesn't give us node names
+        logger.debug(
+            "attempting_final_state_extraction",
+            thread_id=thread_id,
+            visited_nodes_before=visited_nodes.copy(),
+        )
+        try:
+            import time
+            time.sleep(0.1)  # Wait a bit for checkpoint to be fully committed
+            final_state = get_graph().get_state(config)
+            
+            logger.debug(
+                "final_state_retrieved",
+                thread_id=thread_id,
+                has_tasks=hasattr(final_state, "tasks"),
+                tasks_count=len(final_state.tasks) if hasattr(final_state, "tasks") and final_state.tasks else 0,
+                has_next=hasattr(final_state, "next"),
+                next_value=final_state.next if hasattr(final_state, "next") else None,
+            )
+            
+            # Extract visited nodes from final state tasks/history
+            final_visited_nodes = visited_nodes.copy()
+            if hasattr(final_state, "tasks") and final_state.tasks:
+                for task in final_state.tasks:
+                    task_name = None
+                    if hasattr(task, "name"):
+                        task_name = task.name
+                    elif isinstance(task, dict) and "name" in task:
+                        task_name = task["name"]
+                    if task_name and task_name not in final_visited_nodes:
+                        final_visited_nodes.append(task_name)
+                        logger.debug(
+                            "task_added_to_visited",
+                            thread_id=thread_id,
+                            task_name=task_name,
+                            final_visited_nodes=final_visited_nodes,
+                        )
+            
+            # Extract next nodes from final state
+            final_next_nodes = []
+            if hasattr(final_state, "next") and final_state.next:
+                final_next_nodes = list(final_state.next) if isinstance(final_state.next, (list, set, tuple)) else []
+            
+            logger.debug(
+                "final_state_processed",
+                thread_id=thread_id,
+                final_visited_nodes=final_visited_nodes,
+                final_next_nodes=final_next_nodes,
+                will_send_update=bool(final_visited_nodes or final_next_nodes),
+            )
+            
+            # Get message count from final state
+            final_message_count = previous_message_count
+            if hasattr(final_state, "values") and final_state.values:
+                if isinstance(final_state.values, dict) and "messages" in final_state.values:
+                    messages = final_state.values.get("messages", [])
+                    if isinstance(messages, list):
+                        final_message_count = len(messages)
+            
+            # Always send final state update (even if empty) so frontend knows execution completed
+            # Add a delay to ensure callback updates are sent and processed first
+            import time
+            time.sleep(0.3)  # Delay to ensure callback updates are sent before final update
+            event_queue.put((QUEUE_EVENT, {
+                "type": EVENT_STATE_UPDATE,
+                "next": final_next_nodes,
+                "message_count": final_message_count,
+                "thread_id": thread_id,
+                "visited_nodes": final_visited_nodes,
+            }))
+            logger.debug(
+                "final_state_update_sent",
+                thread_id=thread_id,
+                visited_nodes=final_visited_nodes,
+                next_nodes=final_next_nodes,
+                message_count=final_message_count,
+            )
+        except Exception as e:
+            logger.debug(
+                "failed_to_get_final_state",
+                error=str(e),
+                error_type=type(e).__name__,
+                thread_id=thread_id,
+                exc_info=True,
+            )
         
         # After stream completes, check if we have any final content
         # Get the last state to extract final message if we haven't already
@@ -816,6 +1270,20 @@ def _run_node_tracking_stream(
             event_type = event.get("event", "")
             node_name = event.get("name", "")
             
+            # #region agent log
+            logger.debug(
+                "stream_events_event_received",
+                location="chat.py:815",
+                event_type=event_type,
+                node_name=node_name,
+                event_keys=list(event.keys()) if isinstance(event, dict) else [],
+                event_count=event_count,
+                session_id="debug-session",
+                run_id="backend-debug",
+                hypothesis_id="I",
+            )
+            # #endregion
+            
             # Handle LLM call events
             if event_type == "on_llm_start":
                 llm_data = _extract_llm_event_data(event, "on_llm_start")
@@ -888,6 +1356,21 @@ def _run_node_tracking_stream(
             # Extract state from both on_chain_stream (intermediate) and on_chain_end (final)
             if event_type in ("on_chain_stream", "on_chain_end"):
                 state_data = _extract_state_update(event)
+                # #region agent log
+                logger.debug(
+                    "on_chain_stream_or_end_event",
+                    location="chat.py:889",
+                    event_type=event_type,
+                    node_name=node_name,
+                    state_data_exists=state_data is not None,
+                    state_data_next=state_data.get("next", []) if state_data else [],
+                    state_data_message_count=state_data.get("message_count", 0) if state_data else 0,
+                    event_data_keys=list(event.get("data", {}).keys()) if isinstance(event.get("data"), dict) else [],
+                    session_id="debug-session",
+                    run_id="backend-debug",
+                    hypothesis_id="J",
+                )
+                # #endregion
                 if state_data:
                     event_queue.put((QUEUE_EVENT, {
                         "type": EVENT_STATE_UPDATE,
@@ -905,6 +1388,20 @@ def _run_node_tracking_stream(
             
             # Handle node execution start events
             if event_type == "on_chain_start":
+                # #region agent log
+                logger.debug(
+                    "on_chain_start_event",
+                    location="chat.py:907",
+                    node_name=node_name,
+                    is_agent_or_tools=node_name in (NODE_AGENT, NODE_TOOLS),
+                    NODE_AGENT=NODE_AGENT,
+                    NODE_TOOLS=NODE_TOOLS,
+                    current_node=current_node,
+                    session_id="debug-session",
+                    run_id="backend-debug",
+                    hypothesis_id="K",
+                )
+                # #endregion
                 if node_name in (NODE_AGENT, NODE_TOOLS):
                     if current_node != node_name:
                         # End previous node if any

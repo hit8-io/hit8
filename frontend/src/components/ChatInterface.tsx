@@ -40,6 +40,7 @@ export default function ChatInterface({ token, onChatStateChange, onExecutionSta
   const timeoutRef = useRef<number | null>(null)
   const executionStateUpdateRef = useRef(onExecutionStateUpdate)
   const prevStateRef = useRef<{ visitedNodes: string[], activeNode: string | null }>({ visitedNodes: [], activeNode: null })
+  const lastMessageCountRef = useRef<number>(0) // Track last message count to preserve in final state
   
   // Update ref on each render (safe for refs, doesn't cause re-renders)
   executionStateUpdateRef.current = onExecutionStateUpdate
@@ -54,33 +55,30 @@ export default function ChatInterface({ token, onChatStateChange, onExecutionSta
   }, [])
 
   // Sync execution state updates to parent (avoid calling during render) - must be called before any early returns
+  // NOTE: visitedNodes updates are handled by handleStateUpdate, not this useEffect
+  // This useEffect only syncs activeNode changes to avoid race conditions with async state updates
   useEffect(() => {
     if (!executionStateUpdateRef.current) return
     
-    // Always update execution state when visitedNodes, activeNode, or streamEvents change
-    // This ensures GraphView and StatusWindow always have the latest state
-    const newState: ExecutionState = {
-      next: activeNode ? [activeNode] : [],
-      values: {},
-      history: visitedNodes.map(node => ({ node })),
-      streamEvents: streamEvents.length > 0 ? [...streamEvents] : undefined,
-    }
-    
-    // Always send state update when streamEvents change (for real-time event logging)
-    // Also send when visitedNodes or activeNode change
+    // Only update when activeNode changes, not when visitedNodes changes
+    // visitedNodes updates are handled directly in handleStateUpdate to avoid stale state
     const prevState = prevStateRef.current
-    const stateChanged = 
-      prevState.visitedNodes.length !== visitedNodes.length ||
-      prevState.activeNode !== activeNode ||
-      // eslint-disable-next-line security/detect-object-injection
-      prevState.visitedNodes.some((node, i) => node !== visitedNodes[i]) ||
-      streamEvents.length > 0 // Always update if there are stream events
+    const activeNodeChanged = prevState.activeNode !== activeNode
     
-    if (stateChanged) {
-      prevStateRef.current = { visitedNodes, activeNode }
+    if (activeNodeChanged) {
+      // Use the visitedNodes from prevStateRef which is updated synchronously in handleStateUpdate
+      const currentVisitedNodes = prevStateRef.current.visitedNodes
+      const newState: ExecutionState = {
+        next: activeNode ? [activeNode] : [],
+        values: {},
+        history: currentVisitedNodes.map(node => ({ node })),
+        streamEvents: streamEvents.length > 0 ? [...streamEvents] : undefined,
+      }
+      
+      prevStateRef.current = { visitedNodes: currentVisitedNodes, activeNode }
       executionStateUpdateRef.current(newState)
     }
-  }, [visitedNodes, activeNode, streamEvents, onExecutionStateUpdate])
+  }, [activeNode, onExecutionStateUpdate]) // Removed visitedNodes and streamEvents from dependencies
 
   // Fail fast if API URL is missing (after hooks)
   if (!API_URL) {
@@ -123,6 +121,8 @@ export default function ChatInterface({ token, onChatStateChange, onExecutionSta
     setStreamEvents([])
     setVisitedNodes([])
     setActiveNode(null)
+    // Reset execution state when new execution starts
+    executionStateUpdateRef.current?.(null)
   }
 
   const handleContentChunk = (data: { content?: string }, accumulatedContent: string): string => {
@@ -135,12 +135,30 @@ export default function ChatInterface({ token, onChatStateChange, onExecutionSta
   const handleStateUpdate = (data: StreamEvent & { type: 'state_update' }): void => {
     setActiveNode(data.next && data.next.length > 0 ? data.next[0] : null)
     setStreamEvents(prev => [...prev, data])
-    executionStateUpdateRef.current?.({
+    
+    // Use visited_nodes from event if provided, otherwise use local visitedNodes
+    const eventVisitedNodes = data.visited_nodes || []
+    // Merge with local visitedNodes to ensure we don't lose any
+    const allVisitedNodes = [...new Set([...visitedNodes, ...eventVisitedNodes])]
+    
+    // Update local visitedNodes state so useEffect can read the correct value
+    setVisitedNodes(allVisitedNodes)
+    
+    // Update prevStateRef immediately so useEffect doesn't overwrite with stale state
+    const newActiveNode = data.next && data.next.length > 0 ? data.next[0] : null
+    prevStateRef.current = { visitedNodes: allVisitedNodes, activeNode: newActiveNode }
+    
+    // Track last message count for use in handleGraphEnd
+    const messageCount = data.message_count || 0
+    lastMessageCountRef.current = messageCount
+    
+    const stateUpdate = {
       next: data.next || [],
-      values: { message_count: data.message_count || 0 },
-      history: visitedNodes.map(node => ({ node })),
+      values: { message_count: messageCount },
+      history: allVisitedNodes.map(node => ({ node })),
       streamEvents: streamEvents.length > 0 ? [...streamEvents, data] : [data],
-    })
+    }
+    executionStateUpdateRef.current?.(stateUpdate)
   }
 
   const handleLlmEvent = (data: StreamEvent & { type: 'llm_start' | 'llm_end' }): void => {
@@ -168,21 +186,26 @@ export default function ChatInterface({ token, onChatStateChange, onExecutionSta
 
   const handleGraphEnd = (data: { response?: string }, accumulatedContent: string): string => {
     const newFinalResponse = (typeof data.response === 'string' ? data.response : '') || accumulatedContent || ''
-    const finalVisitedNodes = activeNode && !visitedNodes.includes(activeNode)
-      ? [...visitedNodes, activeNode]
-      : visitedNodes
+    // Use prevStateRef to get the most up-to-date visited nodes (not stale state)
+    const currentVisitedNodes = prevStateRef.current.visitedNodes
+    const finalVisitedNodes = activeNode && !currentVisitedNodes.includes(activeNode)
+      ? [...currentVisitedNodes, activeNode]
+      : currentVisitedNodes
     setVisitedNodes(finalVisitedNodes)
     setActiveNode(null)
     setStreamingContent('')
     
-      setTimeout(() => {
-        executionStateUpdateRef.current?.({
-          next: [],
-          values: {},
-          history: finalVisitedNodes.map(node => ({ node })),
-        })
-        setStreamEvents([])
-      }, CHAT_CLEANUP_DELAY)
+    // Send final state update immediately (don't wait for timeout) to preserve highlighting
+    // Preserve last message count to avoid StatusWindow showing "messages: X -> 0"
+    executionStateUpdateRef.current?.({
+      next: [],
+      values: { message_count: lastMessageCountRef.current },
+      history: finalVisitedNodes.map(node => ({ node })),
+    })
+    
+    setTimeout(() => {
+      setStreamEvents([])
+    }, CHAT_CLEANUP_DELAY)
     
     prevStateRef.current = { visitedNodes: finalVisitedNodes, activeNode: null }
     return newFinalResponse
@@ -397,11 +420,14 @@ export default function ChatInterface({ token, onChatStateChange, onExecutionSta
       if (timeoutRef.current !== null) {
         clearTimeout(timeoutRef.current)
       }
+      // Only reset execution state on error - on success, handleGraphEnd will send final state
+      // Don't reset execution state here as it clears the highlighting immediately after execution
       timeoutRef.current = window.setTimeout(() => {
         setVisitedNodes([])
         setActiveNode(null)
         setStreamEvents([])
-        executionStateUpdateRef.current?.(null)
+        // Don't reset execution state here - let it persist for highlighting
+        // executionStateUpdateRef.current?.(null)  // Removed - prevents highlighting from being cleared
         onChatStateChange?.(false)
         timeoutRef.current = null
       }, CHAT_CLEANUP_DELAY)
