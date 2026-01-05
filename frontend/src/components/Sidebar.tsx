@@ -15,8 +15,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ user, onLogout }: SidebarProps) {
-  // Sidebar is always minimal (collapsed)
-  const collapsed = true
+  // Sidebar is always minimal
   const [iconError, setIconError] = React.useState(false)
 
   return (
