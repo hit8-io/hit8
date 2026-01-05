@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Send, LogOut, Maximize2, Minimize2 } from 'lucide-react'
+import { Send, Maximize2, Minimize2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Button } from './ui/button'
@@ -26,7 +26,6 @@ interface User {
 interface ChatInterfaceProps {
   readonly token: string
   readonly user: User
-  readonly onLogout: () => void
   readonly onChatStateChange?: (active: boolean, threadId?: string | null) => void
   readonly onExecutionStateUpdate?: (state: ExecutionState | null) => void
   readonly isExpanded?: boolean
@@ -43,7 +42,7 @@ interface ErrorWithType extends Error {
 
 const API_URL = import.meta.env.VITE_API_URL
 
-export default function ChatInterface({ token, user: _user, onLogout, onChatStateChange, onExecutionStateUpdate, isExpanded = false, onToggleExpand }: ChatInterfaceProps) {
+export default function ChatInterface({ token, user: _user, onChatStateChange, onExecutionStateUpdate, isExpanded = false, onToggleExpand }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -390,9 +389,6 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
         <div className="p-4 border-b flex justify-between items-center">
           <h1 className="text-2xl font-bold">Hit8 Chat</h1>
           <div className="flex items-center gap-4">
-            <Button variant="outline" size="icon" onClick={onLogout} title="Sign out">
-              <LogOut className="h-4 w-4" />
-            </Button>
             {onToggleExpand && (
               <Button variant="outline" size="icon" onClick={onToggleExpand} title={isExpanded ? "Show graph and status" : "Expand chat"}>
                 {isExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}

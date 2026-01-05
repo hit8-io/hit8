@@ -6,6 +6,7 @@ import LoginScreen from './components/LoginScreen'
 import GraphView from './components/GraphView'
 import StatusWindow from './components/StatusWindow'
 import StatusBar from './components/StatusBar'
+import { Sidebar } from './components/Sidebar'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { Card, CardDescription, CardHeader, CardTitle } from './components/ui/card'
 import type { ExecutionState } from './types/execution'
@@ -175,45 +176,53 @@ function App() {
   return (
     <ErrorBoundary>
       <div className="h-screen bg-background flex flex-col overflow-hidden">
-        {/* Grid Layout */}
-        <div className="flex-1 min-h-0 grid grid-cols-12 grid-rows-[auto_1fr] gap-4 p-4 overflow-hidden transition-all duration-300 ease-in-out">
-          {/* Chat Interface - Left Column */}
-          <div className={`${isChatExpanded ? 'col-span-12' : 'col-span-12 lg:col-span-7'} row-span-2 flex flex-col min-h-0 overflow-hidden transition-all duration-300 ease-in-out`}>
+        {/* Sidebar */}
+        <Sidebar 
+          user={user} 
+          onLogout={handleLogout}
+        />
+
+        {/* Main Content - Adjusted for sidebar (always minimal width) */}
+        <div className="flex-1 min-h-0 ml-16 flex flex-col overflow-hidden">
+          {/* Grid Layout */}
+          <div className="flex-1 min-h-0 grid grid-cols-12 grid-rows-[auto_1fr] gap-4 p-4 overflow-hidden transition-all duration-300 ease-in-out">
+            {/* Chat Interface - Left Column */}
+            <div className={`${isChatExpanded ? 'col-span-12' : 'col-span-12 lg:col-span-7'} row-span-2 flex flex-col min-h-0 overflow-hidden transition-all duration-300 ease-in-out`}>
             <ChatInterface 
               token={idToken} 
               user={user} 
-              onLogout={handleLogout}
               onChatStateChange={handleChatStateChange}
               onExecutionStateUpdate={handleExecutionStateUpdate}
               isExpanded={isChatExpanded}
               onToggleExpand={toggleChatExpanded}
             />
+            </div>
+
+            {/* Graph View - Top Right */}
+            {!isChatExpanded && (
+              <div className="col-span-12 lg:col-span-5 row-span-1 flex flex-col min-h-0 overflow-hidden transition-all duration-300 ease-in-out">
+                <GraphView
+                  apiUrl={API_URL}
+                  token={idToken}
+                  executionState={executionState}
+                />
+              </div>
+            )}
+
+            {/* Status Window - Bottom Right */}
+            {!isChatExpanded && (
+              <div className="col-span-12 lg:col-span-5 row-span-1 flex flex-col min-h-0 overflow-hidden transition-all duration-300 ease-in-out">
+                <StatusWindow
+                  executionState={executionState}
+                  isLoading={isChatActive}
+                />
+              </div>
+            )}
           </div>
 
-          {/* Graph View - Top Right */}
-          {!isChatExpanded && (
-            <div className="col-span-12 lg:col-span-5 row-span-1 flex flex-col min-h-0 overflow-hidden transition-all duration-300 ease-in-out">
-              <GraphView
-                apiUrl={API_URL}
-                token={idToken}
-                executionState={executionState}
-              />
-            </div>
-          )}
-
-          {/* Status Window - Bottom Right */}
-          {!isChatExpanded && (
-            <div className="col-span-12 lg:col-span-5 row-span-1 flex flex-col min-h-0 overflow-hidden transition-all duration-300 ease-in-out">
-              <StatusWindow
-                executionState={executionState}
-                isLoading={isChatActive}
-              />
-            </div>
-          )}
+          {/* Status Bar - Bottom Full Width */}
+          <StatusBar apiUrl={API_URL} token={idToken} userName={user.name} />
         </div>
-
-        {/* Status Bar - Bottom Full Width */}
-        <StatusBar apiUrl={API_URL} token={idToken} userName={user.name} />
       </div>
     </ErrorBoundary>
   )
