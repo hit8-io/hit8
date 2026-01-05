@@ -1,7 +1,11 @@
 substitutions:
+  _PROJECT_ID: 'hit8-poc'
   _VERSION: 'latest'
   _IMAGE_NAME: 'europe-west1-docker.pkg.dev/${_PROJECT_ID}/backend/api'
   _TAG: 'latest'
+
+# Note: Substitutions can be overridden via --substitutions flag
+# The workflow passes: _IMAGE_NAME, _TAG, _VERSION, _PROJECT_ID
 
 steps:
   # ---------------------------------------------------------
