@@ -105,7 +105,12 @@ def create_graph() -> CompiledGraph:
     global _checkpointer, _checkpointer_cm
     
     # Initialize PostgreSQL checkpointer for persistent state storage
-    # Disable prepared statements for Supabase connection pooling compatibility
+    # 
+    # Connection Pooler Compatibility:
+    # - Supabase and other connection poolers (PgBouncer) don't support prepared statements
+    # - We disable prepared statements by setting prepare_threshold=None
+    # - This allows the connection to work with transaction-level pooling
+    # - Connection errors after successful operations are handled gracefully in chat streaming
     try:
         # Create connection with prepare_threshold=None to disable prepared statements
         # This is required for Supabase connection pooling which doesn't support prepared statements
@@ -126,12 +131,17 @@ def create_graph() -> CompiledGraph:
         logger.info(
             "postgres_checkpointer_initialized",
             database_url=settings.database_connection_string.split("@")[-1] if "@" in settings.database_connection_string else "configured",
+            connection_pooler_compatible=True,
         )
     except Exception as e:
+        error_type = type(e).__name__
+        error_msg = str(e)
         logger.error(
             "postgres_checkpointer_init_failed",
-            error=str(e),
-            error_type=type(e).__name__,
+            error=error_msg,
+            error_type=error_type,
+            database_url=settings.database_connection_string.split("@")[-1] if "@" in settings.database_connection_string else "configured",
+            hint="Check database connection string and network connectivity. Ensure connection pooler (if used) supports transaction-level pooling.",
         )
         raise
     

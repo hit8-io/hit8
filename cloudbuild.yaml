@@ -1,100 +1,14 @@
 substitutions:
-  _PROXY_URL: 'http://10.0.0.2:3128'
-  _SOCKS5_PROXY: '10.0.0.2 1080'
   _VERSION: 'latest'
   _IMAGE_NAME: 'europe-west1-docker.pkg.dev/${_PROJECT_ID}/backend/api'
   _TAG: 'latest'
-  _SUPABASE_VERSION: '2.67.1' # Updated to latest version
 
 steps:
   # ---------------------------------------------------------
-  # Step 1: Database Migration (SOCKS5 Tunnel with Ncat)
-  # ---------------------------------------------------------
-  - name: 'node:20-bookworm-slim'
-    id: 'db-migration'
-    entrypoint: 'bash'
-    secretEnv: ['DOPPLER_SECRETS_JSON']
-    env:
-      - 'PROXY_URL=${_PROXY_URL}'
-      - 'SOCKS5_PROXY=${_SOCKS5_PROXY}'
-      - 'SUPABASE_VERSION=${_SUPABASE_VERSION}'
-    args:
-      - '-c'
-      - |
-        set -e
-        export http_proxy=$$PROXY_URL
-        export https_proxy=$$PROXY_URL
-
-        echo "🔧 Installing utilities..."
-        # Install ncat (supports SOCKS5)
-        apt-get update -qq && apt-get install -y -qq ncat curl > /dev/null
-
-        echo "📥 Downloading Supabase CLI v$$SUPABASE_VERSION..."
-        curl -fSL "https://github.com/supabase/cli/releases/download/v${_SUPABASE_VERSION}/supabase_linux_amd64.tar.gz" -o supabase.tar.gz
-        tar -xzf supabase.tar.gz -C /usr/local/bin
-        chmod +x /usr/local/bin/supabase
-
-        echo "🔌 Setting up SOCKS5 Tunnel..."
-        
-        # 1. Parse Config safely in Node
-        eval $(node -e '
-          try {
-            const secrets = JSON.parse(process.env.DOPPLER_SECRETS_JSON);
-            const dbUrl = secrets.DIRECT_DB_CONNECTION_STRING;
-            
-            // Clean Proxy String
-            let proxyRaw = process.env.SOCKS5_PROXY || "";
-            proxyRaw = proxyRaw.replace(/^(socks5:\/\/|http:\/\/)/, "").replace(/:/g, " ");
-            const proxyParts = proxyRaw.split(" ").filter(Boolean);
-            
-            // Extract DB Target
-            const remoteHost = dbUrl.match(/@([^/:]+):?(\d+)?\//)[1];
-            const localUrl = dbUrl.replace(remoteHost, "127.0.0.1").replace(/:\d+\//, ":5432/");
-
-            console.log(`export PROXY_IP=${proxyParts[0]}`);
-            console.log(`export PROXY_PORT=${proxyParts[1] || "1080"}`);
-            console.log(`export TARGET_HOST=${remoteHost}`);
-            console.log(`export LOCAL_DB_URL="${localUrl}"`);
-          } catch(e) { console.error(e); process.exit(1); }
-        ')
-
-        echo "Tunneling: 127.0.0.1:5432 -> SOCKS5($$PROXY_IP:$$PROXY_PORT) -> $$TARGET_HOST:5432"
-
-        # 2. Start Ncat SOCKS5 Tunnel
-        ncat -v -l 5432 -k -c "ncat -v --proxy $$PROXY_IP:$$PROXY_PORT --proxy-type socks5 $$TARGET_HOST 5432" > /tmp/tunnel.log 2>&1 &
-        TUNNEL_PID=$$!
-        
-        sleep 5
-
-        # Check if tunnel is alive
-        if ! kill -0 $$TUNNEL_PID > /dev/null 2>&1; then
-            echo "❌ Tunnel crashed on startup. Logs:"
-            cat /tmp/tunnel.log
-            exit 1
-        fi
-
-        echo "🚀 Running Supabase Migration..."
-        if ! supabase db push --db-url "$$LOCAL_DB_URL"; then
-            echo "❌ Migration Failed. Tunnel Logs:"
-            cat /tmp/tunnel.log
-            exit 1
-        fi
-
-        # Cleanup
-        kill $$TUNNEL_PID
-
-  # ---------------------------------------------------------
-  # Step 2: Build Application (Kaniko with Proxy)
+  # Build Application
   # ---------------------------------------------------------
   - name: 'gcr.io/kaniko-project/executor:latest'
     id: 'build-image'
-    waitFor: ['db-migration']
-    # Kaniko needs the proxy to pull the base image (python:3.11)
-    env:
-      - 'HTTP_PROXY=${_PROXY_URL}'
-      - 'HTTPS_PROXY=${_PROXY_URL}'
-      # NO_PROXY is critical so Kaniko doesn't proxy internal Google calls (like pushing images)
-      - 'NO_PROXY=169.254.169.254,metadata.google.internal,googleapis.com,gcr.io,pkg.dev'
     args:
       - '--dockerfile=Dockerfile'
       - '--context=dir://./backend'
@@ -103,16 +17,3 @@ steps:
       - '--destination=${_IMAGE_NAME}:latest'
       - '--build-arg=PRODUCTION=true'
       - '--cache=true'
-      # Pass proxy args to the build process (so pip/apt work inside Dockerfile)
-      - '--build-arg=http_proxy=${_PROXY_URL}'
-      - '--build-arg=https_proxy=${_PROXY_URL}'
-      - '--build-arg=no_proxy=169.254.169.254,metadata.google.internal,googleapis.com,gcr.io,pkg.dev'
-
-availableSecrets:
-  secretManager:
-  - versionName: projects/${_PROJECT_ID}/secrets/doppler-hit8-prod/versions/latest
-    env: 'DOPPLER_SECRETS_JSON'
-
-options:
-  pool:
-    name: 'projects/${_PROJECT_ID}/locations/europe-west1/workerPools/private-pool-1'

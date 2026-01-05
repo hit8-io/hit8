@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Button } from './ui/button'
 import { getApiHeaders } from '../utils/api'
+import { getUserFriendlyError, logError, isBenignConnectionError } from '../utils/errorHandling'
 import { Input } from './ui/input'
 import { Card } from './ui/card'
 import { ScrollArea } from './ui/scroll-area'
@@ -137,7 +138,19 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
       })
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        // Try to get error message from response
+        let errorMessage = `Request failed with status ${response.status}`
+        try {
+          const errorData = await response.json()
+          if (errorData.detail) {
+            errorMessage = errorData.detail
+          }
+        } catch {
+          // If response is not JSON, use default message
+        }
+        const error = new Error(errorMessage)
+        ;(error as any).statusCode = response.status
+        throw error
       }
 
       // Read the stream with timeout
@@ -259,41 +272,27 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
               } else if (data.type === 'error') {
                 const errorMessage = data.error && data.error.trim() ? data.error : 'Unknown error occurred'
                 const errorType = data.error_type || 'Error'
+                const error = new Error(errorMessage)
+                ;(error as any).type = errorType
                 
-                // Some errors are benign (like connection closed after successful completion)
-                // OperationalError with "connection is closed" is often a normal closure after completion
-                const isConnectionClosed = (
-                  errorMessage.toLowerCase().includes('connection is closed') || 
-                  errorMessage.toLowerCase().includes('connection closed')
-                ) && (
-                  errorType === 'OperationalError' || 
-                  errorType === 'Operational'
-                )
-                
-                // Suppress connection closed errors if:
-                // 1. We have accumulated content (stream completed successfully)
-                // 2. OR we've received a graph_end event (stream completed)
-                // 3. OR we have a final response
+                // Check if this is a benign connection error
                 const hasCompleted = accumulatedContent.length > 0 || finalResponse.length > 0 || graphEndReceived
+                const isBenign = isBenignConnectionError(error, hasCompleted)
                 
-                if (isConnectionClosed && hasCompleted) {
+                if (isBenign) {
                   // Connection closed after successful completion - this is normal
                   // Silently ignore - don't log, don't set error, just continue
-                  // The stream completed successfully, connection closure is expected
-                } else if (isConnectionClosed) {
-                  // Connection closed but no content - might be premature closure
-                  // Log as warning but don't treat as fatal error
-                  console.warn('⚠️ Stream connection closed (no content yet):', errorMessage)
-                  // Don't set hasError - allow stream to continue or complete gracefully
                 } else {
                   // Actual error - log and throw
                   hasError = true
-                  console.error('🚨 Stream error received:', errorMessage)
-                  console.error('Error type:', errorType)
-                  console.error('Thread ID:', data.thread_id)
-                  console.error('Full error data:', JSON.stringify(data, null, 2))
+                  logError('ChatInterface: Stream error', {
+                    error: errorMessage,
+                    errorType,
+                    threadId: data.thread_id,
+                    data,
+                  })
                   
-                  throw new Error(errorMessage)
+                  throw error
                 }
               }
             } catch {
@@ -331,19 +330,18 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
 
     } catch (error) {
       hasError = true
-      let errorMessage = 'Sorry, I encountered an error. Please try again.'
-      if (error instanceof Error) {
-        errorMessage = error.message
-      }
       
-      // Log error to console for debugging with full details
-      console.error('🚨 Chat stream error:', errorMessage)
-      console.error('Error object:', error)
-      console.error('Thread ID:', threadId)
-      console.error('Error type:', error instanceof Error ? error.constructor.name : typeof error)
-      if (error instanceof Error && error.stack) {
-        console.error('Stack trace:', error.stack)
-      }
+      // Log error for debugging (only in development)
+      logError('ChatInterface: Chat stream error', {
+        error,
+        threadId,
+      })
+      
+      // Get user-friendly error message
+      const apiError = getUserFriendlyError(error)
+      const errorMessage = apiError.isUserFriendly 
+        ? apiError.message 
+        : 'Sorry, I encountered an error. Please try again.'
       
       const errorMsg: Message = {
         id: crypto.randomUUID(),

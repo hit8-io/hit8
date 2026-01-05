@@ -51,6 +51,47 @@ logger = structlog.get_logger(__name__)
 router = APIRouter()
 
 
+def _is_benign_connection_error(error: Exception, accumulated_content: str) -> bool:
+    """Check if an error is a benign connection closure after successful completion.
+    
+    Connection poolers (like Supabase) may close idle connections after operations complete.
+    If we have accumulated content, the stream completed successfully and the connection
+    closure is expected behavior, not an error.
+    
+    Args:
+        error: The exception that occurred
+        accumulated_content: Content that was successfully accumulated before the error
+        
+    Returns:
+        True if this is a benign connection error that can be ignored
+    """
+    if not accumulated_content:
+        return False
+    
+    error_str = str(error).lower()
+    error_type_name = type(error).__name__
+    
+    # Check for connection closure patterns
+    connection_closed_patterns = (
+        "connection is closed",
+        "connection closed",
+        "connection was closed",
+        "connection has been closed",
+        "server closed the connection",
+    )
+    
+    is_connection_closed = any(pattern in error_str for pattern in connection_closed_patterns)
+    is_operational_error = error_type_name == "OperationalError"
+    
+    # Also check for psycopg connection errors
+    is_psycopg_error = (
+        error_type_name in ("InterfaceError", "OperationalError") and
+        ("connection" in error_str or "closed" in error_str)
+    )
+    
+    return is_connection_closed or is_operational_error or is_psycopg_error
+
+
 class EventCaptureCallbackHandler(BaseCallbackHandler):
     """Callback handler to capture LLM and tool events for real-time streaming."""
     
@@ -696,24 +737,14 @@ def _run_content_stream(
             )
             
     except Exception as e:
-        error_str = str(e).lower()
-        error_type_name = type(e).__name__
+        # Handle connection pooler errors gracefully
+        is_benign_error = _is_benign_connection_error(e, accumulated_content)
         
-        # Check if this is a benign connection closure after successful completion
-        # This can happen with connection poolers (like Supabase) that close idle connections
-        is_connection_closed = (
-            "connection is closed" in error_str or 
-            "connection closed" in error_str or
-            error_type_name == "OperationalError"
-        )
-        
-        # Only treat as error if we don't have accumulated content
-        # If we have content, the stream completed successfully and connection closure is benign
-        if is_connection_closed and accumulated_content:
+        if is_benign_error:
             logger.warning(
                 "content_stream_connection_closed_after_completion",
                 error=str(e),
-                error_type=error_type_name,
+                error_type=type(e).__name__,
                 thread_id=thread_id,
                 accumulated_content_length=len(accumulated_content),
                 message="Connection closed after successful stream completion - this is normal with connection poolers",
@@ -726,15 +757,9 @@ def _run_content_stream(
             logger.exception(
                 "content_stream_error",
                 error=str(e),
-                error_type=error_type_name,
+                error_type=type(e).__name__,
                 thread_id=thread_id,
                 exc_info=True,
-            )
-            import traceback
-            logger.error(
-                "content_stream_traceback",
-                traceback=traceback.format_exc(),
-                thread_id=thread_id,
             )
     finally:
         logger.info("content_stream_finally", thread_id=thread_id)

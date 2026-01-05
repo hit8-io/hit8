@@ -16,7 +16,6 @@ env:
   SERVICE_NAME: hit8-api
   REGION: europe-west1
   SECRET_NAME: doppler-hit8-prod
-  # Use Artifact Registry (faster & modern) instead of legacy gcr.io
   IMAGE_REPO: europe-west1-docker.pkg.dev/hit8-poc/backend/api
 
 jobs:
@@ -52,11 +51,11 @@ jobs:
 
       - name: Build and Push Docker Image
         run: |-
-          # Using Artifact Registry path and clean Proxy format
+          # Using Artifact Registry path
           gcloud builds submit \
             --config cloudbuild.yaml \
             --region=europe-west1 \
-            --substitutions=_IMAGE_NAME=$IMAGE_REPO,_TAG=$GITHUB_SHA,_VERSION=${{ steps.version.outputs.version }},_PROJECT_ID=$PROJECT_ID,_PROXY_URL=http://10.0.0.2:3128,_SOCKS5_PROXY="10.0.0.2 1080" \
+            --substitutions=_IMAGE_NAME=$IMAGE_REPO,_TAG=$GITHUB_SHA,_VERSION=${{ steps.version.outputs.version }},_PROJECT_ID=$PROJECT_ID \
             . || {
               # Check if build succeeded despite log streaming errors
               if gcloud artifacts docker images describe $IMAGE_REPO:$GITHUB_SHA --format="value(image_summary.digest)" 2>/dev/null; then

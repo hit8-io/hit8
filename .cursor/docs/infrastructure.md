@@ -56,6 +56,14 @@ The frontend is deployed on **Cloudflare Pages** as a static site.
 
 ### Networking
 
+**VPC Configuration:**
+- **VPC Network**: `production-vpc`
+- **Subnet**: `production-subnet` (10.0.0.0/24)
+- **Cloud Router**: `production-router`
+- **NAT Gateway**: `production-nat-gateway`
+- **Static Egress IP**: `production-static-egress-ip`
+- **Cloud Run**: Connected to VPC with all traffic egressing through NAT gateway for static IP
+
 **CORS Configuration:**
 - **Allowed Origins** (Production):
   - `https://www.hit8.io`

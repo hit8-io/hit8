@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { CheckCircle2, XCircle, AlertCircle, Wifi, WifiOff } from 'lucide-react'
 import { getApiHeaders } from '../utils/api'
+import { getUserFriendlyError, logError } from '../utils/errorHandling'
 
 interface StatusBarProps {
   apiUrl: string
@@ -72,8 +73,9 @@ export default function StatusBar({ apiUrl, token, userName }: StatusBarProps) {
       } catch (error) {
         setApiHealth('unhealthy')
         setConnectionStatus('disconnected')
-        const errorMessage = error instanceof Error ? error.message : 'Connection failed'
-        addError(errorMessage)
+        logError('StatusBar: Health check error', error)
+        const apiError = getUserFriendlyError(error)
+        addError(apiError.message)
       }
     }
 
@@ -89,15 +91,14 @@ export default function StatusBar({ apiUrl, token, userName }: StatusBarProps) {
           setMetadata(data)
         } else {
           // Log metadata fetch failure but don't show error to user (non-critical)
-          if (import.meta.env.DEV) {
-            console.error('Failed to fetch metadata:', response.status, response.statusText)
-          }
+          logError('StatusBar: Metadata fetch failed', {
+            status: response.status,
+            statusText: response.statusText,
+          })
         }
       } catch (error) {
         // Log metadata fetch error but don't show to user (non-critical)
-        if (import.meta.env.DEV) {
-          console.error('Error fetching metadata:', error)
-        }
+        logError('StatusBar: Metadata fetch error', error)
       }
     }
 
@@ -113,15 +114,14 @@ export default function StatusBar({ apiUrl, token, userName }: StatusBarProps) {
           setVersion(data.version)
         } else {
           // Log version fetch failure but don't show error to user (non-critical)
-          if (import.meta.env.DEV) {
-            console.error('Failed to fetch version:', response.status, response.statusText)
-          }
+          logError('StatusBar: Version fetch failed', {
+            status: response.status,
+            statusText: response.statusText,
+          })
         }
       } catch (error) {
         // Log version fetch error but don't show to user (non-critical)
-        if (import.meta.env.DEV) {
-          console.error('Error fetching version:', error)
-        }
+        logError('StatusBar: Version fetch error', error)
       }
     }
 

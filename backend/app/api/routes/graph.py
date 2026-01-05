@@ -29,14 +29,6 @@ def _serialize_messages(state: Any) -> list[dict[str, Any]]:
     messages = []
     if hasattr(state, "values") and "messages" in state.values:
         for msg in state.values["messages"]:
-            # #region debug log - serializing message
-            import json
-            try:
-                with open('/Users/jan/dev/hit8/.cursor/debug.log', 'a') as f:
-                    f.write(json.dumps({"location":"graph.py:_serialize_messages","message":"Serializing message","data":{"msgType":type(msg).__name__,"hasToolCalls":hasattr(msg,"tool_calls") if hasattr(msg,"tool_calls") else False,"toolCallsCount":len(msg.tool_calls) if hasattr(msg,"tool_calls") and msg.tool_calls else 0,"hasResponseMetadata":hasattr(msg,"response_metadata") if hasattr(msg,"response_metadata") else False},"timestamp":int(__import__('time').time()*1000),"sessionId":"debug-session","runId":"run1","hypothesisId":"A"}) + '\n')
-            except: pass
-            # #endregion
-            
             msg_dict: dict[str, Any] = {
                 "type": type(msg).__name__,
             }
@@ -77,39 +69,13 @@ def _serialize_messages(state: Any) -> list[dict[str, Any]]:
                     msg_dict["name"] = msg.name
             
             # Add usage_metadata if available (for token counts)
-            # #region debug log - checking response_metadata
-            try:
-                with open('/Users/jan/dev/hit8/.cursor/debug.log', 'a') as f:
-                    f.write(json.dumps({"location":"graph.py:_serialize_messages","message":"Checking response_metadata","data":{"hasResponseMetadata":hasattr(msg,"response_metadata"),"responseMetadataType":type(msg.response_metadata).__name__ if hasattr(msg,"response_metadata") else None,"responseMetadataKeys":list(msg.response_metadata.keys()) if hasattr(msg,"response_metadata") and isinstance(msg.response_metadata,dict) else [],"responseMetadataPreview":json.dumps(msg.response_metadata)[:500] if hasattr(msg,"response_metadata") and msg.response_metadata else None},"timestamp":int(__import__('time').time()*1000),"sessionId":"debug-session","runId":"run1","hypothesisId":"A"}) + '\n')
-            except: pass
-            # #endregion
-            
             if hasattr(msg, "response_metadata") and msg.response_metadata:
                 metadata = msg.response_metadata
                 if isinstance(metadata, dict):
                     if "token_usage" in metadata:
                         msg_dict["usage_metadata"] = metadata["token_usage"]
-                        # #region debug log - token_usage found
-                        try:
-                            with open('/Users/jan/dev/hit8/.cursor/debug.log', 'a') as f:
-                                f.write(json.dumps({"location":"graph.py:_serialize_messages","message":"token_usage found","data":{"tokenUsage":metadata["token_usage"],"tokenUsageType":type(metadata["token_usage"]).__name__,"tokenUsageKeys":list(metadata["token_usage"].keys()) if isinstance(metadata["token_usage"],dict) else []},"timestamp":int(__import__('time').time()*1000),"sessionId":"debug-session","runId":"run1","hypothesisId":"A"}) + '\n')
-                        except: pass
-                        # #endregion
                     elif "usage_metadata" in metadata:
                         msg_dict["usage_metadata"] = metadata["usage_metadata"]
-                        # #region debug log - usage_metadata found
-                        try:
-                            with open('/Users/jan/dev/hit8/.cursor/debug.log', 'a') as f:
-                                f.write(json.dumps({"location":"graph.py:_serialize_messages","message":"usage_metadata found","data":{"usageMetadata":metadata["usage_metadata"],"usageMetadataType":type(metadata["usage_metadata"]).__name__,"usageMetadataKeys":list(metadata["usage_metadata"].keys()) if isinstance(metadata["usage_metadata"],dict) else []},"timestamp":int(__import__('time').time()*1000),"sessionId":"debug-session","runId":"run1","hypothesisId":"A"}) + '\n')
-                        except: pass
-                        # #endregion
-            
-            # #region debug log - message serialized
-            try:
-                with open('/Users/jan/dev/hit8/.cursor/debug.log', 'a') as f:
-                    f.write(json.dumps({"location":"graph.py:_serialize_messages","message":"Message serialized","data":{"msgType":msg_dict.get("type"),"hasToolCalls":"tool_calls" in msg_dict,"toolCallsCount":len(msg_dict.get("tool_calls",[])),"hasUsageMetadata":"usage_metadata" in msg_dict,"serializedPreview":json.dumps(msg_dict).substring(0,500)},"timestamp":int(__import__('time').time()*1000),"sessionId":"debug-session","runId":"run1","hypothesisId":"A"}) + '\n')
-            except: pass
-            # #endregion
             
             messages.append(msg_dict)
     return messages

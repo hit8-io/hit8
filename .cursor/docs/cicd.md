@@ -75,9 +75,10 @@ env:
 **Build Process:**
 - Uses Kaniko executor for container builds
 - Builds Docker image from `Dockerfile`
-- Pushes to Google Container Registry (GCR)
-- Tags: Git SHA and `latest`
+- Pushes to Artifact Registry
+- Tags: Git SHA, version from VERSION file, and `latest`
 - Enables caching for faster builds
+- Note: Database migrations are performed manually outside of CI/CD
 
 **Step 6: Deploy to Cloud Run**
 ```yaml
@@ -110,24 +111,29 @@ env:
 
 **Configuration:**
 ```yaml
+substitutions:
+  _VERSION: 'latest'
+  _IMAGE_NAME: 'europe-west1-docker.pkg.dev/${_PROJECT_ID}/backend/api'
+  _TAG: 'latest'
+
 steps:
   - name: 'gcr.io/kaniko-project/executor:latest'
+    id: 'build-image'
     args:
       - '--dockerfile=Dockerfile'
-      - '--context=dir://.'
+      - '--context=dir://./backend'
       - '--destination=${_IMAGE_NAME}:${_TAG}'
+      - '--destination=${_IMAGE_NAME}:${_VERSION}'
       - '--destination=${_IMAGE_NAME}:latest'
       - '--build-arg=PRODUCTION=true'
       - '--cache=true'
-      - '--cache-ttl=24h'
-      - '--cache-repo=gcr.io/${_PROJECT_ID}/cache'
 ```
 
 **Features:**
 - Kaniko executor (no Docker daemon needed)
-- Multi-stage caching for faster builds
 - Builds and pushes in single step
-- Tags with both SHA and `latest`
+- Tags with Git SHA, version from VERSION file, and `latest`
+- Uses default Cloud Build worker pool (no VPC required)
 
 ## Frontend CI/CD Pipeline
 
@@ -195,10 +201,11 @@ steps:
 2. GitHub Actions workflow triggered
 3. Code checked out
 4. Authenticated to Google Cloud
-5. Docker image built and pushed to GCR
+5. Docker image built and pushed to Artifact Registry
 6. Cloud Run service updated with new image
 7. Secrets injected from GCP Secret Manager
 8. Service deployed and ready
+9. Note: Database migrations must be performed manually before or after deployment
 
 **Frontend:**
 1. Developer pushes to `main` branch
@@ -234,24 +241,26 @@ steps:
 **Steps:**
 ```bash
 # 1. Build and push image
-cd backend
 gcloud builds submit \
   --config cloudbuild.yaml \
   --region=europe-west1 \
-  --substitutions=_IMAGE_NAME=gcr.io/hit8-poc/hit8-api,_TAG=manual-$(date +%s),_PROJECT_ID=hit8-poc
+  --substitutions=_IMAGE_NAME=europe-west1-docker.pkg.dev/hit8-poc/backend/api,_TAG=manual-$(date +%s),_VERSION=latest,_PROJECT_ID=hit8-poc
 
 # 2. Deploy to Cloud Run
 gcloud run deploy hit8-api \
-  --image gcr.io/hit8-poc/hit8-api:latest \
+  --image europe-west1-docker.pkg.dev/hit8-poc/backend/api:latest \
   --platform managed \
   --region europe-west1 \
   --allow-unauthenticated \
-  --set-env-vars="ENVIRONMENT=prod" \
+  --network=production-vpc \
+  --subnet=production-subnet \
+  --vpc-egress=all-traffic \
+  --set-env-vars="ENVIRONMENT=prd" \
   --set-secrets="DOPPLER_SECRETS_JSON=projects/617962194338/secrets/doppler-hit8-prod:latest" \
   --memory=2Gi \
   --cpu=2 \
   --timeout=300 \
-  --max-instances=10 \
+  --max-instances=3 \
   --min-instances=0
 ```
 
