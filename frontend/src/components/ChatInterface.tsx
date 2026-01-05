@@ -33,6 +33,14 @@ interface ChatInterfaceProps {
   readonly onToggleExpand?: () => void
 }
 
+interface ErrorWithStatusCode extends Error {
+  statusCode: number
+}
+
+interface ErrorWithType extends Error {
+  type: string
+}
+
 const API_URL = import.meta.env.VITE_API_URL
 
 export default function ChatInterface({ token, user: _user, onLogout, onChatStateChange, onExecutionStateUpdate, isExpanded = false, onToggleExpand }: ChatInterfaceProps) {
@@ -141,15 +149,14 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
         // Try to get error message from response
         let errorMessage = `Request failed with status ${response.status}`
         try {
-          const errorData = await response.json()
+          const errorData = await response.json() as { detail?: string }
           if (errorData.detail) {
             errorMessage = errorData.detail
           }
         } catch {
           // If response is not JSON, use default message
         }
-        const error = new Error(errorMessage)
-        ;(error as any).statusCode = response.status
+        const error: ErrorWithStatusCode = Object.assign(new Error(errorMessage), { statusCode: response.status })
         throw error
       }
 
@@ -190,7 +197,7 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
           if (line.startsWith('data: ')) {
             try {
               const rawData = line.slice(6) // Remove 'data: ' prefix
-              const data = JSON.parse(rawData)
+              const data = JSON.parse(rawData) as Partial<StreamEvent> & { type?: string; content?: string; node?: string; response?: string; error?: string; error_type?: string; thread_id?: string }
               
               // Handle different event types
               if (data.type === 'graph_start') {
@@ -233,20 +240,24 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
                 setStreamEvents(prev => [...prev, toolEvent])
               } else if (data.type === 'node_start') {
                 // Node is starting - mark as active
-                const nodeName = data.node
-                setActiveNode(nodeName)
+                const nodeName = typeof data.node === 'string' ? data.node : null
+                if (nodeName) {
+                  setActiveNode(nodeName)
+                }
               } else if (data.type === 'node_end') {
                 // Node completed - add to visited nodes and mark as inactive
-                const nodeName = data.node
+                const nodeName = typeof data.node === 'string' ? data.node : null
                 setActiveNode(null)
-                const updatedVisitedNodes = visitedNodes.includes(nodeName) 
-                  ? visitedNodes 
-                  : [...visitedNodes, nodeName]
-                setVisitedNodes(updatedVisitedNodes)
+                if (nodeName) {
+                  const updatedVisitedNodes = visitedNodes.includes(nodeName) 
+                    ? visitedNodes 
+                    : [...visitedNodes, nodeName]
+                  setVisitedNodes(updatedVisitedNodes)
+                }
               } else if (data.type === 'graph_end') {
                 // Graph execution completed
                 graphEndReceived = true
-                finalResponse = data.response || accumulatedContent || ''
+                finalResponse = (typeof data.response === 'string' ? data.response : '') || accumulatedContent || ''
                 // Ensure any active node is marked as visited before clearing
                 const finalVisitedNodes = activeNode && !visitedNodes.includes(activeNode)
                   ? [...visitedNodes, activeNode]
@@ -270,10 +281,9 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
                 // Update prevStateRef to ensure useEffect recognizes the change
                 prevStateRef.current = { visitedNodes: finalVisitedNodes, activeNode: null }
               } else if (data.type === 'error') {
-                const errorMessage = data.error && data.error.trim() ? data.error : 'Unknown error occurred'
+                const errorMessage = data.error && typeof data.error === 'string' && data.error.trim() ? data.error : 'Unknown error occurred'
                 const errorType = data.error_type || 'Error'
-                const error = new Error(errorMessage)
-                ;(error as any).type = errorType
+                const error: ErrorWithType = Object.assign(new Error(errorMessage), { type: errorType })
                 
                 // Check if this is a benign connection error
                 const hasCompleted = accumulatedContent.length > 0 || finalResponse.length > 0 || graphEndReceived
@@ -329,8 +339,6 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
       }
 
     } catch (error) {
-      hasError = true
-      
       // Log error for debugging (only in development)
       logError('ChatInterface: Chat stream error', {
         error,
@@ -369,10 +377,10 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
     }
   }
 
-  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      handleSend()
+      void handleSend()
     }
   }
 
@@ -517,13 +525,13 @@ export default function ChatInterface({ token, user: _user, onLogout, onChatStat
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyPress={handleKeyPress}
+              onKeyDown={handleKeyDown}
               placeholder="Type your message..."
               disabled={isLoading}
               className="flex-1"
             />
             <Button
-              onClick={handleSend}
+              onClick={() => void handleSend()}
               disabled={isLoading || !input.trim()}
               size="icon"
             >
