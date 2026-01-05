@@ -55,7 +55,7 @@ jobs:
           gcloud builds submit \
             --config cloudbuild.yaml \
             --region=europe-west1 \
-            --substitutions=_IMAGE_NAME=$IMAGE_REPO,_TAG=$GITHUB_SHA,_VERSION=${{ steps.version.outputs.version }},_PROJECT_ID=$PROJECT_ID \
+            --substitutions=_IMAGE_NAME=$IMAGE_REPO,_TAG=$GITHUB_SHA,_VERSION=${{ steps.version.outputs.version }} \
             . || {
               # Check if build succeeded despite log streaming errors
               if gcloud artifacts docker images describe $IMAGE_REPO:$GITHUB_SHA --format="value(image_summary.digest)" 2>/dev/null; then
