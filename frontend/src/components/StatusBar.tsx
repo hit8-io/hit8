@@ -2,11 +2,12 @@ import { useState, useEffect, useCallback } from 'react'
 import { CheckCircle2, XCircle, AlertCircle, Wifi, WifiOff } from 'lucide-react'
 import { getApiHeaders } from '../utils/api'
 import { getUserFriendlyError, logError } from '../utils/errorHandling'
+import { ERROR_AUTO_DISMISS_DELAY, HEALTH_CHECK_INTERVAL, METADATA_FETCH_INTERVAL, VERSION_FETCH_INTERVAL } from '../constants'
 
 interface StatusBarProps {
-  apiUrl: string
-  token: string | null
-  userName?: string | null
+  readonly apiUrl: string
+  readonly token: string | null
+  readonly userName?: string | null
 }
 
 interface ErrorItem {
@@ -18,12 +19,15 @@ interface ErrorItem {
 export default function StatusBar({ apiUrl, token, userName }: StatusBarProps) {
   const [apiHealth, setApiHealth] = useState<'healthy' | 'unhealthy' | 'unknown'>('unknown')
   // Initialize connection status based on apiUrl and token
-  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected'>(() => 
-    apiUrl && token ? 'disconnected' : 'disconnected'
-  )
+  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected'>('disconnected')
   const [errors, setErrors] = useState<ErrorItem[]>([])
   const [metadata, setMetadata] = useState<{ account?: string; org?: string; project?: string; environment?: string; log_level?: string } | null>(null)
   const [version, setVersion] = useState<string | null>(null)
+
+  // Define dismissError helper to reduce nesting
+  const dismissError = useCallback((errorId: string) => {
+    setErrors((prev) => prev.filter((e) => e.id !== errorId))
+  }, [])
 
   // Define addError before useEffect to avoid hoisting issues
   const addError = useCallback((message: string) => {
@@ -34,11 +38,11 @@ export default function StatusBar({ apiUrl, token, userName }: StatusBarProps) {
     }
     setErrors((prev) => [...prev.slice(-4), errorItem]) // Keep last 5 errors
 
-    // Auto-dismiss after 10 seconds
+    // Auto-dismiss after delay
     setTimeout(() => {
-      setErrors((prev) => prev.filter((e) => e.id !== errorItem.id))
-    }, 10000)
-  }, [])
+      dismissError(errorItem.id)
+    }, ERROR_AUTO_DISMISS_DELAY)
+  }, [dismissError])
 
   // Derive connection status from apiUrl and token instead of setting in effect
   const shouldBeConnected = !!(apiUrl && token)
@@ -56,7 +60,7 @@ export default function StatusBar({ apiUrl, token, userName }: StatusBarProps) {
         })
 
         if (response.ok) {
-          const data = await response.json()
+          const data = await response.json() as { status?: string }
           if (data.status === 'healthy') {
             setApiHealth('healthy')
             setConnectionStatus('connected')
@@ -87,7 +91,7 @@ export default function StatusBar({ apiUrl, token, userName }: StatusBarProps) {
         })
 
         if (response.ok) {
-          const data = await response.json()
+          const data = await response.json() as { account?: string; org?: string; project?: string; environment?: string; log_level?: string }
           setMetadata(data)
         } else {
           // Log metadata fetch failure but don't show error to user (non-critical)
@@ -110,8 +114,8 @@ export default function StatusBar({ apiUrl, token, userName }: StatusBarProps) {
         })
 
         if (response.ok) {
-          const data = await response.json()
-          setVersion(data.version)
+          const data = await response.json() as { version?: string }
+          setVersion(data.version ?? null)
         } else {
           // Log version fetch failure but don't show error to user (non-critical)
           logError('StatusBar: Version fetch failed', {
@@ -126,14 +130,20 @@ export default function StatusBar({ apiUrl, token, userName }: StatusBarProps) {
     }
 
     // Initial checks
-    checkHealth()
-    fetchMetadata()
-    fetchVersion()
+    void checkHealth()
+    void fetchMetadata()
+    void fetchVersion()
 
     // Poll every 5 seconds
-    const interval = setInterval(checkHealth, 5000)
-    const metadataInterval = setInterval(fetchMetadata, 30000) // Fetch metadata every 30 seconds
-    const versionInterval = setInterval(fetchVersion, 30000) // Fetch version every 30 seconds
+    const interval = setInterval(() => {
+      void checkHealth()
+    }, HEALTH_CHECK_INTERVAL)
+    const metadataInterval = setInterval(() => {
+      void fetchMetadata()
+    }, METADATA_FETCH_INTERVAL)
+    const versionInterval = setInterval(() => {
+      void fetchVersion()
+    }, VERSION_FETCH_INTERVAL)
 
     return () => {
       clearInterval(interval)
@@ -215,9 +225,21 @@ export default function StatusBar({ apiUrl, token, userName }: StatusBarProps) {
       <div className="flex items-center gap-2">
         {getHealthIcon()}
         <span className="text-muted-foreground">API:</span>
-        <span className={apiHealth === 'healthy' ? 'text-green-600' : apiHealth === 'unhealthy' ? 'text-red-600' : 'text-yellow-600'}>
-          {apiHealth === 'healthy' ? 'Healthy' : apiHealth === 'unhealthy' ? 'Unhealthy' : 'Unknown'}
-        </span>
+        {(() => {
+          let apiHealthClass: string
+          let apiHealthText: string
+          if (apiHealth === 'healthy') {
+            apiHealthClass = 'text-green-600'
+            apiHealthText = 'Healthy'
+          } else if (apiHealth === 'unhealthy') {
+            apiHealthClass = 'text-red-600'
+            apiHealthText = 'Unhealthy'
+          } else {
+            apiHealthClass = 'text-yellow-600'
+            apiHealthText = 'Unknown'
+          }
+          return <span className={apiHealthClass}>{apiHealthText}</span>
+        })()}
       </div>
 
       <div className="flex items-center gap-2">
@@ -225,9 +247,11 @@ export default function StatusBar({ apiUrl, token, userName }: StatusBarProps) {
           <>
             {getConnectionIcon()}
             <span className="text-muted-foreground">Connection:</span>
-            <span className={connectionStatus === 'connected' ? 'text-green-600' : 'text-red-600'}>
-              {connectionStatus === 'connected' ? 'Connected' : 'Disconnected'}
-            </span>
+            {(() => {
+              const connectionClass = connectionStatus === 'connected' ? 'text-green-600' : 'text-red-600'
+              const connectionText = connectionStatus === 'connected' ? 'Connected' : 'Disconnected'
+              return <span className={connectionClass}>{connectionText}</span>
+            })()}
           </>
         ) : (
           <>

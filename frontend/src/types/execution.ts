@@ -1,11 +1,32 @@
+export interface TokenUsage {
+  prompt_tokens?: number
+  completion_tokens?: number
+  total_tokens?: number
+  [key: string]: number | undefined
+}
+
+export interface ToolCall {
+  name: string
+  args: string
+  id?: string
+}
+
+export interface Message {
+  type?: string
+  content?: unknown
+  tokens?: number
+  tool_calls?: ToolCall[]
+  [key: string]: unknown
+}
+
 export interface ExecutionState {
   next?: string[]
   values?: {
-    messages?: unknown[]
+    messages?: Message[]
     message_count?: number
   }
   history?: unknown[]
-  streamEvents?: StreamEvent[] // Recent stream events for real-time logging
+  streamEvents?: StreamEvent[]
 }
 
 export type StreamEvent =
@@ -14,7 +35,7 @@ export type StreamEvent =
   | { type: 'node_start'; node: string; thread_id: string }
   | { type: 'node_end'; node: string; thread_id: string }
   | { type: 'llm_start'; model: string; input_preview: string; thread_id: string }
-  | { type: 'llm_end'; model: string; input_preview: string; output_preview: string; token_usage?: any; tool_calls?: Array<{ name: string; args: any; id?: string }>; thread_id: string }
+  | { type: 'llm_end'; model: string; input_preview: string; output_preview: string; token_usage?: TokenUsage; tool_calls?: ToolCall[]; thread_id: string }
   | { type: 'tool_start'; tool_name: string; args_preview: string; thread_id: string }
   | { type: 'tool_end'; tool_name: string; args_preview: string; result_preview: string; thread_id: string }
   | { type: 'state_update'; next: string[]; message_count: number; thread_id: string }

@@ -8,24 +8,11 @@ import { getUserFriendlyError, logError, isBenignConnectionError } from '../util
 import { Input } from './ui/input'
 import { Card } from './ui/card'
 import { ScrollArea } from './ui/scroll-area'
-import type { ExecutionState, StreamEvent } from '../types/execution'
-
-interface Message {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-}
-
-interface User {
-  id: string
-  email: string
-  name: string
-  picture: string
-}
+import type { Message, ExecutionState, StreamEvent } from '../types'
+import { STREAM_TIMEOUT, STREAM_INACTIVITY_TIMEOUT, CHAT_CLEANUP_DELAY } from '../constants'
 
 interface ChatInterfaceProps {
   readonly token: string
-  readonly user: User
   readonly onChatStateChange?: (active: boolean, threadId?: string | null) => void
   readonly onExecutionStateUpdate?: (state: ExecutionState | null) => void
   readonly isExpanded?: boolean
@@ -42,7 +29,7 @@ interface ErrorWithType extends Error {
 
 const API_URL = import.meta.env.VITE_API_URL
 
-export default function ChatInterface({ token, user: _user, onChatStateChange, onExecutionStateUpdate, isExpanded = false, onToggleExpand }: ChatInterfaceProps) {
+export default function ChatInterface({ token, onChatStateChange, onExecutionStateUpdate, isExpanded = false, onToggleExpand }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -107,6 +94,248 @@ export default function ChatInterface({ token, user: _user, onChatStateChange, o
     )
   }
 
+  const handleResponseError = async (response: Response): Promise<never> => {
+    let errorMessage = `Request failed with status ${response.status}`
+    try {
+      const errorData = await response.json() as { detail?: string }
+      if (errorData.detail) {
+        errorMessage = errorData.detail
+      }
+    } catch {
+      // If response is not JSON, use default message
+    }
+    const error: ErrorWithStatusCode = Object.assign(new Error(errorMessage), { statusCode: response.status })
+    throw error
+  }
+
+  const checkTimeouts = (startTime: number, lastActivityTime: number): void => {
+    const now = Date.now()
+    
+    if (now - startTime > STREAM_TIMEOUT) {
+      throw new Error('Stream timeout: The request took too long to complete')
+    }
+    if (now - lastActivityTime > STREAM_INACTIVITY_TIMEOUT) {
+      throw new Error('Stream timeout: No data received for 30 seconds')
+    }
+  }
+
+  const handleGraphStart = (): void => {
+    setStreamEvents([])
+    setVisitedNodes([])
+    setActiveNode(null)
+  }
+
+  const handleContentChunk = (data: { content?: string }, accumulatedContent: string): string => {
+    const chunkContent = data.content || ''
+    const newAccumulatedContent = accumulatedContent + chunkContent
+    setStreamingContent(newAccumulatedContent)
+    return newAccumulatedContent
+  }
+
+  const handleStateUpdate = (data: StreamEvent & { type: 'state_update' }): void => {
+    setActiveNode(data.next && data.next.length > 0 ? data.next[0] : null)
+    setStreamEvents(prev => [...prev, data])
+    executionStateUpdateRef.current?.({
+      next: data.next || [],
+      values: { message_count: data.message_count || 0 },
+      history: visitedNodes.map(node => ({ node })),
+      streamEvents: streamEvents.length > 0 ? [...streamEvents, data] : [data],
+    })
+  }
+
+  const handleLlmEvent = (data: StreamEvent & { type: 'llm_start' | 'llm_end' }): void => {
+    setStreamEvents(prev => [...prev, data])
+  }
+
+  const handleToolEvent = (data: StreamEvent & { type: 'tool_start' | 'tool_end' }): void => {
+    setStreamEvents(prev => [...prev, data])
+  }
+
+  const handleNodeStart = (data: { node?: string }): void => {
+    const nodeName = typeof data.node === 'string' ? data.node : null
+    if (nodeName) {
+      setActiveNode(nodeName)
+    }
+  }
+
+  const handleNodeEnd = (data: { node?: string }): void => {
+    const nodeName = typeof data.node === 'string' ? data.node : null
+    setActiveNode(null)
+    if (nodeName && !visitedNodes.includes(nodeName)) {
+      setVisitedNodes([...visitedNodes, nodeName])
+    }
+  }
+
+  const handleGraphEnd = (data: { response?: string }, accumulatedContent: string): string => {
+    const newFinalResponse = (typeof data.response === 'string' ? data.response : '') || accumulatedContent || ''
+    const finalVisitedNodes = activeNode && !visitedNodes.includes(activeNode)
+      ? [...visitedNodes, activeNode]
+      : visitedNodes
+    setVisitedNodes(finalVisitedNodes)
+    setActiveNode(null)
+    setStreamingContent('')
+    
+      setTimeout(() => {
+        executionStateUpdateRef.current?.({
+          next: [],
+          values: {},
+          history: finalVisitedNodes.map(node => ({ node })),
+        })
+        setStreamEvents([])
+      }, CHAT_CLEANUP_DELAY)
+    
+    prevStateRef.current = { visitedNodes: finalVisitedNodes, activeNode: null }
+    return newFinalResponse
+  }
+
+  const handleStreamError = (
+    data: { error?: string; error_type?: string; thread_id?: string },
+    accumulatedContent: string,
+    finalResponse: string,
+    graphEndReceived: boolean
+  ): never => {
+    const errorMessage = data.error && typeof data.error === 'string' && data.error.trim() ? data.error : 'Unknown error occurred'
+    const errorType = data.error_type || 'Error'
+    const error: ErrorWithType = Object.assign(new Error(errorMessage), { type: errorType })
+    
+    const hasCompleted = accumulatedContent.length > 0 || finalResponse.length > 0 || graphEndReceived
+    const isBenign = isBenignConnectionError(error, hasCompleted)
+    
+    if (!isBenign) {
+      logError('ChatInterface: Stream error', {
+        error: errorMessage,
+        errorType,
+        threadId: data.thread_id,
+        data,
+      })
+      throw error
+    }
+    throw error
+  }
+
+  const processStreamEvent = (
+    data: Partial<StreamEvent> & { type?: string; content?: string; node?: string; response?: string; error?: string; error_type?: string; thread_id?: string },
+    accumulatedContent: string,
+    finalResponse: string,
+    graphEndReceived: boolean,
+    hasError: boolean
+  ): { accumulatedContent: string; finalResponse: string; graphEndReceived: boolean; hasError: boolean } => {
+    switch (data.type) {
+      case 'graph_start':
+        handleGraphStart()
+        return { accumulatedContent, finalResponse, graphEndReceived, hasError }
+      case 'content_chunk':
+        return { accumulatedContent: handleContentChunk(data, accumulatedContent), finalResponse, graphEndReceived, hasError }
+      case 'state_update':
+        handleStateUpdate(data as StreamEvent & { type: 'state_update' })
+        return { accumulatedContent, finalResponse, graphEndReceived, hasError }
+      case 'llm_start':
+      case 'llm_end':
+        handleLlmEvent(data as StreamEvent & { type: 'llm_start' | 'llm_end' })
+        return { accumulatedContent, finalResponse, graphEndReceived, hasError }
+      case 'tool_start':
+      case 'tool_end':
+        handleToolEvent(data as StreamEvent & { type: 'tool_start' | 'tool_end' })
+        return { accumulatedContent, finalResponse, graphEndReceived, hasError }
+      case 'node_start':
+        handleNodeStart(data)
+        return { accumulatedContent, finalResponse, graphEndReceived, hasError }
+      case 'node_end':
+        handleNodeEnd(data)
+        return { accumulatedContent, finalResponse, graphEndReceived, hasError }
+      case 'graph_end':
+        return { accumulatedContent, finalResponse: handleGraphEnd(data, accumulatedContent), graphEndReceived: true, hasError }
+      case 'error':
+        handleStreamError(data, accumulatedContent, finalResponse, graphEndReceived)
+        return { accumulatedContent, finalResponse, graphEndReceived, hasError: true }
+      default:
+        return { accumulatedContent, finalResponse, graphEndReceived, hasError }
+    }
+  }
+
+  const addAssistantMessage = (content: string): void => {
+    const assistantMessage: Message = {
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      content,
+    }
+    setMessages((prev) => [...prev, assistantMessage])
+  }
+
+  const handleStreamCompletion = (
+    finalResponse: string,
+    accumulatedContent: string,
+    hasError: boolean
+  ): void => {
+    setStreamingContent('')
+
+    if (hasError) {
+      return
+    }
+
+    const responseToUse = finalResponse || accumulatedContent
+    if (responseToUse) {
+      addAssistantMessage(responseToUse)
+    } else {
+      addAssistantMessage('No response received from the server. Please try again.')
+    }
+  }
+
+  const processStreamLine = (
+    line: string,
+    accumulatedContent: string,
+    finalResponse: string,
+    graphEndReceived: boolean,
+    hasError: boolean
+  ): { accumulatedContent: string; finalResponse: string; graphEndReceived: boolean; hasError: boolean } => {
+    if (!line.startsWith('data: ')) {
+      return { accumulatedContent, finalResponse, graphEndReceived, hasError }
+    }
+
+    try {
+      const rawData = line.slice(6)
+      const data = JSON.parse(rawData) as Partial<StreamEvent> & { type?: string; content?: string; node?: string; response?: string; error?: string; error_type?: string; thread_id?: string }
+      return processStreamEvent(data, accumulatedContent, finalResponse, graphEndReceived, hasError)
+    } catch {
+      return { accumulatedContent, finalResponse, graphEndReceived, hasError }
+    }
+  }
+
+  const readStream = async (
+    reader: ReadableStreamDefaultReader<Uint8Array>,
+    decoder: TextDecoder
+  ): Promise<{ accumulatedContent: string; finalResponse: string; graphEndReceived: boolean; hasError: boolean }> => {
+    let buffer = ''
+    let accumulatedContent = ''
+    let finalResponse = ''
+    let graphEndReceived = false
+    let hasError = false
+    const startTime = Date.now()
+    let lastActivityTime = Date.now()
+
+    while (true) {
+      checkTimeouts(startTime, lastActivityTime)
+
+      const { done, value } = await reader.read()
+      if (done) break
+
+      lastActivityTime = Date.now()
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        const result = processStreamLine(line, accumulatedContent, finalResponse, graphEndReceived, hasError)
+        accumulatedContent = result.accumulatedContent
+        finalResponse = result.finalResponse
+        graphEndReceived = result.graphEndReceived
+        hasError = result.hasError
+      }
+    }
+
+    return { accumulatedContent, finalResponse, graphEndReceived, hasError }
+  }
+
   const handleSend = async () => {
     if (!input.trim() || isLoading) return
 
@@ -119,22 +348,13 @@ export default function ChatInterface({ token, user: _user, onChatStateChange, o
     setInput('')
     setIsLoading(true)
 
-    // Generate thread_id on frontend
     const threadId = crypto.randomUUID()
-
-    // Notify parent that chat is active with thread_id
     onChatStateChange?.(true, threadId)
 
-    // Reset streaming state and events
     setStreamingContent('')
     setStreamEvents([])
-    let accumulatedContent = '' // Track accumulated content from chunks
-    let finalResponse = ''
-    let hasError = false
-    let graphEndReceived = false // Track if graph_end event was received
 
     try {
-      // Use fetch for streaming SSE response
       const response = await fetch(`${API_URL}/chat`, {
         method: 'POST',
         headers: getApiHeaders(token),
@@ -145,21 +365,9 @@ export default function ChatInterface({ token, user: _user, onChatStateChange, o
       })
 
       if (!response.ok) {
-        // Try to get error message from response
-        let errorMessage = `Request failed with status ${response.status}`
-        try {
-          const errorData = await response.json() as { detail?: string }
-          if (errorData.detail) {
-            errorMessage = errorData.detail
-          }
-        } catch {
-          // If response is not JSON, use default message
-        }
-        const error: ErrorWithStatusCode = Object.assign(new Error(errorMessage), { statusCode: response.status })
-        throw error
+        await handleResponseError(response)
       }
 
-      // Read the stream with timeout
       const reader = response.body?.getReader()
       const decoder = new TextDecoder()
 
@@ -167,184 +375,12 @@ export default function ChatInterface({ token, user: _user, onChatStateChange, o
         throw new Error('No response body reader available')
       }
 
-      let buffer = ''
-      const STREAM_TIMEOUT = 60000 // 60 seconds timeout
-      const startTime = Date.now()
-      let lastActivityTime = Date.now()
-
-      while (true) {
-        // Check for overall timeout
-        if (Date.now() - startTime > STREAM_TIMEOUT) {
-          throw new Error('Stream timeout: The request took too long to complete')
-        }
-
-        // Check for inactivity timeout (30 seconds without data)
-        if (Date.now() - lastActivityTime > 30000) {
-          throw new Error('Stream timeout: No data received for 30 seconds')
-        }
-
-        const { done, value } = await reader.read()
-        
-        if (done) break
-
-        lastActivityTime = Date.now()
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || '' // Keep incomplete line in buffer
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const rawData = line.slice(6) // Remove 'data: ' prefix
-              const data = JSON.parse(rawData) as Partial<StreamEvent> & { type?: string; content?: string; node?: string; response?: string; error?: string; error_type?: string; thread_id?: string }
-              
-              // Handle different event types
-              if (data.type === 'graph_start') {
-                // Graph execution started
-                setStreamEvents([]) // Reset events for new execution
-                setVisitedNodes([])
-                setActiveNode(null)
-              } else if (data.type === 'content_chunk') {
-                // Incremental content chunk received
-                const chunkContent = data.content || ''
-                accumulatedContent += chunkContent
-                setStreamingContent(accumulatedContent)
-              } else if (data.type === 'state_update') {
-                // Real-time state update from stream_events - no polling needed
-                const stateEvent = data as StreamEvent & { type: 'state_update' }
-                // Also update active node based on next nodes
-                if (stateEvent.next && stateEvent.next.length > 0) {
-                  setActiveNode(stateEvent.next[0])
-                } else {
-                  setActiveNode(null)
-                }
-                // Add state_update to streamEvents and let useEffect sync state
-                setStreamEvents(prev => [...prev, stateEvent])
-                // Also trigger immediate state update for state_update events
-                executionStateUpdateRef.current?.({
-                  next: stateEvent.next || [],
-                  values: {
-                    message_count: stateEvent.message_count || 0,
-                  },
-                  history: visitedNodes.map(node => ({ node })),
-                  streamEvents: streamEvents.length > 0 ? [...streamEvents, stateEvent] : [stateEvent],
-                })
-              } else if (data.type === 'llm_start' || data.type === 'llm_end') {
-                // LLM call event - add to stream events (useEffect will sync state)
-                const llmEvent = data as StreamEvent & { type: 'llm_start' | 'llm_end' }
-                setStreamEvents(prev => [...prev, llmEvent])
-              } else if (data.type === 'tool_start' || data.type === 'tool_end') {
-                // Tool invocation event - add to stream events (useEffect will sync state)
-                const toolEvent = data as StreamEvent & { type: 'tool_start' | 'tool_end' }
-                setStreamEvents(prev => [...prev, toolEvent])
-              } else if (data.type === 'node_start') {
-                // Node is starting - mark as active
-                const nodeName = typeof data.node === 'string' ? data.node : null
-                if (nodeName) {
-                  setActiveNode(nodeName)
-                }
-              } else if (data.type === 'node_end') {
-                // Node completed - add to visited nodes and mark as inactive
-                const nodeName = typeof data.node === 'string' ? data.node : null
-                setActiveNode(null)
-                if (nodeName) {
-                  const updatedVisitedNodes = visitedNodes.includes(nodeName) 
-                    ? visitedNodes 
-                    : [...visitedNodes, nodeName]
-                  setVisitedNodes(updatedVisitedNodes)
-                }
-              } else if (data.type === 'graph_end') {
-                // Graph execution completed
-                graphEndReceived = true
-                finalResponse = (typeof data.response === 'string' ? data.response : '') || accumulatedContent || ''
-                // Ensure any active node is marked as visited before clearing
-                const finalVisitedNodes = activeNode && !visitedNodes.includes(activeNode)
-                  ? [...visitedNodes, activeNode]
-                  : visitedNodes
-                setVisitedNodes(finalVisitedNodes)
-                setActiveNode(null) // Clear active node
-                setStreamingContent('') // Clear streaming content
-                
-                // Final state will be sent via state_update events, no need to fetch
-                // Clear state after a short delay to allow StatusWindow to process final events
-                setTimeout(() => {
-                  executionStateUpdateRef.current?.({
-                    next: [],
-                    values: {},
-                    history: finalVisitedNodes.map(node => ({ node })),
-                  })
-                  // Clear stream events after processing
-                  setStreamEvents([])
-                }, 1000)
-                
-                // Update prevStateRef to ensure useEffect recognizes the change
-                prevStateRef.current = { visitedNodes: finalVisitedNodes, activeNode: null }
-              } else if (data.type === 'error') {
-                const errorMessage = data.error && typeof data.error === 'string' && data.error.trim() ? data.error : 'Unknown error occurred'
-                const errorType = data.error_type || 'Error'
-                const error: ErrorWithType = Object.assign(new Error(errorMessage), { type: errorType })
-                
-                // Check if this is a benign connection error
-                const hasCompleted = accumulatedContent.length > 0 || finalResponse.length > 0 || graphEndReceived
-                const isBenign = isBenignConnectionError(error, hasCompleted)
-                
-                if (isBenign) {
-                  // Connection closed after successful completion - this is normal
-                  // Silently ignore - don't log, don't set error, just continue
-                } else {
-                  // Actual error - log and throw
-                  hasError = true
-                  logError('ChatInterface: Stream error', {
-                    error: errorMessage,
-                    errorType,
-                    threadId: data.thread_id,
-                    data,
-                  })
-                  
-                  throw error
-                }
-              }
-            } catch {
-              // Silently skip malformed SSE data
-            }
-          }
-        }
-      }
-
-      // If stream ended without graph_end, use accumulated content if available
-      if (!finalResponse && !hasError && accumulatedContent) {
-        finalResponse = accumulatedContent
-      }
-
-      // Clear streaming content
-      setStreamingContent('')
-
-      // Add final assistant message
-      if (finalResponse && !hasError) {
-        const assistantMessage: Message = {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: finalResponse,
-        }
-        setMessages((prev) => [...prev, assistantMessage])
-      } else if (!finalResponse && !hasError) {
-        // If no response was received, show an error
-        const errorMsg: Message = {
-          id: crypto.randomUUID(),
-          role: 'assistant',
-          content: 'No response received from the server. Please try again.',
-        }
-        setMessages((prev) => [...prev, errorMsg])
-      }
+      const { accumulatedContent, finalResponse, hasError } = await readStream(reader, decoder)
+      handleStreamCompletion(finalResponse, accumulatedContent, hasError)
 
     } catch (error) {
-      // Log error for debugging (only in development)
-      logError('ChatInterface: Chat stream error', {
-        error,
-        threadId,
-      })
+      logError('ChatInterface: Chat stream error', { error, threadId })
       
-      // Get user-friendly error message
       const apiError = getUserFriendlyError(error)
       const errorMessage = apiError.isUserFriendly 
         ? apiError.message 
@@ -358,21 +394,17 @@ export default function ChatInterface({ token, user: _user, onChatStateChange, o
       setMessages((prev) => [...prev, errorMsg])
     } finally {
       setIsLoading(false)
-      // Keep chat active briefly to allow final state update, then deactivate
-      // Clear any existing timeout
       if (timeoutRef.current !== null) {
         clearTimeout(timeoutRef.current)
       }
       timeoutRef.current = window.setTimeout(() => {
-        // Reset visited nodes, active node, and stream events for next conversation
         setVisitedNodes([])
         setActiveNode(null)
         setStreamEvents([])
-        // Clear execution state when chat becomes inactive
         executionStateUpdateRef.current?.(null)
         onChatStateChange?.(false)
         timeoutRef.current = null
-      }, 1000)
+      }, CHAT_CLEANUP_DELAY)
     }
   }
 

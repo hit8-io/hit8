@@ -3,15 +3,11 @@ import { MessageSquare } from "lucide-react"
 import { UserMenu } from "./UserMenu"
 import { MenuItem } from "./MenuItem"
 import { cn } from "@/lib/utils"
+import type { User } from "../types"
 
 interface SidebarProps {
-  user: {
-    id: string
-    email: string
-    name: string
-    picture: string
-  }
-  onLogout: () => void
+  readonly user: User
+  readonly onLogout: () => void
 }
 
 export function Sidebar({ user, onLogout }: SidebarProps) {

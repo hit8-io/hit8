@@ -1,25 +1,11 @@
 import { useState, useEffect, useMemo } from 'react'
-import ReactFlow, { Node, Edge, Background, Controls, useNodesState, useEdgesState, useReactFlow, Position } from 'reactflow'
+import ReactFlow, { Node, Edge, Background, Controls, useNodesState, useEdgesState, useReactFlow } from 'reactflow'
 import 'reactflow/dist/style.css'
-
-// Suppress React Flow's false positive warning about nodeTypes/edgeTypes
-// This warning is triggered by React Strict Mode even when props are stable
-// We're not using custom nodeTypes/edgeTypes, so this warning is not applicable
-if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-  const originalWarn = console.warn
-  console.warn = (...args: unknown[]) => {
-    const message = typeof args[0] === 'string' ? args[0] : String(args[0])
-    // Suppress the specific React Flow warning about nodeTypes/edgeTypes
-    if (message.includes('[React Flow]: It looks like you\'ve created a new nodeTypes or edgeTypes object')) {
-      return // Suppress this specific warning
-    }
-    originalWarn.apply(console, args)
-  }
-}
-import dagre from 'dagre'
 import axios from 'axios'
 import { Card, CardContent } from './ui/card'
 import { getApiHeaders } from '../utils/api'
+import { getLayoutedElements } from '../utils/graphLayout'
+import { GRAPH_VIEW_FIT_DELAY } from '../constants'
 import type { ExecutionState } from '../types/execution'
 
 interface GraphViewProps {
@@ -28,14 +14,24 @@ interface GraphViewProps {
   executionState?: ExecutionState | null // Execution state from stream events
 }
 
-interface GraphStructure {
-  nodes?: Array<{ id: string; name?: string; [key: string]: unknown }>
-  edges?: Array<{ source: string; target: string; [key: string]: unknown }>
+interface GraphNode {
+  id: string
+  name?: string
   [key: string]: unknown
 }
 
-const nodeWidth = 150
-const nodeHeight = 50
+interface GraphEdge {
+  source: string
+  target: string
+  [key: string]: unknown
+}
+
+interface GraphStructure {
+  nodes?: GraphNode[]
+  edges?: GraphEdge[]
+  [key: string]: unknown
+}
+
 
 // Removed all nodeTypes/edgeTypes code since we're using React Flow's defaults
 // No custom node or edge types are needed for this implementation
@@ -49,7 +45,7 @@ function FitViewOnLoad({ nodeCount }: { nodeCount: number }) {
       // Fit view after a short delay to ensure nodes are rendered
       const timeoutId = setTimeout(() => {
         fitView({ padding: 0.1, maxZoom: 1.5, minZoom: 0.5 })
-      }, 100)
+      }, GRAPH_VIEW_FIT_DELAY)
       return () => clearTimeout(timeoutId)
     }
   }, [nodeCount, fitView])
@@ -57,33 +53,6 @@ function FitViewOnLoad({ nodeCount }: { nodeCount: number }) {
   return null
 }
 
-function getLayoutedElements(nodes: Node[], edges: Edge[], direction = 'TB') {
-  const dagreGraph = new dagre.graphlib.Graph()
-  dagreGraph.setDefaultEdgeLabel(() => ({}))
-  dagreGraph.setGraph({ rankdir: direction, nodesep: 50, ranksep: 100 })
-
-  nodes.forEach((node) => {
-    dagreGraph.setNode(node.id, { width: nodeWidth, height: nodeHeight })
-  })
-
-  edges.forEach((edge) => {
-    dagreGraph.setEdge(edge.source, edge.target)
-  })
-
-  dagre.layout(dagreGraph)
-
-  nodes.forEach((node) => {
-    const nodeWithPosition = dagreGraph.node(node.id)
-    node.targetPosition = Position.Top
-    node.sourcePosition = Position.Bottom
-    node.position = {
-      x: nodeWithPosition.x - nodeWidth / 2,
-      y: nodeWithPosition.y - nodeHeight / 2,
-    }
-  })
-
-  return { nodes, edges }
-}
 
 export default function GraphView({ apiUrl, token, executionState }: GraphViewProps) {
   

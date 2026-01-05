@@ -1,6 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
-import { initializeApp, getApps, FirebaseApp } from 'firebase/app'
-import { getAuth, User, signOut, onAuthStateChanged } from 'firebase/auth'
+import { useState, useCallback } from 'react'
 import ChatInterface from './components/ChatInterface'
 import LoginScreen from './components/LoginScreen'
 import GraphView from './components/GraphView'
@@ -9,97 +7,17 @@ import StatusBar from './components/StatusBar'
 import { Sidebar } from './components/Sidebar'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { Card, CardDescription, CardHeader, CardTitle } from './components/ui/card'
+import { useLocalStorage } from './hooks/useLocalStorage'
+import { useAuth } from './hooks/useAuth'
 import type { ExecutionState } from './types/execution'
-
-interface IdentityUser {
-  id: string
-  email: string
-  name: string
-  picture: string
-}
 
 const API_URL = import.meta.env.VITE_API_URL
 
 function App() {
-  const [user, setUser] = useState<IdentityUser | null>(null)
-  const [idToken, setIdToken] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [firebaseApp, setFirebaseApp] = useState<FirebaseApp | null>(null)
+  const { user, idToken, loading, firebaseApp, isConfigValid, logout } = useAuth()
   const [isChatActive, setIsChatActive] = useState(false)
   const [executionState, setExecutionState] = useState<ExecutionState | null>(null)
-  const [isChatExpanded, setIsChatExpanded] = useState(() => {
-    const saved = localStorage.getItem('chatExpanded')
-    return saved === 'true'
-  })
-
-  const firebaseConfig = useMemo(() => ({
-    apiKey: import.meta.env.VITE_GOOGLE_IDENTITY_PLATFORM_KEY,
-    authDomain: import.meta.env.VITE_GOOGLE_IDENTITY_PLATFORM_DOMAIN,
-    projectId: import.meta.env.VITE_GCP_PROJECT,
-  }), [])
-  const isConfigValid = !!(firebaseConfig.apiKey && firebaseConfig.authDomain && firebaseConfig.projectId)
-
-  useEffect(() => {
-    if (!isConfigValid) {
-      setLoading(false)
-      return
-    }
-
-    const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0]
-    setFirebaseApp(app)
-
-    const auth = getAuth(app)
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: User | null) => {
-      try {
-        if (firebaseUser) {
-          if (!firebaseUser.email) {
-            console.error('User email is required but not provided')
-            setUser(null)
-            setIdToken(null)
-            setLoading(false)
-            return
-          }
-          if (!firebaseUser.displayName) {
-            console.error('User display name is required but not provided')
-            setUser(null)
-            setIdToken(null)
-            setLoading(false)
-            return
-          }
-          if (!firebaseUser.photoURL) {
-            console.error('User photo URL is required but not provided')
-            setUser(null)
-            setIdToken(null)
-            setLoading(false)
-            return
-          }
-          const token = await firebaseUser.getIdToken(false)
-          setIdToken(token)
-          setUser({
-            id: firebaseUser.uid,
-            email: firebaseUser.email,
-            name: firebaseUser.displayName,
-            picture: firebaseUser.photoURL,
-          })
-        } else {
-          setUser(null)
-          setIdToken(null)
-        }
-      } catch (error) {
-        console.error('Error in auth state change:', error)
-        setUser(null)
-        setIdToken(null)
-      } finally {
-        setLoading(false)
-      }
-    })
-
-    return unsubscribe
-  }, [firebaseConfig, isConfigValid])
-
-  const handleLogout = async () => {
-    await signOut(getAuth(firebaseApp!))
-  }
+  const [isChatExpanded, setIsChatExpanded] = useLocalStorage<boolean>('chatExpanded', false)
 
   const handleChatStateChange = (active: boolean, _threadId?: string | null) => {
     setIsChatActive(active)
@@ -110,17 +28,8 @@ function App() {
   }, [])
 
   const toggleChatExpanded = useCallback(() => {
-    setIsChatExpanded((prev) => {
-      const newValue = !prev
-      localStorage.setItem('chatExpanded', String(newValue))
-      return newValue
-    })
-  }, [])
-
-  // Persist state to localStorage when it changes
-  useEffect(() => {
-    localStorage.setItem('chatExpanded', String(isChatExpanded))
-  }, [isChatExpanded])
+    setIsChatExpanded(!isChatExpanded)
+  }, [isChatExpanded, setIsChatExpanded])
 
   if (loading) {
     return (
@@ -179,7 +88,7 @@ function App() {
         {/* Sidebar */}
         <Sidebar 
           user={user} 
-          onLogout={handleLogout}
+          onLogout={logout}
         />
 
         {/* Main Content - Adjusted for sidebar (always minimal width) */}
@@ -190,7 +99,6 @@ function App() {
             <div className={`${isChatExpanded ? 'col-span-12' : 'col-span-12 lg:col-span-7'} row-span-2 flex flex-col min-h-0 overflow-hidden transition-all duration-300 ease-in-out`}>
             <ChatInterface 
               token={idToken} 
-              user={user} 
               onChatStateChange={handleChatStateChange}
               onExecutionStateUpdate={handleExecutionStateUpdate}
               isExpanded={isChatExpanded}
@@ -221,7 +129,7 @@ function App() {
           </div>
 
           {/* Status Bar - Bottom Full Width */}
-          <StatusBar apiUrl={API_URL} token={idToken} userName={user.name} />
+          {user && <StatusBar apiUrl={API_URL} token={idToken} userName={user.name} />}
         </div>
       </div>
     </ErrorBoundary>

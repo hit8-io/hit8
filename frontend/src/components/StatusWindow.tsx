@@ -1,13 +1,15 @@
 import { useState, useEffect, useRef } from 'react'
 import { Card, CardContent } from './ui/card'
 import { ScrollArea } from './ui/scroll-area'
+import { CONTENT_PREVIEW_LENGTH, CONTENT_PREVIEW_SHORT } from '../constants'
+import { formatTimestamp, formatNodeList, formatStateSummary, extractToolCalls, extractTokenCount, formatContentPreview, formatArgsPreview } from '../utils/formatStatus'
 import type { ExecutionState, StreamEvent } from '../types/execution'
 
 interface LogEntry {
   id: string
   timestamp: Date
   type: 'node_execution' | 'state_change' | 'tool_call' | 'tool_result' | 'llm_call' | 'tool_invocation'
-  message: string // Formatted log line
+  message: string
 }
 
 interface StatusWindowProps {
@@ -15,67 +17,8 @@ interface StatusWindowProps {
   isLoading?: boolean
 }
 
-function formatTimestamp(date: Date): string {
-  const hours = date.getHours().toString().padStart(2, '0')
-  const minutes = date.getMinutes().toString().padStart(2, '0')
-  const seconds = date.getSeconds().toString().padStart(2, '0')
-  const milliseconds = date.getMilliseconds().toString().padStart(3, '0')
-  return `${hours}:${minutes}:${seconds}.${milliseconds}`
-}
 
-function formatNodeList(nodes: string[] | undefined): string {
-  return nodes && nodes.length > 0 ? nodes.join(', ') : ''
-}
-
-function formatStateSummary(executionState: ExecutionState | null): string {
-  if (!executionState) return 'next=[], messages=0'
-  
-  const nodes = formatNodeList(executionState.next)
-  const messageCount = executionState.values?.message_count ?? executionState.values?.messages?.length ?? 0
-  return `next=[${nodes}], messages=${messageCount}`
-}
-
-function extractToolCalls(messages: unknown[] | undefined): Array<{ name: string; args: string; id?: string }> {
-  if (!messages || !Array.isArray(messages)) return []
-  
-  const toolCalls: Array<{ name: string; args: string; id?: string }> = []
-  
-  for (const msg of messages) {
-    if (msg && typeof msg === 'object') {
-      // Check for AIMessage with tool_calls
-      const msgType = 'type' in msg ? String(msg.type) : ''
-      if (msgType === 'AIMessage' || msgType === 'AIMessageChunk') {
-        // Try multiple possible field names
-        const toolCallsField = 
-          ('tool_calls' in msg ? msg.tool_calls : null) ||
-          ('toolCalls' in msg ? msg.toolCalls : null) ||
-          ('tool_calls' in msg && Array.isArray(msg.tool_calls) ? msg.tool_calls : null)
-        
-        if (Array.isArray(toolCallsField)) {
-          for (const toolCall of toolCallsField) {
-            if (toolCall && typeof toolCall === 'object') {
-              const name = ('name' in toolCall ? String(toolCall.name) : null) ||
-                          ('function' in toolCall && typeof toolCall.function === 'object' && 'name' in toolCall.function
-                            ? String(toolCall.function.name) : 'unknown')
-              const args = ('args' in toolCall ? JSON.stringify(toolCall.args) : null) ||
-                          ('function' in toolCall && typeof toolCall.function === 'object' && 'arguments' in toolCall.function
-                            ? String(toolCall.function.arguments) : '{}')
-              const id = ('id' in toolCall ? String(toolCall.id) : undefined) ||
-                        ('tool_call_id' in toolCall ? String(toolCall.tool_call_id) : undefined)
-              if (name && name !== 'unknown') {
-                toolCalls.push({ name, args: args || '{}', id })
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-  
-  return toolCalls
-}
-
-function extractToolResults(messages: unknown[] | undefined): Array<{ toolCallId: string; content: string; name?: string }> {
+function extractToolResultsLegacy(messages: unknown[] | undefined): Array<{ toolCallId: string; content: string; name?: string }> {
   if (!messages || !Array.isArray(messages)) return []
   
   const toolResults: Array<{ toolCallId: string; content: string; name?: string }> = []
@@ -116,28 +59,6 @@ function extractMessageContent(msg: unknown): string | null {
   return String(content)
 }
 
-function extractTokenCount(msg: unknown): number | null {
-  if (!msg || typeof msg !== 'object') return null
-  
-  // Check for usage information (common in LLM responses)
-  if ('usage_metadata' in msg && msg.usage_metadata && typeof msg.usage_metadata === 'object') {
-    const usage = msg.usage_metadata as { total_tokens?: number; input_tokens?: number; output_tokens?: number }
-    if (usage.total_tokens !== undefined) return usage.total_tokens
-    if (usage.input_tokens !== undefined && usage.output_tokens !== undefined) {
-      return usage.input_tokens + usage.output_tokens
-    }
-  }
-  
-  // Check for response_metadata
-  if ('response_metadata' in msg && msg.response_metadata && typeof msg.response_metadata === 'object') {
-    const metadata = msg.response_metadata as { token_usage?: { total_tokens?: number } }
-    if (metadata.token_usage?.total_tokens !== undefined) {
-      return metadata.token_usage.total_tokens
-    }
-  }
-  
-  return null
-}
 
 function getNewMessages(prevMessages: unknown[] | undefined, currentMessages: unknown[] | undefined): Array<{ type: string; content: string; tokens?: number }> {
   if (!Array.isArray(currentMessages)) return []
@@ -231,7 +152,7 @@ export default function StatusWindow({ executionState, isLoading }: StatusWindow
       const stateSummary = formatStateSummary(current)
       
       // Get tool call count for agent node
-      const toolCalls = extractToolCalls(current?.values?.messages)
+      const toolCalls = extractToolCalls(current?.values?.messages as unknown as import('../types/execution').Message[])
       const toolCallCount = toolCalls.length
       
       newNodes.forEach(node => {
@@ -270,9 +191,7 @@ export default function StatusWindow({ executionState, isLoading }: StatusWindow
         
         // Only log HumanMessage content, skip AIMessage content, summarize ToolMessage
         if (msg.type === 'HumanMessage' && msg.content) {
-          const contentPreview = msg.content.length > 100 
-            ? msg.content.substring(0, 100) + '...' 
-            : msg.content
+          const contentPreview = formatContentPreview(msg.content, CONTENT_PREVIEW_LENGTH)
           
           let message = `[${formatTimestamp(timestamp)}] [MESSAGE] ${msg.type}: ${contentPreview}`
           
@@ -290,9 +209,7 @@ export default function StatusWindow({ executionState, isLoading }: StatusWindow
         } else if (msg.type === 'ToolMessage' && msg.content) {
           // Summarize tool message content
           const contentStr = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
-          const contentPreview = contentStr.length > 80 
-            ? contentStr.substring(0, 80) + '...' 
-            : contentStr
+          const contentPreview = formatContentPreview(contentStr, CONTENT_PREVIEW_SHORT)
           
           newEntries.push({
             id: `${timestamp.getTime()}-${Math.random()}`,
@@ -322,7 +239,7 @@ export default function StatusWindow({ executionState, isLoading }: StatusWindow
             // For AIMessage, extract and log tool_calls and tokens (skip content)
             if (msgType === 'AIMessage') {
               const toolCalls = extractToolCalls([rawMsg])
-              const tokens = extractTokenCount(rawMsg)
+              const tokens = extractTokenCount(rawMsg as unknown as import('../types/execution').Message)
               
               // Log tool calls
               if (toolCalls.length > 0) {
@@ -334,24 +251,7 @@ export default function StatusWindow({ executionState, isLoading }: StatusWindow
                   }
                   
                   // Summarize args - show key/value pairs if JSON, otherwise truncate
-                  let argsPreview = toolCall.args
-                  try {
-                    const argsObj = JSON.parse(toolCall.args)
-                    if (typeof argsObj === 'object' && argsObj !== null) {
-                      const keyValuePairs = Object.entries(argsObj)
-                        .slice(0, 3) // Show first 3 key-value pairs
-                        .map(([k, v]) => `${k}=${String(v).substring(0, 30)}`)
-                      argsPreview = keyValuePairs.join(', ')
-                      if (Object.keys(argsObj).length > 3) {
-                        argsPreview += '...'
-                      }
-                    }
-                  } catch {
-                    // Not JSON, just truncate
-                    argsPreview = toolCall.args.length > 100 
-                      ? toolCall.args.substring(0, 100) + '...' 
-                      : toolCall.args
-                  }
+                  const argsPreview = formatArgsPreview(toolCall.args)
                   
                   newEntries.push({
                     id: `${timestamp.getTime()}-${Math.random()}`,
@@ -396,7 +296,7 @@ export default function StatusWindow({ executionState, isLoading }: StatusWindow
       // Extract all available information from current state
       const toolCalls = extractToolCalls(current?.values?.messages)
       const toolCallCount = toolCalls.length
-      const toolResults = extractToolResults(current?.values?.messages)
+      const toolResults = extractToolResultsLegacy(current?.values?.messages)
       const toolResultCount = toolResults.length
       
       // Count message types
@@ -476,7 +376,7 @@ export default function StatusWindow({ executionState, isLoading }: StatusWindow
         // Use PREVIOUS state to get the final execution details before clearing
         const stateToAnalyze = prevMessageCount > 0 ? prev : current
         const toolCalls = extractToolCalls(stateToAnalyze?.values?.messages)
-        const toolResults = extractToolResults(stateToAnalyze?.values?.messages)
+        const toolResults = extractToolResultsLegacy(stateToAnalyze?.values?.messages)
         const allMessages = stateToAnalyze?.values?.messages || []
         
         // Count message types
@@ -636,8 +536,8 @@ export default function StatusWindow({ executionState, isLoading }: StatusWindow
 
     // Detect new tool results from messages (compare with previous state)
     if (Array.isArray(currentMessages)) {
-      const prevToolResults = extractToolResults(prevMessages)
-      const currentToolResults = extractToolResults(currentMessages)
+      const prevToolResults = extractToolResultsLegacy(prevMessages)
+      const currentToolResults = extractToolResultsLegacy(currentMessages)
       
       // Create sets of tool result IDs to find new ones
       const prevToolResultIds = new Set(prevToolResults.map(tr => tr.toolCallId))

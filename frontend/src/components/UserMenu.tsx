@@ -3,14 +3,10 @@ import { LogOut } from "lucide-react"
 import { Popover } from "./ui/popover"
 import { Button } from "./ui/button"
 import { cn } from "@/lib/utils"
+import type { User } from "../types"
 
 interface UserMenuProps {
-  user: {
-    id: string
-    email: string
-    name: string
-    picture: string
-  }
+  user: User
   onLogout: () => void
 }
 
@@ -36,17 +32,10 @@ export function UserMenu({ user, onLogout }: UserMenuProps) {
             className={cn(
               "flex items-center justify-center rounded-full overflow-hidden",
               "hover:ring-2 hover:ring-ring transition-all cursor-pointer",
-              "w-10 h-10",
+              "w-10 h-10 min-w-[40px] min-h-[40px]",
               "bg-muted border-2 border-border",
               "shadow-sm"
             )}
-            style={{ 
-              minWidth: '40px', 
-              minHeight: '40px',
-              display: 'flex',
-              visibility: 'visible',
-              opacity: 1,
-            }}
           >
             {user.picture && !imageError ? (
               <img

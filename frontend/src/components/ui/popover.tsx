@@ -1,14 +1,15 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
+import { POPOVER_GAP, POPOVER_CLOSE_DELAY } from "../../constants"
 
 interface PopoverProps {
-  children: React.ReactNode
-  open?: boolean
-  onOpenChange?: (open: boolean) => void
-  trigger: React.ReactNode
-  align?: "start" | "center" | "end"
-  side?: "top" | "right" | "bottom" | "left"
-  className?: string
+  readonly children: React.ReactNode
+  readonly open?: boolean
+  readonly onOpenChange?: (open: boolean) => void
+  readonly trigger: React.ReactNode
+  readonly align?: "start" | "center" | "end"
+  readonly side?: "top" | "right" | "bottom" | "left"
+  readonly className?: string
 }
 
 export function Popover({
@@ -74,24 +75,23 @@ export function Popover({
 
     const triggerRect = triggerRef.current.getBoundingClientRect()
     const popoverRect = popoverRef.current.getBoundingClientRect()
-    const gap = 8
 
     let top = 0
     let left = 0
 
     switch (side) {
       case "bottom":
-        top = triggerRect.bottom + gap
+        top = triggerRect.bottom + POPOVER_GAP
         break
       case "top":
-        top = triggerRect.top - popoverRect.height - gap
+        top = triggerRect.top - popoverRect.height - POPOVER_GAP
         break
       case "right":
-        left = triggerRect.right + gap
+        left = triggerRect.right + POPOVER_GAP
         top = triggerRect.top
         break
       case "left":
-        left = triggerRect.left - popoverRect.width - gap
+        left = triggerRect.left - popoverRect.width - POPOVER_GAP
         top = triggerRect.top
         break
     }
@@ -127,7 +127,7 @@ export function Popover({
   }, [open, align, side])
 
   return (
-    <div className="relative inline-block">
+    <div className="relative">
       <div
         ref={triggerRef}
         onMouseEnter={() => setOpen(true)}
@@ -137,10 +137,9 @@ export function Popover({
             if (!popoverRef.current?.matches(":hover")) {
               setOpen(false)
             }
-          }, 100)
+          }, POPOVER_CLOSE_DELAY)
         }}
         onClick={() => setOpen(!open)}
-        style={{ display: 'inline-block' }}
       >
         {trigger}
       </div>
@@ -149,17 +148,12 @@ export function Popover({
           ref={popoverRef}
           className={cn(
             "fixed z-50 min-w-[8rem] rounded-md border shadow-lg",
-            "bg-white dark:bg-gray-900",
+            "bg-card text-card-foreground border-border",
             className
           )}
           style={{
             top: `${position.top}px`,
             left: `${position.left}px`,
-            backgroundColor: 'hsl(var(--card) / 1)',
-            color: 'hsl(var(--card-foreground) / 1)',
-            borderColor: 'hsl(var(--border) / 1)',
-            opacity: 1,
-            backdropFilter: 'none',
           }}
           onMouseEnter={() => setOpen(true)}
           onMouseLeave={() => setOpen(false)}
