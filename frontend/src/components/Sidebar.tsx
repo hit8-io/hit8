@@ -28,7 +28,7 @@ export function Sidebar({ user, onLogout }: SidebarProps) {
     >
       {/* User Menu */}
       <div className="p-3 border-b border-border flex items-center justify-center">
-        <UserMenu user={user} onLogout={onLogout} collapsed={collapsed} />
+        <UserMenu user={user} onLogout={onLogout} />
       </div>
 
       {/* Navigation Items */}

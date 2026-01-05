@@ -12,7 +12,6 @@ interface UserMenuProps {
     picture: string
   }
   onLogout: () => void
-  collapsed?: boolean
 }
 
 function getInitials(name: string): string {
@@ -23,7 +22,7 @@ function getInitials(name: string): string {
   return name.substring(0, 2).toUpperCase()
 }
 
-export function UserMenu({ user, onLogout, collapsed = false }: UserMenuProps) {
+export function UserMenu({ user, onLogout }: UserMenuProps) {
   const [open, setOpen] = React.useState(false)
   const [imageError, setImageError] = React.useState(false)
 
