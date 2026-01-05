@@ -24,13 +24,13 @@ interface User {
 }
 
 interface ChatInterfaceProps {
-  token: string
-  user: User
-  onLogout: () => void
-  onChatStateChange?: (active: boolean, threadId?: string | null) => void
-  onExecutionStateUpdate?: (state: ExecutionState | null) => void
-  isExpanded?: boolean
-  onToggleExpand?: () => void
+  readonly token: string
+  readonly user: User
+  readonly onLogout: () => void
+  readonly onChatStateChange?: (active: boolean, threadId?: string | null) => void
+  readonly onExecutionStateUpdate?: (state: ExecutionState | null) => void
+  readonly isExpanded?: boolean
+  readonly onToggleExpand?: () => void
 }
 
 const API_URL = import.meta.env.VITE_API_URL
