@@ -1,90 +1,29 @@
 defaults:
-  app_name: "Hit8 Chat API"
-  app_version: "0.2.0"
-  vertex_ai_model_name: "gemini-3-flash-preview"
-  vertex_ai_location: "global"
-  cors_allow_credentials: true
-  langfuse_enabled: true
-  log_level: INFO
-  log_format: json
-  account: "hit8"
-  org: "hit8"
-  project: "hit8-poc"
-  # Database connection string must be provided via DATABASE_CONNECTION_STRING environment variable
-  # Format: postgresql://user:password@host:port/database?sslmode=require
-  # For dev: postgresql://postgres:postgres@localhost:5432/postgres
-  # For prd: Use Supabase connection pooler (port 6543) for Cloud Run
-  logging:
-    version: 1
-    disable_existing_loggers: false
-    formatters:
-      json_formatter:
-        (): app.logging.StructlogJSONFormatter
-      console_formatter:
-        (): app.logging.StructlogConsoleFormatter
-    handlers:
-      console:
-        class: logging.StreamHandler
-        formatter: json_formatter
-        stream: ext://sys.stdout
-    loggers:
-      "":
-        handlers: [console]
-        level: INFO
-      app:
-        handlers: [console]
-        level: INFO
-        propagate: false
+  APP_NAME: "Hit8 Chat API"
+  APP_VERSION: "0.2.0"
+  VERTEX_AI_MODEL_NAME: "gemini-3-flash-preview"
+  VERTEX_AI_LOCATION: "global"
+  CORS_ALLOW_CREDENTIALS: true
+  LANGFUSE_ENABLED: true
+  LOG_LEVEL: INFO
+  LOG_FORMAT: json
+  ACCOUNT: "hit8"
+  ORG: "hit8"
+  PROJECT: "hit8-poc"
+  PROMPTS_DIR: "app/prompts"
+  AGENT_GRAPH_TYPE: "opgroeien"
 
 dev:
-  log_level: DEBUG
-  log_format: console
-  cors_allow_origins:
+  LOG_LEVEL: DEBUG
+  LOG_FORMAT: console
+  CORS_ALLOW_ORIGINS:
     - "http://localhost:5173"
     - "http://127.0.0.1:5173"
-  logging:
-    version: 1
-    disable_existing_loggers: false
-    formatters:
-      console_formatter:
-        (): app.logging.StructlogConsoleFormatter
-    handlers:
-      console:
-        class: logging.StreamHandler
-        formatter: console_formatter
-        stream: ext://sys.stdout
-    loggers:
-      "":
-        handlers: [console]
-        level: DEBUG
-      app:
-        handlers: [console]
-        level: DEBUG
-        propagate: false
 
 prd:
-  log_level: INFO
-  log_format: json
-  cors_allow_origins:
+  LOG_LEVEL: INFO
+  LOG_FORMAT: json
+  CORS_ALLOW_ORIGINS:
     - "https://www.hit8.io"
     - "https://hit8.io"
     - "https://hit8.pages.dev"
-  logging:
-    version: 1
-    disable_existing_loggers: false
-    formatters:
-      json_formatter:
-        (): app.logging.StructlogJSONFormatter
-    handlers:
-      console:
-        class: logging.StreamHandler
-        formatter: json_formatter
-        stream: ext://sys.stdout
-    loggers:
-      "":
-        handlers: [console]
-        level: INFO
-      app:
-        handlers: [console]
-        level: INFO
-        propagate: false

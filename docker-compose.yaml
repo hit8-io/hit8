@@ -8,8 +8,8 @@ services:
       dockerfile: Dockerfile
     command: >
       sh -c "
-      if [ \"$$DEBUG\" = \"true\" ]; then
-        python -m debugpy --listen 0.0.0.0:8888 --wait-for-client -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      if [ \"$$ENVIRONMENT\" = \"dev\" ]; then
+        python -m debugpy --listen 0.0.0.0:8888 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
       else
         uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
       fi
@@ -18,16 +18,15 @@ services:
       - ./backend:/app
     ports:
       - "8000:8000"
-      - "8888:8888"  # Debug port for debugpy
+      - "8888:8888"
     depends_on:
       supabase:
         condition: service_healthy
       langfuse:
         condition: service_started
-    # Environment variables are injected by Doppler at runtime
-    # Use: doppler run -- docker-compose up
     environment:
-      - VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM=${VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM}
+      - ENVIRONMENT=dev
+      - VERTEX_SERVICE_ACCOUNT=${VERTEX_SERVICE_ACCOUNT}
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
       - GCP_PROJECT=${GCP_PROJECT}
       - GOOGLE_IDENTITY_PLATFORM_DOMAIN=${GOOGLE_IDENTITY_PLATFORM_DOMAIN}
@@ -37,7 +36,6 @@ services:
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
       - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL}
       - GOOGLE_IDENTITY_PLATFORM_KEY=${GOOGLE_IDENTITY_PLATFORM_KEY}
-      - DEBUG=${DEBUG}
 
   supabase:
     image: supabase/postgres:15.1.0.147
@@ -201,7 +199,6 @@ services:
       - /app/node_modules
     ports:
       - "5173:5173"
-    # Environment variables are injected by Doppler at runtime
     environment:
       - VITE_GOOGLE_IDENTITY_PLATFORM_KEY=${GOOGLE_IDENTITY_PLATFORM_KEY}
       - VITE_GOOGLE_IDENTITY_PLATFORM_DOMAIN=${GOOGLE_IDENTITY_PLATFORM_DOMAIN}

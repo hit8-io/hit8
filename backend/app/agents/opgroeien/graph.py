@@ -12,8 +12,7 @@ from google.oauth2 import service_account
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_google_genai import ChatGoogleGenerativeAI
-import psycopg
-from langgraph.checkpoint.postgres import PostgresSaver
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
 from app.agents.common import get_langfuse_handler
@@ -42,7 +41,7 @@ from app.agents.opgroeien.tools import (
     get_procedure,
     get_regelgeving,
 )
-from app.config import get_metadata, settings
+from app.config import settings
 from app.prompts.loader import get_system_prompt
 
 if TYPE_CHECKING:
@@ -62,10 +61,9 @@ class AgentState(TypedDict):
 _agent_model: ChatGoogleGenerativeAI | None = None
 
 # Store checkpointer reference for history access
-_agent_checkpointer: PostgresSaver | None = None
-_agent_checkpointer_cm: object | None = None
+_agent_checkpointer: MemorySaver | None = None
 
-def get_agent_checkpointer() -> PostgresSaver | None:
+def get_agent_checkpointer() -> MemorySaver | None:
     """Get the checkpointer instance."""
     return _agent_checkpointer
 
@@ -74,7 +72,7 @@ def _get_agent_model() -> ChatGoogleGenerativeAI:
     """Get or create cached Vertex AI model for agent."""
     global _agent_model
     if _agent_model is None:
-        service_account_info = json.loads(settings.vertex_service_account_json)
+        service_account_info = json.loads(settings.vertex_service_account)
         if "project_id" not in service_account_info:
             raise ValueError("project_id is required in service account JSON")
         project_id = service_account_info["project_id"]
@@ -128,7 +126,8 @@ def agent_node(state: AgentState, config: Optional[RunnableConfig] = None) -> Ag
     
     # Prepend system message if not present
     if not has_system_message:
-        system_prompt = get_system_prompt()
+        system_prompt_obj = get_system_prompt()
+        system_prompt = system_prompt_obj.render()
         messages = [SystemMessage(content=system_prompt)] + messages
     
     # Filter and validate messages before invoking model
@@ -203,10 +202,9 @@ def agent_node(state: AgentState, config: Optional[RunnableConfig] = None) -> Ag
         config_dict = dict(config) if isinstance(config, dict) else {}
     
     # Inject centralized metadata into config for Vertex AI
-    metadata = get_metadata()
     if "metadata" not in config_dict:
         config_dict["metadata"] = {}
-    config_dict["metadata"].update(metadata)
+    config_dict["metadata"].update(settings.metadata)
     
     # Invoke model with filtered messages
     try:
@@ -335,47 +333,27 @@ def create_tool_node(tool_name: str, tool_func: Callable[..., Any]):
 
 def create_agent_graph() -> CompiledGraph:
     """Create and compile the LangGraph agent state machine."""
-    global _agent_checkpointer, _agent_checkpointer_cm
+    global _agent_checkpointer
     
-    # Initialize PostgreSQL checkpointer for persistent state storage
-    # 
-    # Connection Pooler Compatibility:
-    # - Supabase and other connection poolers (PgBouncer) don't support prepared statements
-    # - We disable prepared statements by setting prepare_threshold=None
-    # - This allows the connection to work with transaction-level pooling
-    # - Connection errors after successful operations are handled gracefully in chat streaming
-    try:
-        # Create connection with prepare_threshold=None to disable prepared statements
-        # This is required for Supabase connection pooling which doesn't support prepared statements
-        conn = psycopg.connect(
-            settings.database_connection_string,
-            prepare_threshold=None,  # Disable prepared statements for connection pooling
-        )
-        # Enable autocommit for setup() - CREATE INDEX CONCURRENTLY cannot run in a transaction
-        conn.autocommit = True
-        # PostgresSaver can be initialized with a connection object directly
-        _agent_checkpointer = PostgresSaver(conn)
-        _agent_checkpointer.setup()
-        # Disable autocommit after setup for normal operations
-        conn.autocommit = False
-        # Store connection as context manager to keep it alive for the application lifetime
-        _agent_checkpointer_cm = conn
+    # Checkpointer Selection: MemorySaver
+    #
+    # We use MemorySaver instead of PostgresSaver because:
+    # 1. PostgresSaver doesn't fully support async checkpoint operations
+    #    - `aget_tuple()` raises NotImplementedError
+    #    - This forced us to use sync `stream()` in background threads
+    # 2. MemorySaver supports both sync and async operations
+    #    - Enables future migration to async streaming if needed
+    #    - Simpler architecture without database dependencies
+    # 3. Trade-off: State is not persisted across restarts
+    #    - Acceptable for current use case (stateless conversations)
+    #    - Can migrate back to PostgresSaver when async support is added
+    
+    if _agent_checkpointer is None:
+        _agent_checkpointer = MemorySaver()
         logger.info(
-            "agent_postgres_checkpointer_initialized",
-            database_url=settings.database_connection_string.split("@")[-1] if "@" in settings.database_connection_string else "configured",
-            connection_pooler_compatible=True,
+            "agent_memory_checkpointer_initialized",
+            checkpointer_type="MemorySaver",
         )
-    except Exception as e:
-        error_type = type(e).__name__
-        error_msg = str(e)
-        logger.error(
-            "agent_postgres_checkpointer_init_failed",
-            error=error_msg,
-            error_type=error_type,
-            database_url=settings.database_connection_string.split("@")[-1] if "@" in settings.database_connection_string else "configured",
-            hint="Check database connection string and network connectivity. Ensure connection pooler (if used) supports transaction-level pooling.",
-        )
-        raise
     
     # Get all tools
     tools = get_all_tools()

@@ -10,10 +10,12 @@ from app.api.routes import chat, graph, health, metadata, version
 # Create main API router
 api_router = APIRouter()
 
-# Include all route modules
-api_router.include_router(health.router)
-api_router.include_router(metadata.router)
-api_router.include_router(version.router)
-api_router.include_router(graph.router)
-api_router.include_router(chat.router)
+# Health and version (no auth)
+api_router.include_router(health.router, tags=["health"])
+api_router.include_router(version.router, tags=["version"])
+
+# Authenticated routes
+api_router.include_router(metadata.router, tags=["metadata"])
+api_router.include_router(graph.router, prefix="/graph", tags=["graph"])
+api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
 

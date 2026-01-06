@@ -9,110 +9,33 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.graph_manager import get_graph
-from app.deps import verify_google_token
+from app.auth import verify_google_token
 
 logger = structlog.get_logger(__name__)
 router = APIRouter()
 
 
-def _serialize_messages(state: Any) -> list[dict[str, Any]]:
-    """Serialize messages from state to dictionary format.
-    
-    Args:
-        state: Graph state object
-        
-    Returns:
-        List of serialized message dictionaries with full details including tool_calls
-    """
-    from langchain_core.messages import AIMessage, ToolMessage
-    
-    messages = []
-    if hasattr(state, "values") and "messages" in state.values:
-        for msg in state.values["messages"]:
-            msg_dict: dict[str, Any] = {
-                "type": type(msg).__name__,
-            }
-            
-            # Add content
-            if hasattr(msg, "content"):
-                msg_dict["content"] = str(msg.content) if msg.content is not None else ""
-            
-            # Add tool_calls for AIMessage
-            if isinstance(msg, AIMessage) and hasattr(msg, "tool_calls") and msg.tool_calls:
-                msg_dict["tool_calls"] = []
-                for tool_call in msg.tool_calls:
-                    tool_call_dict: dict[str, Any] = {}
-                    if hasattr(tool_call, "name"):
-                        tool_call_dict["name"] = tool_call.name
-                    if hasattr(tool_call, "args"):
-                        tool_call_dict["args"] = tool_call.args
-                    if hasattr(tool_call, "id"):
-                        tool_call_dict["id"] = tool_call.id
-                    # Also check for function format
-                    if hasattr(tool_call, "function"):
-                        func = tool_call.function
-                        if hasattr(func, "name"):
-                            tool_call_dict["name"] = func.name
-                        if hasattr(func, "arguments"):
-                            import json
-                            try:
-                                tool_call_dict["args"] = json.loads(func.arguments)
-                            except (json.JSONDecodeError, TypeError):
-                                tool_call_dict["args"] = func.arguments
-                    msg_dict["tool_calls"].append(tool_call_dict)
-            
-            # Add tool_call_id and name for ToolMessage
-            if isinstance(msg, ToolMessage):
-                if hasattr(msg, "tool_call_id"):
-                    msg_dict["tool_call_id"] = msg.tool_call_id
-                if hasattr(msg, "name"):
-                    msg_dict["name"] = msg.name
-            
-            # Add usage_metadata if available (for token counts)
-            if hasattr(msg, "response_metadata") and msg.response_metadata:
-                metadata = msg.response_metadata
-                if isinstance(metadata, dict):
-                    if "token_usage" in metadata:
-                        msg_dict["usage_metadata"] = metadata["token_usage"]
-                    elif "usage_metadata" in metadata:
-                        msg_dict["usage_metadata"] = metadata["usage_metadata"]
-            
-            messages.append(msg_dict)
-    return messages
+from app.api.utils import serialize_messages
 
 
 def _extract_graph_history(state: Any, state_dict: dict[str, Any]) -> list[dict[str, Any]]:
-    """Extract graph execution history from state.
-    
-    Args:
-        state: Graph state object
-        state_dict: Partially constructed state dictionary
-        
-    Returns:
-        List of history entries
-    """
+    """Extract graph execution history from state."""
     history: list[dict[str, Any]] = []
     
-    # Method 1: Check if state has task information
     if hasattr(state, "tasks") and state.tasks:
         for task in state.tasks:
+            task_name = None
             if hasattr(task, "name"):
-                history.append({"node": task.name})
+                task_name = task.name
             elif isinstance(task, dict) and "name" in task:
-                history.append({"node": task["name"]})
-    
-    # Method 2: Fallback - infer from state values
-    if not history:
-        messages = state_dict.get("values", {}).get("messages", [])
-        has_human = any(msg.get("type") == "HumanMessage" for msg in messages)
-        has_ai = any(msg.get("type") == "AIMessage" for msg in messages)
-        if has_human and has_ai:
-            history.append({"node": "generate"})
+                task_name = task["name"]
+            if task_name:
+                history.append({"node": task_name})
     
     return history
 
 
-@router.get("/graph/structure")
+@router.get("/structure")
 async def get_graph_structure(
     user_payload: dict = Depends(verify_google_token)
 ):
@@ -127,7 +50,7 @@ async def get_graph_structure(
         )
 
 
-@router.get("/graph/state")
+@router.get("/state")
 async def get_graph_state(
     thread_id: str,
     user_payload: dict = Depends(verify_google_token)
@@ -160,7 +83,7 @@ async def get_graph_state(
         }
         
         # Serialize messages if present
-        messages = _serialize_messages(state)
+        messages = serialize_messages(state)
         if messages:
             state_dict["values"]["messages"] = messages
             state_dict["values"]["message_count"] = len(messages)

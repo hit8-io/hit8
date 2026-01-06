@@ -1,10 +1,12 @@
 """
-Logging utilities for structlog integration with config.yaml.
+Logging utilities for structlog integration.
 """
 from __future__ import annotations
 
-import structlog
 import logging
+import logging.config
+
+import structlog
 
 
 # 1. Define the shared processors (used by both structlog and standard logging)
@@ -32,9 +34,9 @@ def configure_structlog():
     )
 
 
-# 3. Create a Custom Formatter for YAML to reference
+# 3. Create custom formatters for structlog
 class StructlogJSONFormatter(structlog.stdlib.ProcessorFormatter):
-    """JSON formatter for structlog that can be referenced in YAML config."""
+    """JSON formatter for structlog (used in production)."""
     
     def __init__(self, *args, **kwargs):
         # We hardcode the processors here so YAML doesn't need to know about them
@@ -47,7 +49,7 @@ class StructlogJSONFormatter(structlog.stdlib.ProcessorFormatter):
 
 
 class StructlogConsoleFormatter(structlog.stdlib.ProcessorFormatter):
-    """Console-friendly formatter for structlog that can be referenced in YAML config."""
+    """Console-friendly formatter for structlog (used in development)."""
     
     def __init__(self, *args, **kwargs):
         # Use console-friendly processor for development
@@ -57,4 +59,49 @@ class StructlogConsoleFormatter(structlog.stdlib.ProcessorFormatter):
             *args,
             **kwargs
         )
+
+
+def setup_logging() -> None:
+    """Setup logging using log_level and log_format from settings."""
+    from app.config import settings
+    
+    # Determine formatter based on log_format
+    if settings.log_format == "json":
+        formatter_name = "json_formatter"
+    else:  # console or any other value
+        formatter_name = "console_formatter"
+    
+    # Build logging configuration dict
+    logging_config = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "json_formatter": {
+                "()": "app.logging.StructlogJSONFormatter",
+            },
+            "console_formatter": {
+                "()": "app.logging.StructlogConsoleFormatter",
+            },
+        },
+        "handlers": {
+            "console": {
+                "class": "logging.StreamHandler",
+                "formatter": formatter_name,
+                "stream": "ext://sys.stdout",
+            },
+        },
+        "loggers": {
+            "": {  # Root logger
+                "handlers": ["console"],
+                "level": settings.log_level.upper(),
+            },
+            "app": {
+                "handlers": ["console"],
+                "level": settings.log_level.upper(),
+                "propagate": False,
+            },
+        },
+    }
+    
+    logging.config.dictConfig(logging_config)
 

@@ -9,6 +9,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from firebase_admin.exceptions import FirebaseError
 
+# Health check path (only used in this module)
+HEALTH_CHECK_PATH = "/health"
 from app.api.utils import get_cors_headers
 from app.config import settings
 
@@ -26,21 +28,49 @@ def setup_cors(app: FastAPI) -> None:
     )
 
 
+def _create_error_response(
+    request: Request,
+    status_code: int,
+    detail: str,
+    headers: dict[str, str] | None = None,
+) -> JSONResponse:
+    """Create an error response with CORS headers.
+    
+    Args:
+        request: FastAPI request object
+        status_code: HTTP status code
+        detail: Error detail message
+        headers: Additional headers to include
+        
+    Returns:
+        JSONResponse with error details and CORS headers
+    """
+    response_headers = get_cors_headers(request)
+    if headers:
+        response_headers.update(headers)
+    
+    return JSONResponse(
+        status_code=status_code,
+        content={"detail": detail},
+        headers=response_headers,
+    )
+
+
 def setup_api_token_middleware(app: FastAPI) -> None:
     """Setup middleware to validate X-Source-Token header."""
     
     @app.middleware("http")
-    async def verify_source(request: Request, call_next):
+    async def verify_api_token(request: Request, call_next):
         """Validate X-Source-Token header for all requests except health check and OPTIONS."""
-        # 1. IMMEDIATE PASS FOR PREFLIGHT
+        # Skip validation for preflight requests (let CORSMiddleware handle)
         if request.method == "OPTIONS":
-            return await call_next(request)  # Let CORSMiddleware handle it
-        
-        # Skip validation for health check endpoint
-        if request.url.path == "/health":
             return await call_next(request)
         
-        # 2. Check token for real requests only
+        # Skip validation for health check endpoint
+        if request.url.path == HEALTH_CHECK_PATH:
+            return await call_next(request)
+        
+        # Validate token for all other requests
         token = request.headers.get("X-Source-Token")
         if token != settings.api_token:
             logger.warning(
@@ -48,10 +78,10 @@ def setup_api_token_middleware(app: FastAPI) -> None:
                 path=request.url.path,
                 method=request.method,
             )
-            return JSONResponse(
+            return _create_error_response(
+                request,
                 status_code=status.HTTP_403_FORBIDDEN,
-                content={"detail": "Unauthorized"},
-                headers=get_cors_headers(request),
+                detail="Unauthorized",
             )
         
         return await call_next(request)
@@ -63,11 +93,11 @@ def setup_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException):
         """Handle HTTP exceptions and ensure CORS headers are included."""
-        headers = dict(exc.headers) if exc.headers else {}
-        headers.update(get_cors_headers(request))
-        return JSONResponse(
+        headers = dict(exc.headers) if exc.headers else None
+        return _create_error_response(
+            request,
             status_code=exc.status_code,
-            content={"detail": exc.detail},
+            detail=exc.detail,
             headers=headers,
         )
     
@@ -80,26 +110,23 @@ def setup_exception_handlers(app: FastAPI) -> None:
             path=request.url.path,
             method=request.method,
         )
-        return JSONResponse(
+        return _create_error_response(
+            request,
             status_code=status.HTTP_401_UNAUTHORIZED,
-            content={"detail": "Authentication failed"},
-            headers=get_cors_headers(request),
+            detail="Authentication failed",
         )
     
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception):
         """Handle all exceptions and ensure CORS headers are included."""
-        logger.exception("Unhandled exception", exc_info=exc)
+        logger.exception("unhandled_exception", exc_info=exc)
         
         # Determine error message based on exception type
-        if isinstance(exc, ValueError):
-            detail = str(exc)
-        else:
-            detail = "Internal server error"
+        detail = str(exc) if isinstance(exc, ValueError) else "Internal server error"
         
-        return JSONResponse(
+        return _create_error_response(
+            request,
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content={"detail": detail},
-            headers=get_cors_headers(request),
+            detail=detail,
         )
 

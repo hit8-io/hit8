@@ -27,7 +27,7 @@ def _get_embedding_model() -> GoogleGenerativeAIEmbeddings:
         import json
         from google.oauth2 import service_account
         
-        service_account_info = json.loads(settings.vertex_service_account_json)
+        service_account_info = json.loads(settings.vertex_service_account)
         project_id = service_account_info["project_id"]
         
         creds = service_account.Credentials.from_service_account_info(

@@ -11,7 +11,7 @@ async def test_chat_endpoint_success(client):
     """Test successful chat endpoint request."""
     # 1. Mock Auth (Bypass Google Token Check)
     from app.main import app
-    from app.deps import verify_google_token
+    from app.auth import verify_google_token
     
     async def mock_verify_token():
         return {

@@ -14,6 +14,7 @@ from app.agents.opgroeien.graph import (
     create_agent_graph,
     _get_agent_model,
 )
+from app.prompts.loader import PromptObject
 
 
 def test_agent_state_structure():
@@ -69,9 +70,14 @@ def test_agent_node_adds_system_message():
     mock_ai_message = AIMessage(content="Test response")
     mock_model_with_tools.invoke.return_value = mock_ai_message
     
-    # Mock get_system_prompt
+    # Mock get_system_prompt to return PromptObject
+    mock_prompt_obj = PromptObject(
+        template_text="Test system prompt",
+        version="1.0.0",
+        config={}
+    )
     with patch("app.agents.opgroeien.graph._get_agent_model", return_value=mock_model):
-        with patch("app.prompts.loader.get_system_prompt", return_value="Test system prompt"):
+        with patch("app.prompts.loader.get_system_prompt", return_value=mock_prompt_obj):
             with patch("app.agents.opgroeien.utils.get_all_tools", return_value=[]):
                 with patch("app.config.get_metadata", return_value={"environment": "test"}):
                     state: AgentState = {
@@ -169,9 +175,14 @@ def test_agent_node_with_tools():
     mock_ai_message = AIMessage(content="Test response")
     mock_model_with_tools.invoke.return_value = mock_ai_message
     
+    mock_prompt_obj = PromptObject(
+        template_text="Test prompt",
+        version="1.0.0",
+        config={}
+    )
     with patch("app.agents.opgroeien.graph._get_agent_model", return_value=mock_model):
         with patch("app.agents.opgroeien.utils.get_all_tools", return_value=[mock_tool]):
-            with patch("app.prompts.loader.get_system_prompt", return_value="Test prompt"):
+            with patch("app.prompts.loader.get_system_prompt", return_value=mock_prompt_obj):
                 with patch("app.config.get_metadata", return_value={"environment": "test"}):
                     state: AgentState = {
                         "messages": [HumanMessage(content="Hello")]
@@ -207,9 +218,14 @@ def test_agent_node_with_tool_calls():
     )
     mock_model_with_tools.invoke.return_value = mock_ai_message
     
+    mock_prompt_obj = PromptObject(
+        template_text="Test prompt",
+        version="1.0.0",
+        config={}
+    )
     with patch("app.agents.opgroeien.graph._get_agent_model", return_value=mock_model):
         with patch("app.agents.opgroeien.utils.get_all_tools", return_value=[]):
-            with patch("app.prompts.loader.get_system_prompt", return_value="Test prompt"):
+            with patch("app.prompts.loader.get_system_prompt", return_value=mock_prompt_obj):
                 with patch("app.config.get_metadata", return_value={"environment": "test"}):
                     state: AgentState = {
                         "messages": [HumanMessage(content="Hello")]
@@ -231,7 +247,7 @@ def test_get_agent_model_initialization():
     graph_agent._agent_model = None
     
     # Set required env vars
-    os.environ.setdefault("VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM", 
+    os.environ.setdefault("VERTEX_SERVICE_ACCOUNT", 
                          '{"project_id": "test-project", "type": "service_account"}')
     os.environ.setdefault("VERTEX_AI_MODEL_NAME", "gemini-3-flash-preview")
     os.environ.setdefault("VERTEX_AI_LOCATION", "global")
@@ -272,9 +288,14 @@ def test_agent_node_metadata_injection():
         "project": "test-project"
     }
     
+    mock_prompt_obj = PromptObject(
+        template_text="Test prompt",
+        version="1.0.0",
+        config={}
+    )
     with patch("app.agents.opgroeien.graph._get_agent_model", return_value=mock_model):
         with patch("app.agents.opgroeien.utils.get_all_tools", return_value=[]):
-            with patch("app.prompts.loader.get_system_prompt", return_value="Test prompt"):
+            with patch("app.prompts.loader.get_system_prompt", return_value=mock_prompt_obj):
                 with patch("app.config.get_metadata", return_value=test_metadata):
                     state: AgentState = {
                         "messages": [HumanMessage(content="Hello")]

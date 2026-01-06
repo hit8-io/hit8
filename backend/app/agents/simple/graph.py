@@ -11,12 +11,11 @@ from google.oauth2 import service_account
 from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_google_genai import ChatGoogleGenerativeAI
-import psycopg
-from langgraph.checkpoint.postgres import PostgresSaver
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 
 from app.agents.common import get_langfuse_handler
-from app.config import get_metadata, settings
+from app.config import settings
 
 if TYPE_CHECKING:
     from langgraph.graph import CompiledGraph
@@ -31,11 +30,9 @@ class AgentState(TypedDict):
 _model: ChatGoogleGenerativeAI | None = None
 
 # Store checkpointer reference for history access
-_checkpointer: PostgresSaver | None = None
-# Store context manager to keep connection alive
-_checkpointer_cm: object | None = None
+_checkpointer: MemorySaver | None = None
 
-def get_checkpointer() -> PostgresSaver | None:
+def get_checkpointer() -> MemorySaver | None:
     """Get the checkpointer instance."""
     return _checkpointer
 
@@ -46,7 +43,7 @@ def _get_model() -> ChatGoogleGenerativeAI:
     """Get or create cached Vertex AI model."""
     global _model
     if _model is None:
-        service_account_info = json.loads(settings.vertex_service_account_json)
+        service_account_info = json.loads(settings.vertex_service_account)
         if "project_id" not in service_account_info:
             raise ValueError("project_id is required in service account JSON")
         project_id = service_account_info["project_id"]
@@ -84,11 +81,10 @@ def generate_node(state: AgentState, config: Optional[RunnableConfig] = None) ->
         config_dict = dict(config) if isinstance(config, dict) else {}
     
     # Inject centralized metadata into config for Vertex AI
-    metadata = get_metadata()
     if "metadata" not in config_dict:
         config_dict["metadata"] = {}
     # Merge centralized metadata with existing metadata
-    config_dict["metadata"].update(metadata)
+    config_dict["metadata"].update(settings.metadata)
     
     # Pass config directly to model.invoke - LangGraph/LangChain will handle callbacks propagation
     # According to official docs: https://langfuse.com/integrations/frameworks/langchain
@@ -102,48 +98,27 @@ def generate_node(state: AgentState, config: Optional[RunnableConfig] = None) ->
 
 def create_graph() -> CompiledGraph:
     """Create and compile the LangGraph state machine."""
-    global _checkpointer, _checkpointer_cm
+    global _checkpointer
     
-    # Initialize PostgreSQL checkpointer for persistent state storage
-    # 
-    # Connection Pooler Compatibility:
-    # - Supabase and other connection poolers (PgBouncer) don't support prepared statements
-    # - We disable prepared statements by setting prepare_threshold=None
-    # - This allows the connection to work with transaction-level pooling
-    # - Connection errors after successful operations are handled gracefully in chat streaming
-    try:
-        # Create connection with prepare_threshold=None to disable prepared statements
-        # This is required for Supabase connection pooling which doesn't support prepared statements
-        conn = psycopg.connect(
-            settings.database_connection_string,
-            prepare_threshold=None,  # Disable prepared statements for connection pooling
-        )
-        # Enable autocommit for setup() - CREATE INDEX CONCURRENTLY cannot run in a transaction
-        conn.autocommit = True
-        # PostgresSaver can be initialized with a connection object directly
-        _checkpointer = PostgresSaver(conn)
-        # Initialize database schema (idempotent - safe to call multiple times)
-        _checkpointer.setup()
-        # Disable autocommit after setup for normal operations
-        conn.autocommit = False
-        # Store connection to keep it alive for the application lifetime
-        _checkpointer_cm = conn
+    # Checkpointer Selection: MemorySaver
+    #
+    # We use MemorySaver instead of PostgresSaver because:
+    # 1. PostgresSaver doesn't fully support async checkpoint operations
+    #    - `aget_tuple()` raises NotImplementedError
+    #    - This forced us to use sync `stream()` in background threads
+    # 2. MemorySaver supports both sync and async operations
+    #    - Enables future migration to async streaming if needed
+    #    - Simpler architecture without database dependencies
+    # 3. Trade-off: State is not persisted across restarts
+    #    - Acceptable for current use case (stateless conversations)
+    #    - Can migrate back to PostgresSaver when async support is added
+    
+    if _checkpointer is None:
+        _checkpointer = MemorySaver()
         logger.info(
-            "postgres_checkpointer_initialized",
-            database_url=settings.database_connection_string.split("@")[-1] if "@" in settings.database_connection_string else "configured",
-            connection_pooler_compatible=True,
+            "memory_checkpointer_initialized",
+            checkpointer_type="MemorySaver",
         )
-    except Exception as e:
-        error_type = type(e).__name__
-        error_msg = str(e)
-        logger.error(
-            "postgres_checkpointer_init_failed",
-            error=error_msg,
-            error_type=error_type,
-            database_url=settings.database_connection_string.split("@")[-1] if "@" in settings.database_connection_string else "configured",
-            hint="Check database connection string and network connectivity. Ensure connection pooler (if used) supports transaction-level pooling.",
-        )
-        raise
     
     graph = StateGraph(AgentState)
     graph.add_node("generate", generate_node)

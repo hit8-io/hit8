@@ -42,16 +42,17 @@ export function Sidebar({ user, onLogout }: SidebarProps) {
         <div className="h-px bg-border my-2" />
 
         {/* Hit8 Logo/Brand */}
-        <div className="px-3 py-2 flex items-center justify-center">
+        <div className="p-2 flex items-center justify-center">
           {!iconError ? (
             <img
               src="/hit8-icon.png"
               alt="Hit8"
-              className="h-8 w-8 object-contain"
+              className="object-contain"
+              style={{ width: '48px', height: '48px', display: 'block', minWidth: '48px', minHeight: '48px' }}
               onError={() => setIconError(true)}
             />
           ) : (
-            <div className="flex items-center justify-center h-8 w-8 rounded bg-muted text-muted-foreground text-xs font-semibold">
+            <div className="w-12 h-12 min-w-[48px] min-h-[48px] flex items-center justify-center rounded bg-muted text-muted-foreground text-sm font-semibold">
               H8
             </div>
           )}

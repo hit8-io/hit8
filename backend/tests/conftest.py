@@ -10,7 +10,7 @@ from typing import AsyncGenerator
 
 # 1. SET FAKE ENV VARS (Must happen at module import time, before any app imports)
 # Set these immediately when conftest is imported, before any fixtures run
-os.environ.setdefault("VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM", '{"project_id": "mock", "type": "service_account"}')
+os.environ.setdefault("VERTEX_SERVICE_ACCOUNT", '{"project_id": "mock", "type": "service_account"}')
 os.environ.setdefault("VERTEX_AI_MODEL_NAME", "mock-model")
 os.environ.setdefault("GCP_PROJECT", "mock-project")
 os.environ.setdefault("GOOGLE_IDENTITY_PLATFORM_DOMAIN", "mock-domain")
@@ -21,7 +21,7 @@ os.environ.setdefault("CORS_ALLOW_ORIGINS", '["*"]')
 def mock_env():
     """Ensure fake environment variables are set."""
     # These are already set at module level, but this fixture ensures they persist
-    os.environ["VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM"] = '{"project_id": "mock", "type": "service_account"}'
+    os.environ["VERTEX_SERVICE_ACCOUNT"] = '{"project_id": "mock", "type": "service_account"}'
     os.environ["VERTEX_AI_MODEL_NAME"] = "mock-model"
     os.environ["GCP_PROJECT"] = "mock-project"
     os.environ["GOOGLE_IDENTITY_PLATFORM_DOMAIN"] = "mock-domain"

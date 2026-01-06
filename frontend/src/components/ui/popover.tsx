@@ -148,12 +148,14 @@ export function Popover({
           ref={popoverRef}
           className={cn(
             "fixed z-50 min-w-[8rem] rounded-md border shadow-lg",
-            "bg-card text-card-foreground border-border",
+            "bg-popover text-popover-foreground border-border",
+            "backdrop-blur-none",
             className
           )}
           style={{
             top: `${position.top}px`,
             left: `${position.left}px`,
+            backgroundColor: 'hsl(var(--popover))',
           }}
           onMouseEnter={() => setOpen(true)}
           onMouseLeave={() => setOpen(false)}
