@@ -13,7 +13,7 @@ import structlog
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.agents.common import get_langfuse_handler
 from app.agents.opgroeien.graph import AgentState
@@ -26,6 +26,7 @@ from app.api.streaming import (
 )
 from app.config import settings
 from app.auth import verify_google_token
+from app.prompts.loader import get_system_prompt
 
 if TYPE_CHECKING:
     from langfuse.langchain import CallbackHandler
@@ -141,7 +142,7 @@ async def stream_chat_events(
         yield f"data: {json.dumps(error_data)}\n\n"
 
 
-@router.post("/")
+@router.post("")
 async def chat(
     request: ChatRequest,
     user_payload: dict = Depends(verify_google_token)
@@ -152,8 +153,15 @@ async def chat(
     # Use provided thread_id or generate one for state tracking
     thread_id = request.thread_id if request.thread_id else str(uuid.uuid4())
     
+    # Initialize system prompt for the configured agent type
+    system_prompt_obj = get_system_prompt(settings.agent_graph_type)
+    system_prompt = system_prompt_obj.render()
+    
     initial_state: AgentState = {
-        "messages": [HumanMessage(content=request.message)]
+        "messages": [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=request.message)
+        ]
     }
     
     # Get Langfuse callback handler if enabled

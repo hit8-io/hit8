@@ -108,6 +108,19 @@ def load_prompt(prompt_name: str, force_refresh: bool = False) -> PromptObject:
         raise
 
 
-def get_system_prompt() -> PromptObject:
-    """Get the system prompt for the agent."""
-    return load_prompt("system_prompt")
+def get_system_prompt(agent_type: str | None = None) -> PromptObject:
+    """
+    Get the system prompt for the specified agent type.
+    
+    Args:
+        agent_type: Agent type (e.g., "opgroeien", "simple"). 
+                   If None, uses settings.agent_graph_type
+    
+    Returns:
+        PromptObject with render() method
+    """
+    if agent_type is None:
+        agent_type = settings.agent_graph_type
+    
+    prompt_name = f"{agent_type}_system_prompt"
+    return load_prompt(prompt_name)
