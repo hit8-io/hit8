@@ -28,6 +28,18 @@ export default defineConfig(({ mode }) => {
         "@": path.resolve(__dirname, "./src"),
       },
     },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: (id) => {
+            // Code-split Sentry into a separate chunk
+            if (id.includes('@sentry/react')) {
+              return 'sentry'
+            }
+          },
+        },
+      },
+    },
   }
 })
 

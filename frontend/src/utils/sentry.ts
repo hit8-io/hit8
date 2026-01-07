@@ -1,38 +1,29 @@
 /**
  * Sentry error tracking configuration and initialization.
  * Only initializes in production builds.
- * Uses dynamic imports to prevent Sentry from loading when not needed.
+ * Sentry is code-split into a separate chunk but imported statically
+ * to ensure it's available at runtime in production.
  */
 
-// Lazy-loaded Sentry module - only loaded when actually needed
-// Using 'any' type to avoid Vite pre-transforming the import
-let SentryModule: any = null
+// Import Sentry statically - Vite will code-split it into a separate chunk
+// This ensures the module is available at runtime in production
+// In development, Sentry will be imported but not initialized
+import * as Sentry from '@sentry/react'
+
 let isSentryInitialized = false
 
-/**
- * Load Sentry module dynamically. Only loads in production.
- * Uses a dynamic import path to prevent Vite from pre-analyzing it.
- */
-async function loadSentry(): Promise<any> {
-  if (SentryModule) {
-    return SentryModule
-  }
-
-  const isProduction = import.meta.env.PROD
-
-  // Only load Sentry in production
-  if (!isProduction) {
-    return null
-  }
-
-  try {
-    // Use dynamic import with a variable to prevent Vite from pre-analyzing
-    const sentryModulePath = '@sentry/react'
-    SentryModule = await import(/* @vite-ignore */ sentryModulePath)
-    return SentryModule
-  } catch (error) {
-    console.error('[Sentry] Failed to load Sentry module:', error)
-    return null
+// Suppress Sentry install hook warning in development
+// The install hook runs when the module is imported, but we only initialize in production
+if (import.meta.env.DEV) {
+  // In development, Sentry's install hook may warn about missing DSN
+  // This is expected and harmless since we don't initialize in dev
+  const originalWarn = console.warn
+  console.warn = (...args: any[]) => {
+    if (args[0]?.includes?.('[Sentry]') && args[0]?.includes?.('VITE_SENTRY_DSN')) {
+      // Suppress the DSN warning in development
+      return
+    }
+    originalWarn.apply(console, args)
   }
 }
 
@@ -40,17 +31,12 @@ async function loadSentry(): Promise<any> {
  * Initialize Sentry for error tracking.
  * Only runs in production builds. Always initializes in production.
  */
-export async function initSentry(): Promise<void> {
+export function initSentry(): void {
   const isProduction = import.meta.env.PROD
 
   // Only initialize in production
   if (!isProduction) {
     console.debug('[Sentry] Not initializing in development mode')
-    return
-  }
-
-  const Sentry = await loadSentry()
-  if (!Sentry) {
     return
   }
 
@@ -143,29 +129,20 @@ export function setSentryUser(user: { id: string; email?: string; name?: string 
     return
   }
 
-  // Fire-and-forget: load Sentry and set user context asynchronously
-  void loadSentry().then((Sentry) => {
-    if (!Sentry) {
-      return
+  try {
+    if (user) {
+      Sentry.setUser({
+        id: user.id,
+        email: user.email,
+        username: user.name,
+      })
+    } else {
+      Sentry.setUser(null)
     }
-
-    try {
-      if (user) {
-        Sentry.setUser({
-          id: user.id,
-          email: user.email,
-          username: user.name,
-        })
-      } else {
-        Sentry.setUser(null)
-      }
-    } catch (error) {
-      // Non-blocking: if setting user context fails, don't break the app
-      console.error('[Sentry] Failed to set user context:', error)
-    }
-  }).catch((error) => {
-    console.error('[Sentry] Failed to load Sentry for setUser:', error)
-  })
+  } catch (error) {
+    // Non-blocking: if setting user context fails, don't break the app
+    console.error('[Sentry] Failed to set user context:', error)
+  }
 }
 
 /**
@@ -177,32 +154,23 @@ export function captureException(error: unknown, context?: Record<string, unknow
     return
   }
 
-  // Fire-and-forget: load Sentry and capture exception asynchronously
-  void loadSentry().then((Sentry) => {
-    if (!Sentry) {
-      return
-    }
-
-    try {
-      if (context) {
-        Sentry.withScope((scope: any) => {
-          Object.entries(context).forEach(([key, value]) => {
-            // Sentry's setContext expects Context | null, where Context is a serializable object
-            // Cast to the expected type - Sentry will handle serialization
-            scope.setContext(key, value as Record<string, unknown> | null)
-          })
-          Sentry.captureException(error)
+  try {
+    if (context) {
+      Sentry.withScope((scope: any) => {
+        Object.entries(context).forEach(([key, value]) => {
+          // Sentry's setContext expects Context | null, where Context is a serializable object
+          // Cast to the expected type - Sentry will handle serialization
+          scope.setContext(key, value as Record<string, unknown> | null)
         })
-      } else {
         Sentry.captureException(error)
-      }
-    } catch (err) {
-      // Non-blocking: if Sentry capture fails, don't break the app
-      console.error('[Sentry] Failed to capture exception:', err)
+      })
+    } else {
+      Sentry.captureException(error)
     }
-  }).catch((err) => {
-    console.error('[Sentry] Failed to load Sentry for captureException:', err)
-  })
+  } catch (err) {
+    // Non-blocking: if Sentry capture fails, don't break the app
+    console.error('[Sentry] Failed to capture exception:', err)
+  }
 }
 
 /**
@@ -214,20 +182,11 @@ export function captureMessage(message: string, level: 'debug' | 'info' | 'warni
     return
   }
 
-  // Fire-and-forget: load Sentry and capture message asynchronously
-  void loadSentry().then((Sentry) => {
-    if (!Sentry) {
-      return
-    }
-
-    try {
-      Sentry.captureMessage(message, level)
-    } catch (error) {
-      // Non-blocking: if Sentry capture fails, don't break the app
-      console.error('[Sentry] Failed to capture message:', error)
-    }
-  }).catch((error) => {
-    console.error('[Sentry] Failed to load Sentry for captureMessage:', error)
-  })
+  try {
+    Sentry.captureMessage(message, level)
+  } catch (error) {
+    // Non-blocking: if Sentry capture fails, don't break the app
+    console.error('[Sentry] Failed to capture message:', error)
+  }
 }
 
