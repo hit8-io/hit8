@@ -16,15 +16,11 @@ from app.flows.common import get_agent_model, get_langfuse_handler
 from app.flows.opgroeien.poc import constants as flow_constants
 from app.flows.opgroeien.poc.constants import (
     NODE_AGENT,
-    NODE_PROCEDURES_VECTOR_SEARCH,
-    NODE_REGELGEVING_VECTOR_SEARCH,
+    NODE_TOOLS,
 )
 from app.flows.opgroeien.poc.chat.tools import (
     get_all_tools,
-    procedures_vector_search,
-    regelgeving_vector_search,
 )
-from app.flows.opgroeien.poc.chat.tools_utils import create_tool_node
 from app.config import settings
 
 if TYPE_CHECKING:
@@ -100,59 +96,113 @@ def agent_node(state: AgentState, config: Optional[RunnableConfig] = None) -> Ag
     return {"messages": state["messages"] + [response]}
 
 
-def _get_tool_node_name_map() -> dict[str, str]:
-    """
-    Get mapping of tool names to node names for active tools only.
-    
-    Returns:
-        Dictionary mapping tool names to their corresponding node names
-    """
-    return {
-        "procedures_vector_search": NODE_PROCEDURES_VECTOR_SEARCH,
-        "regelgeving_vector_search": NODE_REGELGEVING_VECTOR_SEARCH,
-        # Future tools can be added here when enabled in tools.py
-    }
-
-
 def route_to_tool(state: AgentState) -> str:
-    """Route to the appropriate tool node based on tool calls."""
+    """Route to tools node if there are tool calls, otherwise END."""
     last_message = state["messages"][-1]
     
     # Check if the last message has tool calls
     if not hasattr(last_message, "tool_calls") or not last_message.tool_calls:
         return END
     
-    # Get the first tool call (handle multiple tool calls by routing to first one)
-    # In a more advanced implementation, you could handle parallel tool execution
-    tool_call = last_message.tool_calls[0]
-    tool_name = tool_call.get("name", "")
-    
-    # Map tool names to node names
-    tool_node_map = _get_tool_node_name_map()
-    node_name = tool_node_map.get(tool_name, END)
-    
+    # Log all tool calls for debugging
+    tool_names = [tc.get("name", "") for tc in last_message.tool_calls]
     logger.debug(
-        "routing_to_tool",
-        tool_name=tool_name,
-        node_name=node_name,
-        tool_call_id=tool_call.get("id"),
+        "routing_to_tools",
+        tool_count=len(last_message.tool_calls),
+        tool_names=tool_names,
     )
     
-    return node_name
+    # Route to unified tools node that will process all tool calls
+    return NODE_TOOLS
 
 
-def _get_tool_node_function_map() -> dict[str, tuple[str, Callable[..., Any]]]:
-    """
-    Get mapping of tool names to (node_name, function) tuples for active tools only.
+def tools_node(state: AgentState) -> AgentState:
+    """Unified tools node that processes all tool calls in the last message.
     
-    Returns:
-        Dictionary mapping tool names to (node_name, function) tuples
+    This ensures that every tool call gets a response, which is required by Vertex AI.
     """
-    return {
-        "procedures_vector_search": (NODE_PROCEDURES_VECTOR_SEARCH, procedures_vector_search),
-        "regelgeving_vector_search": (NODE_REGELGEVING_VECTOR_SEARCH, regelgeving_vector_search),
-        # Future tools can be added here when enabled in tools.py
-    }
+    last_message = state["messages"][-1]
+    
+    # Check if the last message has tool calls
+    if not hasattr(last_message, "tool_calls") or not last_message.tool_calls:
+        logger.warning("tools_node_called_without_tool_calls")
+        return state
+    
+    # Get all tools and create a mapping
+    tools = get_all_tools()
+    tool_map = {tool.name: tool for tool in tools}
+    
+    # Process all tool calls
+    tool_messages = []
+    for tool_call in last_message.tool_calls:
+        tool_name = tool_call.get("name", "")
+        tool_call_id = tool_call.get("id", "")
+        
+        if tool_name not in tool_map:
+            logger.warning(
+                "unknown_tool_called",
+                tool_name=tool_name,
+                tool_call_id=tool_call_id,
+                available_tools=list(tool_map.keys()),
+            )
+            tool_messages.append(
+                ToolMessage(
+                    content=f"Error: Unknown tool '{tool_name}'",
+                    tool_call_id=tool_call_id
+                )
+            )
+            continue
+        
+        tool_func = tool_map[tool_name]
+        
+        try:
+            logger.info(
+                "tool_executing",
+                tool_name=tool_name,
+                tool_call_id=tool_call_id,
+                args=tool_call.get("args", {}),
+            )
+            
+            # Execute the tool with the provided arguments
+            # StructuredTool objects need to be invoked, not called directly
+            result = tool_func.invoke(tool_call.get("args", {}))
+            
+            # Create ToolMessage
+            tool_messages.append(
+                ToolMessage(
+                    content=str(result),
+                    tool_call_id=tool_call_id
+                )
+            )
+            
+            logger.info(
+                "tool_success",
+                tool_name=tool_name,
+                tool_call_id=tool_call_id,
+                result_length=len(str(result)),
+            )
+        except Exception as e:
+            logger.error(
+                "tool_error",
+                tool_name=tool_name,
+                error=str(e),
+                error_type=type(e).__name__,
+                tool_call_id=tool_call_id,
+            )
+            tool_messages.append(
+                ToolMessage(
+                    content=f"Error: {str(e)}",
+                    tool_call_id=tool_call_id
+                )
+            )
+    
+    logger.info(
+        "tools_node_completed",
+        tool_call_count=len(last_message.tool_calls),
+        tool_message_count=len(tool_messages),
+    )
+    
+    return {"messages": state["messages"] + tool_messages}
 
 
 def create_agent_graph() -> CompiledGraph:
@@ -178,38 +228,23 @@ def create_agent_graph() -> CompiledGraph:
     # Add agent node
     graph.add_node(NODE_AGENT, agent_node)
     
-    # Get tool node mapping (only includes active tools)
-    tool_node_map = _get_tool_node_function_map()
-    
-    # Add nodes only for tools that are actually in the tools list
-    routing_map = {END: END}
-    for tool in tools:
-        tool_name = tool.name
-        if tool_name in tool_node_map:
-            node_name, tool_func = tool_node_map[tool_name]
-            graph.add_node(node_name, create_tool_node(tool_name, tool_func))
-            routing_map[node_name] = node_name
-            logger.debug(
-                "added_tool_node",
-                tool_name=tool_name,
-                node_name=node_name,
-            )
+    # Add unified tools node that processes all tool calls
+    graph.add_node(NODE_TOOLS, tools_node)
     
     # Add edges (START is automatically the entry point when used in add_edge)
     graph.add_edge(START, NODE_AGENT)
     
-    # Conditional edge from agent: route to specific tool node or END
+    # Conditional edge from agent: route to tools node if there are tool calls, otherwise END
     graph.add_conditional_edges(
         NODE_AGENT,
         route_to_tool,
-        routing_map,
+        {
+            NODE_TOOLS: NODE_TOOLS,
+            END: END,
+        },
     )
     
-    # After each tool, loop back to agent
-    for tool in tools:
-        tool_name = tool.name
-        if tool_name in tool_node_map:
-            node_name, _ = tool_node_map[tool_name]
-            graph.add_edge(node_name, NODE_AGENT)
+    # After tools node, loop back to agent
+    graph.add_edge(NODE_TOOLS, NODE_AGENT)
     
     return graph.compile(checkpointer=_agent_checkpointer)

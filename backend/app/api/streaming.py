@@ -13,7 +13,12 @@ from typing import TYPE_CHECKING, Any
 import structlog
 from langchain_core.messages import AIMessage, ToolMessage
 
-from app.flows.opgroeien.poc.constants import NODE_AGENT, NODE_TOOLS
+from app.flows.opgroeien.poc.constants import (
+    NODE_AGENT,
+    NODE_TOOLS,
+    NODE_PROCEDURES_VECTOR_SEARCH,
+    NODE_REGELGEVING_VECTOR_SEARCH,
+)
 from app.flows.opgroeien.poc.chat.graph import AgentState
 from app.api.constants import (
     EVENT_CONTENT_CHUNK,
@@ -68,6 +73,7 @@ def stream(
     last_ai_message_content = ""
     visited_nodes: list[str] = []
     current_node: str | None = None
+    tool_call_id_to_name: dict[str, str] = {}  # Map tool_call_id to tool_name
     
     try:
         logger.info(
@@ -128,12 +134,15 @@ def stream(
                 loop.run_until_complete(asyncio.sleep(0))
                 
                 # Process messages (content, LLM, tools)
+                # Always update visited_nodes since _process_messages_queue may add individual tool nodes
                 result = _process_messages_queue(
                     messages_queue, event_queue, thread_id,
-                    accumulated_content, last_ai_message_content
+                    accumulated_content, last_ai_message_content, visited_nodes, tool_call_id_to_name
                 )
                 if result:
-                    accumulated_content, last_ai_message_content = result
+                    accumulated_content, last_ai_message_content, visited_nodes, tool_call_id_to_name = result
+                # Note: visited_nodes is modified in place, so changes persist even if result is None
+                # But we now always return visited_nodes to ensure consistency
                 
                 # Process events (node tracking)
                 current_node, visited_nodes = _process_events_queue(
@@ -183,50 +192,129 @@ def _process_messages_queue(
     thread_id: str,
     accumulated_content: str,
     last_ai_message_content: str,
-) -> tuple[str, str] | None:
+    visited_nodes: list[str],
+    tool_call_id_to_name: dict[str, str],
+) -> tuple[str, str, list[str], dict[str, str]] | None:
     """Process messages from the messages queue.
     
     Handles LLM events, tool events, and content chunks from message objects.
     
     Returns:
-        Updated (accumulated_content, last_ai_message_content) if changed, None otherwise
+        Updated (accumulated_content, last_ai_message_content, visited_nodes) if changed, None otherwise
     """
     while True:
         try:
             msg = messages_queue.get_nowait()
             
+            # LangGraph's astream(stream_mode="messages") returns tuples (node_name, message)
+            # Unpack if it's a tuple
+            if isinstance(msg, tuple) and len(msg) == 2:
+                node_name, msg = msg
+            elif isinstance(msg, tuple):
+                # Handle other tuple formats
+                logger.warning(
+                    "unexpected_tuple_format",
+                    tuple_length=len(msg),
+                    thread_id=thread_id,
+                )
+                continue
+            
+            # Handle dict messages (LangGraph may serialize messages as dicts)
+            is_ai_message = False
+            is_tool_message = False
+            if isinstance(msg, dict):
+                # Check if it's an AI message (has tool_calls or type indicates AIMessage)
+                if msg.get("type") == "AIMessage" or "tool_calls" in msg:
+                    is_ai_message = True
+                # Check if it's a ToolMessage (has tool_call_id or type indicates ToolMessage)
+                elif msg.get("type") == "ToolMessage" or "tool_call_id" in msg:
+                    is_tool_message = True
+                else:
+                    # Skip if we can't identify the message type
+                    continue
+            elif isinstance(msg, AIMessage):
+                is_ai_message = True
+            elif isinstance(msg, ToolMessage):
+                is_tool_message = True
+            else:
+                # Skip unknown message types
+                continue
+            
             # Handle AI messages (LLM events, tool calls, and content chunks)
-            if isinstance(msg, AIMessage):
-                content = extract_message_content(msg.content)
+            if is_ai_message:
+                # Extract content from dict or message object
+                if isinstance(msg, dict):
+                    content = str(msg.get("content", ""))
+                else:
+                    content = extract_message_content(msg.content)
                 
                 # Extract LLM metadata from response_metadata
-                if hasattr(msg, "response_metadata") and msg.response_metadata:
+                if isinstance(msg, dict):
+                    metadata = msg.get("response_metadata") or {}
+                    if not metadata:
+                        metadata = msg.get("usage_metadata") or {}
+                elif hasattr(msg, "response_metadata") and msg.response_metadata:
                     metadata = msg.response_metadata
-                    if isinstance(metadata, dict):
-                        model_name = (
-                            metadata.get("model_name") or
-                            metadata.get("model") or
-                            "unknown"
-                        )
-                        token_usage = metadata.get("token_usage") or metadata.get("usage_metadata")
-                        
-                        event_data = {
-                            "type": EVENT_LLM_END,
-                            "model": model_name,
-                            "input_preview": "",  # Not available from message alone
-                            "output_preview": truncate_preview(content, 200),
-                            "thread_id": thread_id,
-                        }
-                        if token_usage:
-                            event_data["token_usage"] = token_usage
-                        event_queue.put((QUEUE_EVENT, event_data))
+                else:
+                    metadata = {}
+                
+                if metadata and isinstance(metadata, dict):
+                    model_name = (
+                        metadata.get("model_name") or
+                        metadata.get("model") or
+                        "unknown"
+                    )
+                    token_usage = metadata.get("token_usage") or metadata.get("usage_metadata")
+                    
+                    event_data = {
+                        "type": EVENT_LLM_END,
+                        "model": model_name,
+                        "input_preview": "",  # Not available from message alone
+                        "output_preview": truncate_preview(content, 200),
+                        "thread_id": thread_id,
+                    }
+                    if token_usage:
+                        event_data["token_usage"] = token_usage
+                    event_queue.put((QUEUE_EVENT, event_data))
                 
                 # Handle tool calls from AIMessage
-                if hasattr(msg, "tool_calls") and msg.tool_calls:
-                    for tool_call in msg.tool_calls:
-                        tool_name = getattr(tool_call, "name", "unknown")
-                        tool_args = getattr(tool_call, "args", {})
+                tool_calls = msg.get("tool_calls", []) if isinstance(msg, dict) else (getattr(msg, "tool_calls", []) or [])
+                if tool_calls:
+                    # Map tool name to node name for graph view
+                    tool_to_node_map = {
+                        "procedures_vector_search": NODE_PROCEDURES_VECTOR_SEARCH,
+                        "regelgeving_vector_search": NODE_REGELGEVING_VECTOR_SEARCH,
+                    }
+                    
+                    for tool_call in tool_calls:
+                        # Handle both dict and object tool calls
+                        if isinstance(tool_call, dict):
+                            tool_name = tool_call.get("name", "unknown")
+                            tool_args = tool_call.get("args", {})
+                            tool_call_id = tool_call.get("id", "")
+                        else:
+                            tool_name = getattr(tool_call, "name", "unknown")
+                            tool_args = getattr(tool_call, "args", {})
+                            tool_call_id = getattr(tool_call, "id", "")
                         
+                        # Map tool_call_id to tool_name for later lookup in ToolMessages
+                        if tool_call_id:
+                            tool_call_id_to_name[tool_call_id] = tool_name
+                        
+                        tool_node_name = tool_to_node_map.get(tool_name, f"tool_{tool_name}")
+                        
+                        # Track individual tool node in visited_nodes
+                        if tool_node_name not in visited_nodes:
+                            visited_nodes.append(tool_node_name)
+                        
+                        # Emit node_start for the tool
+                        event_queue.put((QUEUE_EVENT, {
+                            "type": EVENT_NODE_START,
+                            "node": tool_node_name,
+                            "thread_id": thread_id,
+                        }))
+                        
+                        # Emit tool_start event
                         event_queue.put((QUEUE_EVENT, {
                             "type": EVENT_TOOL_START,
                             "tool_name": tool_name,
@@ -246,13 +334,40 @@ def _process_messages_queue(
                             "accumulated": new_accumulated,
                             "thread_id": thread_id,
                         }))
-                        return new_accumulated, content
+                        return new_accumulated, content, visited_nodes, tool_call_id_to_name
             
             # Handle tool results (ToolMessage)
-            elif isinstance(msg, ToolMessage):
-                tool_name = getattr(msg, "name", "unknown")
-                tool_result = extract_message_content(msg.content)
+            elif is_tool_message:
+                # Extract tool_call_id from dict or message object
+                if isinstance(msg, dict):
+                    tool_call_id = msg.get("tool_call_id", "")
+                    tool_result = str(msg.get("content", ""))
+                else:
+                    tool_call_id = getattr(msg, "tool_call_id", "")
+                    tool_result = extract_message_content(msg.content)
                 
+                # Look up tool name from tool_call_id mapping
+                tool_name = tool_call_id_to_name.get(tool_call_id, "unknown")
+                
+                # Map tool name to node name for graph view
+                tool_to_node_map = {
+                    "procedures_vector_search": NODE_PROCEDURES_VECTOR_SEARCH,
+                    "regelgeving_vector_search": NODE_REGELGEVING_VECTOR_SEARCH,
+                }
+                tool_node_name = tool_to_node_map.get(tool_name, f"tool_{tool_name}")
+                
+                # Track individual tool node in visited_nodes
+                if tool_node_name not in visited_nodes:
+                    visited_nodes.append(tool_node_name)
+                
+                # Emit node_start for the tool (if not already started)
+                event_queue.put((QUEUE_EVENT, {
+                    "type": EVENT_NODE_START,
+                    "node": tool_node_name,
+                    "thread_id": thread_id,
+                }))
+                
+                # Emit tool_end event
                 event_queue.put((QUEUE_EVENT, {
                     "type": EVENT_TOOL_END,
                     "tool_name": tool_name,
@@ -261,9 +376,27 @@ def _process_messages_queue(
                     "thread_id": thread_id,
                 }))
                 
+                # Emit node_end for the tool
+                event_queue.put((QUEUE_EVENT, {
+                    "type": EVENT_NODE_END,
+                    "node": tool_node_name,
+                    "thread_id": thread_id,
+                }))
+                
+                # Send state update with individual tool nodes in visited_nodes
+                event_queue.put((QUEUE_EVENT, {
+                    "type": EVENT_STATE_UPDATE,
+                    "next": [],
+                    "message_count": 0,
+                    "thread_id": thread_id,
+                    "visited_nodes": visited_nodes.copy(),
+                }))
+                
         except asyncio.QueueEmpty:
             break
-    return None
+    # Return visited_nodes even if no content update, so individual tool nodes are preserved
+    # Return the same accumulated_content and last_ai_message_content, but updated visited_nodes and tool_call_id_to_name
+    return accumulated_content, last_ai_message_content, visited_nodes, tool_call_id_to_name
 
 
 def _process_events_queue(
@@ -282,9 +415,16 @@ def _process_events_queue(
         try:
             event = events_queue.get_nowait()
             if isinstance(event, dict):
-                current_node, visited_nodes = _process_node_event(
-                    event, event_queue, thread_id, current_node, visited_nodes
-                )
+                event_type = event.get("event", "")
+                # Process tool events separately to track individual tool nodes
+                if event_type in ("on_tool_start", "on_tool_end"):
+                    visited_nodes = _process_tool_event(
+                        event, event_queue, thread_id, visited_nodes
+                    )
+                else:
+                    current_node, visited_nodes = _process_node_event(
+                        event, event_queue, thread_id, current_node, visited_nodes
+                    )
         except asyncio.QueueEmpty:
             break
     return current_node, visited_nodes
@@ -407,6 +547,94 @@ def _extract_llm_start_event(event: dict[str, Any], thread_id: str) -> dict[str,
     }
 
 
+def _process_tool_event(
+    event: dict[str, Any],
+    event_queue: queue.Queue,
+    thread_id: str,
+    visited_nodes: list[str],
+) -> list[str]:
+    """Process tool events from astream_events() to track individual tool nodes.
+    
+    Returns:
+        Updated visited_nodes with individual tool nodes added
+    """
+    from app.api.streaming_utils import extract_tool_event_data
+    from app.flows.opgroeien.poc.constants import (
+        NODE_PROCEDURES_VECTOR_SEARCH,
+        NODE_REGELGEVING_VECTOR_SEARCH,
+    )
+    
+    event_type = event.get("event", "")
+    tool_data = extract_tool_event_data(event, event_type)
+    
+    if not tool_data:
+        return visited_nodes
+    
+    tool_name = tool_data.get("tool_name", "unknown")
+    
+    # Map tool name to node name for graph view
+    tool_to_node_map = {
+        "procedures_vector_search": NODE_PROCEDURES_VECTOR_SEARCH,
+        "regelgeving_vector_search": NODE_REGELGEVING_VECTOR_SEARCH,
+    }
+    tool_node_name = tool_to_node_map.get(tool_name, f"tool_{tool_name}")
+    
+    # Track individual tool node in visited_nodes
+    if tool_node_name not in visited_nodes:
+        visited_nodes.append(tool_node_name)
+        
+        # Emit node_start for the tool
+        event_queue.put((QUEUE_EVENT, {
+            "type": EVENT_NODE_START,
+            "node": tool_node_name,
+            "thread_id": thread_id,
+        }))
+        
+        # Send state update with individual tool nodes
+        event_queue.put((QUEUE_EVENT, {
+            "type": EVENT_STATE_UPDATE,
+            "next": [],
+            "message_count": 0,
+            "thread_id": thread_id,
+            "visited_nodes": visited_nodes.copy(),
+        }))
+    
+    # Emit tool_start or tool_end event for frontend
+    if event_type == "on_tool_start":
+        event_queue.put((QUEUE_EVENT, {
+            "type": EVENT_TOOL_START,
+            "tool_name": tool_name,
+            "args_preview": tool_data.get("args_preview", ""),
+            "thread_id": thread_id,
+        }))
+    elif event_type == "on_tool_end":
+        # Emit node_end for the tool
+        event_queue.put((QUEUE_EVENT, {
+            "type": EVENT_NODE_END,
+            "node": tool_node_name,
+            "thread_id": thread_id,
+        }))
+        
+        event_queue.put((QUEUE_EVENT, {
+            "type": EVENT_TOOL_END,
+            "tool_name": tool_name,
+            "args_preview": tool_data.get("args_preview", ""),
+            "result_preview": tool_data.get("result_preview", ""),
+            "thread_id": thread_id,
+        }))
+        
+        # Send state update with individual tool nodes
+        event_queue.put((QUEUE_EVENT, {
+            "type": EVENT_STATE_UPDATE,
+            "next": [],
+            "message_count": 0,
+            "thread_id": thread_id,
+            "visited_nodes": visited_nodes.copy(),
+        }))
+    
+    return visited_nodes
+
+
 def _process_node_event(
     event: dict[str, Any],
     event_queue: queue.Queue,
@@ -461,14 +689,22 @@ def _process_node_event(
             current_node = None
         
         # Extract and send state update
+        # Note: visited_nodes may already contain individual tool nodes from _process_messages_queue
         state_data = extract_state_update(event)
         if state_data:
+            logger.debug(
+                "state_update_from_node_event",
+                node_name=node_name,
+                visited_nodes=visited_nodes.copy(),
+                visited_nodes_count=len(visited_nodes),
+                thread_id=thread_id,
+            )
             event_queue.put((QUEUE_EVENT, {
                 "type": EVENT_STATE_UPDATE,
                 "next": state_data["next"],
                 "message_count": state_data["message_count"],
                 "thread_id": thread_id,
-                "visited_nodes": visited_nodes.copy(),
+                "visited_nodes": visited_nodes.copy(),  # Includes individual tool nodes
             }))
     
     return current_node, visited_nodes

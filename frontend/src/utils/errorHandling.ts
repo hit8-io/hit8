@@ -120,9 +120,34 @@ export function getUserFriendlyError(error: unknown): ApiError {
  */
 export function logError(context: string, error: unknown): void {
   if (import.meta.env.DEV) {
-    console.error(`[${context}]`, error)
-    if (error instanceof Error && error.stack) {
-      console.error('Stack trace:', error.stack)
+    // Handle Error objects
+    if (error instanceof Error) {
+      console.error(`[${context}]`, error.message)
+      if (error.stack) {
+        console.error('Stack trace:', error.stack)
+      }
+      // Log any additional properties on the error object
+      const errorKeys = Object.keys(error).filter(key => key !== 'message' && key !== 'stack')
+      if (errorKeys.length > 0) {
+        const errorProps: Record<string, unknown> = {}
+        for (const key of errorKeys) {
+          errorProps[key] = (error as Record<string, unknown>)[key]
+        }
+        console.error('Error properties:', errorProps)
+      }
+    }
+    // Handle plain objects
+    else if (error && typeof error === 'object') {
+      try {
+        console.error(`[${context}]`, JSON.stringify(error, null, 2))
+      } catch {
+        // If JSON.stringify fails (circular reference), log as object
+        console.error(`[${context}]`, error)
+      }
+    }
+    // Handle other types
+    else {
+      console.error(`[${context}]`, error)
     }
   }
 }

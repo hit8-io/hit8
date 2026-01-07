@@ -173,6 +173,22 @@ export default function ChatInterface({ token, onChatStateChange, onExecutionSta
     const nodeName = typeof data.node === 'string' ? data.node : null
     if (nodeName) {
       setActiveNode(nodeName)
+      // Track node in visitedNodes immediately so it's included in state updates
+      if (!visitedNodes.includes(nodeName)) {
+        const updatedVisitedNodes = [...visitedNodes, nodeName]
+        setVisitedNodes(updatedVisitedNodes)
+        // Update prevStateRef to ensure state updates include this node
+        prevStateRef.current = { 
+          visitedNodes: updatedVisitedNodes, 
+          activeNode: nodeName 
+        }
+        // Send immediate state update with the new node
+        executionStateUpdateRef.current?.({
+          next: [nodeName],
+          values: { message_count: lastMessageCountRef.current },
+          history: updatedVisitedNodes.map(node => ({ node })),
+        })
+      }
     }
   }
 
@@ -180,7 +196,19 @@ export default function ChatInterface({ token, onChatStateChange, onExecutionSta
     const nodeName = typeof data.node === 'string' ? data.node : null
     setActiveNode(null)
     if (nodeName && !visitedNodes.includes(nodeName)) {
-      setVisitedNodes([...visitedNodes, nodeName])
+      const updatedVisitedNodes = [...visitedNodes, nodeName]
+      setVisitedNodes(updatedVisitedNodes)
+      // Update prevStateRef to ensure state updates include this node
+      prevStateRef.current = { 
+        visitedNodes: updatedVisitedNodes, 
+        activeNode: null 
+      }
+      // Send immediate state update with the new node
+      executionStateUpdateRef.current?.({
+        next: [],
+        values: { message_count: lastMessageCountRef.current },
+        history: updatedVisitedNodes.map(node => ({ node })),
+      })
     }
   }
 
@@ -402,7 +430,19 @@ export default function ChatInterface({ token, onChatStateChange, onExecutionSta
       handleStreamCompletion(finalResponse, accumulatedContent, hasError)
 
     } catch (error) {
-      logError('ChatInterface: Chat stream error', { error, threadId })
+      // Extract error details for logging
+      const errorDetails = error instanceof Error 
+        ? {
+            message: error.message,
+            type: (error as ErrorWithType).type || error.constructor.name,
+            stack: error.stack,
+            threadId,
+          }
+        : {
+            error: String(error),
+            threadId,
+          }
+      logError('ChatInterface: Chat stream error', errorDetails)
       
       const apiError = getUserFriendlyError(error)
       const errorMessage = apiError.isUserFriendly 

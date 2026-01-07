@@ -283,6 +283,85 @@ export default function GraphView({ apiUrl, token, executionState }: GraphViewPr
         graphEdges = channelEdges
       }
 
+      // Add all possible tool nodes from the start (we know what tools are available)
+      const allToolNodeNames = [
+        'node_procedures_vector_search',
+        'node_regelgeving_vector_search',
+        // Future tools (commented out until enabled):
+        // 'node_fetch_webpage',
+        // 'node_generate_docx',
+        // 'node_generate_xlsx',
+        // 'node_extract_entities',
+        // 'node_query_knowledge_graph',
+        // 'node_get_procedure',
+        // 'node_get_regelgeving',
+      ]
+      
+      const existingNodeIds = new Set(graphNodes.map((n) => n.id))
+      
+      // Add tool nodes that aren't already in the graph
+      allToolNodeNames.forEach((toolNodeId) => {
+        if (!existingNodeIds.has(toolNodeId)) {
+          const label = toolNodeId
+            .replace(/^node_/, '')
+            .replace(/_/g, ' ')
+            .replace(/\b\w/g, (l) => l.toUpperCase())
+          graphNodes.push({
+            id: toolNodeId,
+            data: { label },
+            position: { x: 0, y: 0 },
+          })
+        }
+      })
+      
+      // Add edges for tool nodes: agent -> tool -> agent
+      // Hide the generic "tools" node by not creating edges to/from it
+      const agentNodeExists = existingNodeIds.has('agent')
+      if (agentNodeExists) {
+        allToolNodeNames.forEach((toolNodeId) => {
+          // Edge from agent to tool node
+          const agentToToolId = `agent-${toolNodeId}`
+          const edgeExists = graphEdges.some((e) => e.id === agentToToolId)
+          if (!edgeExists) {
+            graphEdges.push({
+              id: agentToToolId,
+              source: 'agent',
+              target: toolNodeId,
+              animated: false,
+            })
+          }
+          
+          // Edge from tool node back to agent
+          const toolToAgentId = `${toolNodeId}-agent`
+          const edgeExists2 = graphEdges.some((e) => e.id === toolToAgentId)
+          if (!edgeExists2) {
+            graphEdges.push({
+              id: toolToAgentId,
+              source: toolNodeId,
+              target: 'agent',
+              animated: false,
+            })
+          }
+        })
+        
+        // Remove edges to/from the generic "tools" node since we have individual tool nodes
+        graphEdges = graphEdges.filter(
+          (edge) => edge.source !== 'tools' && edge.target !== 'tools'
+        )
+      }
+      
+      // Hide the generic "tools" node if individual tool nodes exist
+      graphNodes = graphNodes.map((node) => {
+        if (node.id === 'tools' && allToolNodeNames.length > 0) {
+          return {
+            ...node,
+            hidden: true,
+            style: { ...node.style, opacity: 0, height: 0, width: 0 },
+          }
+        }
+        return node
+      })
+
       // Apply layout
       const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(graphNodes, graphEdges)
       setNodes(layoutedNodes)
@@ -294,7 +373,7 @@ export default function GraphView({ apiUrl, token, executionState }: GraphViewPr
 
   // No polling needed - rely entirely on stream events for updates
 
-  // Update node styles based on execution state
+  // Update node styles based on execution state and add dynamic nodes
   useEffect(() => {
     if (!currentExecutionState) {
       // Reset all nodes to default style
@@ -344,6 +423,31 @@ export default function GraphView({ apiUrl, token, executionState }: GraphViewPr
         }
       })
     }
+    
+
+    // Tool nodes are now created from the start, so we don't need to add them dynamically
+    // We only need to ensure the "tools" node stays hidden if tool nodes are visited
+    setNodes((nds) => {
+      // Hide "tools" node if any individual tool nodes are in visitedNodes
+      const hasToolNodes = visitedNodes.some(
+        (nodeId) => nodeId.startsWith('node_') && nodeId !== 'node_agent' && nodeId !== 'node_tools'
+      )
+      
+      if (hasToolNodes) {
+        return nds.map((node) => {
+          if (node.id === 'tools' || node.id === 'node_tools') {
+            return {
+              ...node,
+              hidden: true,
+              style: { ...node.style, opacity: 0, height: 0, width: 0 },
+            }
+          }
+          return node
+        })
+      }
+      
+      return nds
+    })
 
     // Update node and edge styles based on execution state
     // Use functional updates to avoid needing nodes/edges in dependency array
