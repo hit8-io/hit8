@@ -51,6 +51,13 @@ doppler.yaml
 
 # DB
 supabase/backup/
+supabase/.temp/
+
+# Certificates (sensitive files)
+backend/certs/*.crt
+backend/certs/*.pem
+backend/certs/*.key
+!backend/certs/.gitkeep
 
 # Terraform
 infra/.terraform/

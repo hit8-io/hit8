@@ -9,7 +9,7 @@ import threading
 from typing import Any
 
 import structlog
-from pydantic import Field, computed_field
+from pydantic import Field, computed_field, field_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 from app import constants
@@ -97,6 +97,19 @@ class Settings(BaseSettings):
     
     # Database
     DATABASE_CONNECTION_STRING: str = Field(exclude=True)
+    DATABASE_SSL_ROOT_CERT: str | None = Field(
+        default=None,
+        exclude=True,
+        description="SSL root certificate content (not file path) - required in production"
+    )
+    
+    @field_validator("DATABASE_SSL_ROOT_CERT")
+    @classmethod
+    def validate_ssl_cert_required_in_production(cls, v: str | None) -> str | None:
+        """Validate that SSL certificate is provided in production."""
+        if constants.ENVIRONMENT == "prd" and not v:
+            raise ValueError("DATABASE_SSL_ROOT_CERT is required in production environment")
+        return v
     
     # Google Identity Platform
     GOOGLE_IDENTITY_PLATFORM_DOMAIN: str

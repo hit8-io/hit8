@@ -4,6 +4,28 @@ provider "google" {
   zone    = var.zone
 }
 
+# 0. GCS Bucket for Terraform State
+resource "google_storage_bucket" "terraform_state" {
+  name          = "hit8-hit8-poc-prd-tfstate"
+  location      = var.region
+  force_destroy = false  # Prevent accidental deletion
+  
+  versioning {
+    enabled = true  # Required for state locking
+  }
+  
+  lifecycle_rule {
+    condition {
+      num_newer_versions = 10  # Keep last 10 versions
+    }
+    action {
+      type = "Delete"
+    }
+  }
+  
+  uniform_bucket_level_access = true
+}
+
 # 1. The Static IP (Crucial to import this first to save it)
 resource "google_compute_address" "egress_ip" {
   name   = "production-static-egress-ip"

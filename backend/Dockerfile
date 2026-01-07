@@ -32,6 +32,9 @@ RUN apt-get purge -y build-essential gcc libffi-dev libssl-dev && \
 # This layer will be rebuilt on code changes, but dependencies layer stays cached
 COPY . .
 
+# Create certificates directory (certificates should be provided via secrets or mounted volumes)
+RUN mkdir -p /app/certs
+
 # Build argument for version (optional, defaults to unknown)
 ARG VERSION=unknown
 LABEL version=$VERSION
