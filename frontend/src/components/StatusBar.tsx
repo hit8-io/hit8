@@ -226,7 +226,7 @@ export default function StatusBar({ apiUrl, token, userName }: StatusBarProps) {
       {(userAccount || metadata?.account) && (
         <div className="flex items-center gap-2">
           <span className="text-muted-foreground">Account:</span>
-          <span className="font-medium">{userAccount || metadata.account}</span>
+          <span className="font-medium">{userAccount || metadata?.account}</span>
         </div>
       )}
 
