@@ -133,7 +133,9 @@ export function captureException(error: unknown, context?: Record<string, unknow
     if (context) {
       Sentry.withScope((scope) => {
         Object.entries(context).forEach(([key, value]) => {
-          scope.setContext(key, value)
+          // Sentry's setContext expects Context | null, where Context is a serializable object
+          // Cast to the expected type - Sentry will handle serialization
+          scope.setContext(key, value as Record<string, unknown> | null)
         })
         Sentry.captureException(error)
       })

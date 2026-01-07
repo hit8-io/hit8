@@ -72,6 +72,79 @@ function FitViewOnLoad({ nodeCount }: { nodeCount: number }) {
   return null
 }
 
+/**
+ * Extract error message from API error response.
+ * Handles various FastAPI error response formats.
+ */
+function extractErrorMessage(err: unknown): string {
+  if (!axios.isAxiosError(err) || !err.response?.data) {
+    return 'Failed to load graph structure'
+  }
+
+  // Access data safely without destructuring to avoid 'any' type issues
+  const data = err.response.data as unknown
+  const detail = (data as Record<string, unknown>)?.detail
+
+  if (typeof detail === 'string') {
+    return detail
+  }
+
+  if (Array.isArray(detail) && detail.length > 0) {
+    const firstError = detail[0] as unknown
+    if (typeof firstError === 'string') {
+      return firstError
+    }
+    if (firstError && typeof firstError === 'object' && 'msg' in firstError) {
+      return String((firstError as { msg: unknown }).msg)
+    }
+  }
+
+  if (detail && typeof detail === 'object' && 'msg' in detail) {
+    return String((detail as { msg: unknown }).msg)
+  }
+
+  if (typeof data === 'string') {
+    return data
+  }
+
+  return 'Failed to load graph structure'
+}
+
+/**
+ * Handle API error response with appropriate error state updates.
+ */
+function handleApiError(
+  err: unknown,
+  setError: (error: string | null) => void
+): void {
+  if (!axios.isAxiosError(err)) {
+    setError('Failed to load graph structure')
+    return
+  }
+
+  const status = err.response?.status
+
+  // Handle 401 - token expired, wait for refresh
+  if (status === 401) {
+    setError(null)
+    return
+  }
+
+  // Handle 422/400 - validation errors, check if org/project selected
+  if (status === 422 || status === 400) {
+    const org = localStorage.getItem('activeOrg')
+    const project = localStorage.getItem('activeProject')
+    if (!org || !project) {
+      setError(null)
+      return
+    }
+  }
+
+  // Extract and set error message
+  const errorMessage = extractErrorMessage(err)
+  setError(errorMessage)
+}
+
 
 export default function GraphView({ apiUrl, token, executionState }: GraphViewProps) {
   const [graphStructure, setGraphStructure] = useState<GraphStructure | null>(null)
@@ -168,55 +241,16 @@ export default function GraphView({ apiUrl, token, executionState }: GraphViewPr
           headers: getApiHeaders(token),
         })
 
-        setGraphStructure(response.data)
+        setGraphStructure(response.data as GraphStructure)
         setError(null)
       } catch (err) {
-        if (axios.isAxiosError(err)) {
-          if (err.response?.status === 401) {
-            // Token expired or invalid - don't show error, just wait for token refresh
-            setError(null)
-            return
-          }
-          if (err.response?.status === 422 || err.response?.status === 400) {
-            // Validation error - might be missing headers
-            // Don't show error if org/project not selected (expected)
-            const org = localStorage.getItem('activeOrg')
-            const project = localStorage.getItem('activeProject')
-            if (!org || !project) {
-              setError(null)
-              return
-            }
-          }
-          // Handle error response - detail might be a string, object, or array
-          let errorMessage = 'Failed to load graph structure'
-          if (err.response?.data) {
-            const detail = err.response.data.detail
-            if (typeof detail === 'string') {
-              errorMessage = detail
-            } else if (Array.isArray(detail) && detail.length > 0) {
-              // FastAPI validation errors are arrays
-              const firstError = detail[0]
-              if (typeof firstError === 'string') {
-                errorMessage = firstError
-              } else if (firstError && typeof firstError === 'object' && 'msg' in firstError) {
-                errorMessage = String(firstError.msg)
-              }
-            } else if (detail && typeof detail === 'object' && 'msg' in detail) {
-              errorMessage = String(detail.msg)
-            } else if (typeof err.response.data === 'string') {
-              errorMessage = err.response.data
-            }
-          }
-          setError(errorMessage)
-        } else {
-          setError('Failed to load graph structure')
-        }
+        handleApiError(err, setError)
       } finally {
         setLoading(false)
       }
     }
 
-    fetchGraphStructure()
+    void fetchGraphStructure()
   }, [apiUrl, token, orgProjectKey])
 
   // Convert graph structure to React Flow format and apply layout
