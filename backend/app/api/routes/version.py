@@ -14,6 +14,6 @@ router = APIRouter()
 async def get_version():
     """Get the application version."""
     return {
-        "version": settings.app_version,
+        "version": settings.APP_VERSION,
     }
 

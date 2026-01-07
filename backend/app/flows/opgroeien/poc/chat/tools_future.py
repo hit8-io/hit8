@@ -19,12 +19,12 @@ from docx import Document
 from langchain_core.tools import tool
 from openpyxl import Workbook
 
-from app.agents.opgroeien.constants import (
+from app.flows.opgroeien.poc.constants import (
     COLLECTION_PROCEDURES,
     COLLECTION_REGELGEVING,
     VECTOR_SEARCH_DOC_K,
 )
-from app.agents.opgroeien.tools_utils import (
+from app.flows.opgroeien.poc.chat.tools_utils import (
     _vector_search_raw_sql,
 )
 

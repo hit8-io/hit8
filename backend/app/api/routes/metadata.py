@@ -19,6 +19,6 @@ async def get_metadata_endpoint(
 ):
     """Get application metadata (account, org, project, environment, log_level)."""
     metadata = settings.metadata.copy()
-    metadata["log_level"] = settings.log_level
+    metadata["log_level"] = settings.LOG_LEVEL
     return metadata
 

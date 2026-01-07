@@ -13,8 +13,8 @@ from typing import TYPE_CHECKING, Any
 import structlog
 from langchain_core.messages import AIMessage, ToolMessage
 
-from app.agents.opgroeien.constants import NODE_AGENT, NODE_TOOLS
-from app.agents.opgroeien.graph import AgentState
+from app.flows.opgroeien.poc.constants import NODE_AGENT, NODE_TOOLS
+from app.flows.opgroeien.poc.chat.graph import AgentState
 from app.api.constants import (
     EVENT_CONTENT_CHUNK,
     EVENT_ERROR,

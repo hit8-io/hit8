@@ -24,11 +24,11 @@ def _ensure_firebase_initialized() -> None:
         with _firebase_init_lock:
             if not _firebase_initialized:
                 try:
-                    service_account_info = json.loads(settings.vertex_service_account)
+                    service_account_info = json.loads(settings.VERTEX_SERVICE_ACCOUNT)
                     cred = credentials.Certificate(service_account_info)
-                    firebase_admin.initialize_app(cred, {'projectId': settings.gcp_project})
+                    firebase_admin.initialize_app(cred, {'projectId': settings.GCP_PROJECT})
                     _firebase_initialized = True
-                    logger.info("firebase_admin_initialized", project_id=settings.gcp_project)
+                    logger.info("firebase_admin_initialized", project_id=settings.GCP_PROJECT)
                 except Exception as e:
                     logger.error(
                         "firebase_admin_init_failed",

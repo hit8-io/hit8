@@ -16,6 +16,6 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "hit8-api",
-        "version": settings.app_version,
+        "version": settings.APP_VERSION,
     }
 

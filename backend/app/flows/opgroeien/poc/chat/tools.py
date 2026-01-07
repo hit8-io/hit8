@@ -9,12 +9,12 @@ from typing import Any
 import structlog
 from langchain_core.tools import tool
 
-from app.agents.opgroeien.constants import (
+from app.flows.opgroeien.poc.constants import (
     COLLECTION_PROCEDURES,
     COLLECTION_REGELGEVING,
     VECTOR_SEARCH_DEFAULT_K,
 )
-from app.agents.opgroeien.tools_utils import (
+from app.flows.opgroeien.poc.chat.tools_utils import (
     _vector_search_raw_sql,
 )
 
@@ -147,7 +147,7 @@ def get_all_tools() -> list[Any]:
         procedures_vector_search,
         regelgeving_vector_search,
         # Future tools available in tools_future.py:
-        # from app.agents.opgroeien.tools_future import (
+        # from app.flows.opgroeien.poc.chat.tools_future import (
         #     fetch_webpage,
         #     generate_docx,
         #     generate_xlsx,

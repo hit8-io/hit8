@@ -1,7 +1,12 @@
 """
-Constants for the opgroeien agent.
+Constants for the opgroeien POC flow.
 """
 from __future__ import annotations
+
+# Config
+ORG = "opgroeien"
+PROJECT = "poc"
+SYSTEM_PROMPT = "system_prompt"
 
 # Vector store collection names
 COLLECTION_PROCEDURES = "embeddings_proc"
@@ -31,3 +36,4 @@ NODE_EXTRACT_ENTITIES = "node_extract_entities"
 NODE_QUERY_KNOWLEDGE_GRAPH = "node_query_knowledge_graph"
 NODE_GET_PROCEDURE = "node_get_procedure"
 NODE_GET_REGELGEVING = "node_get_regelgeving"
+

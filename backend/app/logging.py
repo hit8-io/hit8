@@ -66,7 +66,7 @@ def setup_logging() -> None:
     from app.config import settings
     
     # Determine formatter based on log_format
-    if settings.log_format == "json":
+    if settings.LOG_FORMAT == "json":
         formatter_name = "json_formatter"
     else:  # console or any other value
         formatter_name = "console_formatter"
@@ -93,11 +93,11 @@ def setup_logging() -> None:
         "loggers": {
             "": {  # Root logger
                 "handlers": ["console"],
-                "level": settings.log_level.upper(),
+                "level": settings.LOG_LEVEL.upper(),
             },
             "app": {
                 "handlers": ["console"],
-                "level": settings.log_level.upper(),
+                "level": settings.LOG_LEVEL.upper(),
                 "propagate": False,
             },
         },

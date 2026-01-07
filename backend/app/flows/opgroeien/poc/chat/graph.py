@@ -12,18 +12,19 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
-from app.agents.common import get_agent_model, get_langfuse_handler
-from app.agents.opgroeien.constants import (
+from app.flows.common import get_agent_model, get_langfuse_handler
+from app.flows.opgroeien.poc import constants as flow_constants
+from app.flows.opgroeien.poc.constants import (
     NODE_AGENT,
     NODE_PROCEDURES_VECTOR_SEARCH,
     NODE_REGELGEVING_VECTOR_SEARCH,
 )
-from app.agents.opgroeien.tools import (
+from app.flows.opgroeien.poc.chat.tools import (
     get_all_tools,
     procedures_vector_search,
     regelgeving_vector_search,
 )
-from app.agents.opgroeien.tools_utils import create_tool_node
+from app.flows.opgroeien.poc.chat.tools_utils import create_tool_node
 from app.config import settings
 
 if TYPE_CHECKING:
@@ -71,10 +72,15 @@ def agent_node(state: AgentState, config: Optional[RunnableConfig] = None) -> Ag
     # Convert config to dict for metadata injection
     config_dict: dict[str, Any] = dict(config) if config is not None else {}
     
-    # Inject centralized metadata into config for Vertex AI
+    # Inject metadata into config for Vertex AI
+    # Use flow constants for org/project, settings for environment/account
     if "metadata" not in config_dict:
         config_dict["metadata"] = {}
+    # Start with settings metadata (environment, account)
     config_dict["metadata"].update(settings.metadata)
+    # Add flow-specific org and project from constants
+    config_dict["metadata"]["org"] = flow_constants.ORG
+    config_dict["metadata"]["project"] = flow_constants.PROJECT
     
     # Invoke model with messages
     try:
@@ -150,21 +156,11 @@ def _get_tool_node_function_map() -> dict[str, tuple[str, Callable[..., Any]]]:
 
 
 def create_agent_graph() -> CompiledGraph:
-    """Create and compile the LangGraph agent state machine."""
-    global _agent_checkpointer
+    """Create and compile the LangGraph agent state machine.
     
-    # Checkpointer Selection: MemorySaver
-    #
-    # We use MemorySaver instead of PostgresSaver because:
-    # 1. PostgresSaver doesn't fully support async checkpoint operations
-    #    - `aget_tuple()` raises NotImplementedError
-    #    - This forced us to use sync `stream()` in background threads
-    # 2. MemorySaver supports both sync and async operations
-    #    - Enables future migration to async streaming if needed
-    #    - Simpler architecture without database dependencies
-    # 3. Trade-off: State is not persisted across restarts
-    #    - Acceptable for current use case (stateless conversations)
-    #    - Can migrate back to PostgresSaver when async support is added
+    Note: We use MemorySaver instead of PostgresSaver. See docs/debt.md for details.
+    """
+    global _agent_checkpointer
     
     if _agent_checkpointer is None:
         _agent_checkpointer = MemorySaver()

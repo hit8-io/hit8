@@ -7,7 +7,7 @@ import os
 from unittest.mock import patch, MagicMock, Mock
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
 
-from app.agents.opgroeien.graph import (
+from app.flows.opgroeien.poc.chat.graph import (
     AgentState,
     agent_node,
     should_continue,
@@ -59,7 +59,7 @@ def test_should_continue_without_tool_calls():
 def test_agent_node_adds_system_message():
     """Test that agent_node adds system message if not present."""
     # Reset model cache
-    import app.agents.opgroeien.graph as graph_agent
+    import app.flows.opgroeien.poc.chat.graph as graph_agent
     graph_agent._agent_model = None
     
     # Mock the model
@@ -76,9 +76,9 @@ def test_agent_node_adds_system_message():
         version="1.0.0",
         config={}
     )
-    with patch("app.agents.opgroeien.graph._get_agent_model", return_value=mock_model):
+    with patch("app.flows.opgroeien.poc.chat.graph._get_agent_model", return_value=mock_model):
         with patch("app.prompts.loader.get_system_prompt", return_value=mock_prompt_obj):
-            with patch("app.agents.opgroeien.utils.get_all_tools", return_value=[]):
+            with patch("app.flows.opgroeien.poc.chat.tools.get_all_tools", return_value=[]):
                 with patch("app.config.get_metadata", return_value={"environment": "test"}):
                     state: AgentState = {
                         "messages": [HumanMessage(content="Hello")]
@@ -102,7 +102,7 @@ def test_agent_node_adds_system_message():
 
 def test_agent_node_preserves_existing_system_message():
     """Test that agent_node doesn't add duplicate system messages."""
-    import app.agents.opgroeien.graph as graph_agent
+    import app.flows.opgroeien.poc.chat.graph as graph_agent
     graph_agent._agent_model = None
     
     mock_model = MagicMock()
@@ -112,8 +112,8 @@ def test_agent_node_preserves_existing_system_message():
     mock_ai_message = AIMessage(content="Test response")
     mock_model_with_tools.invoke.return_value = mock_ai_message
     
-    with patch("app.agents.opgroeien.graph._get_agent_model", return_value=mock_model):
-        with patch("app.agents.opgroeien.utils.get_all_tools", return_value=[]):
+    with patch("app.flows.opgroeien.poc.chat.graph._get_agent_model", return_value=mock_model):
+        with patch("app.flows.opgroeien.poc.chat.tools.get_all_tools", return_value=[]):
             with patch("app.config.get_metadata", return_value={"environment": "test"}):
                 # State already has system message
                 state: AgentState = {
@@ -141,8 +141,8 @@ def test_create_agent_graph_structure():
     os.environ.setdefault("DATABASE_CONNECTION_STRING", "postgresql://test:test@localhost/test")
     os.environ.setdefault("LANGFUSE_ENABLED", "false")  # Disable langfuse for this test
     
-    with patch("app.agents.opgroeien.graph.PostgresSaver.from_conn_string", return_value=mock_checkpointer_cm):
-        with patch("app.agents.opgroeien.utils.get_all_tools", return_value=[]):
+    with patch("app.flows.opgroeien.poc.chat.graph.PostgresSaver.from_conn_string", return_value=mock_checkpointer_cm):
+        with patch("app.flows.opgroeien.poc.chat.tools.get_all_tools", return_value=[]):
             try:
                 graph = create_agent_graph()
                 
@@ -162,7 +162,7 @@ def test_create_agent_graph_structure():
 
 def test_agent_node_with_tools():
     """Test that agent_node binds tools to the model."""
-    import app.agents.opgroeien.graph as graph_agent
+    import app.flows.opgroeien.poc.chat.graph as graph_agent
     graph_agent._agent_model = None
     
     mock_model = MagicMock()
@@ -180,8 +180,8 @@ def test_agent_node_with_tools():
         version="1.0.0",
         config={}
     )
-    with patch("app.agents.opgroeien.graph._get_agent_model", return_value=mock_model):
-        with patch("app.agents.opgroeien.utils.get_all_tools", return_value=[mock_tool]):
+    with patch("app.flows.opgroeien.poc.chat.graph._get_agent_model", return_value=mock_model):
+        with patch("app.flows.opgroeien.poc.chat.tools.get_all_tools", return_value=[mock_tool]):
             with patch("app.prompts.loader.get_system_prompt", return_value=mock_prompt_obj):
                 with patch("app.config.get_metadata", return_value={"environment": "test"}):
                     state: AgentState = {
@@ -200,7 +200,7 @@ def test_agent_node_with_tools():
 
 def test_agent_node_with_tool_calls():
     """Test that agent_node handles tool calls correctly."""
-    import app.agents.opgroeien.graph as graph_agent
+    import app.flows.opgroeien.poc.chat.graph as graph_agent
     graph_agent._agent_model = None
     
     mock_model = MagicMock()
@@ -223,8 +223,8 @@ def test_agent_node_with_tool_calls():
         version="1.0.0",
         config={}
     )
-    with patch("app.agents.opgroeien.graph._get_agent_model", return_value=mock_model):
-        with patch("app.agents.opgroeien.utils.get_all_tools", return_value=[]):
+    with patch("app.flows.opgroeien.poc.chat.graph._get_agent_model", return_value=mock_model):
+        with patch("app.flows.opgroeien.poc.chat.tools.get_all_tools", return_value=[]):
             with patch("app.prompts.loader.get_system_prompt", return_value=mock_prompt_obj):
                 with patch("app.config.get_metadata", return_value={"environment": "test"}):
                     state: AgentState = {
@@ -243,7 +243,7 @@ def test_agent_node_with_tool_calls():
 
 def test_get_agent_model_initialization():
     """Test that _get_agent_model initializes correctly."""
-    import app.agents.opgroeien.graph as graph_agent
+    import app.flows.opgroeien.poc.chat.graph as graph_agent
     graph_agent._agent_model = None
     
     # Set required env vars
@@ -252,11 +252,11 @@ def test_get_agent_model_initialization():
     os.environ.setdefault("VERTEX_AI_MODEL_NAME", "gemini-3-flash-preview")
     os.environ.setdefault("VERTEX_AI_LOCATION", "global")
     
-    with patch("app.agents.opgroeien.graph.ChatGoogleGenerativeAI") as mock_chat_class:
+    with patch("app.flows.opgroeien.poc.chat.graph.ChatGoogleGenerativeAI") as mock_chat_class:
         mock_instance = MagicMock()
         mock_chat_class.return_value = mock_instance
         
-        with patch("app.agents.opgroeien.graph.service_account.Credentials.from_service_account_info"):
+        with patch("app.flows.opgroeien.poc.chat.graph.service_account.Credentials.from_service_account_info"):
             try:
                 model = _get_agent_model()
                 
@@ -271,7 +271,7 @@ def test_get_agent_model_initialization():
 
 def test_agent_node_metadata_injection():
     """Test that agent_node injects metadata into config."""
-    import app.agents.opgroeien.graph as graph_agent
+    import app.flows.opgroeien.poc.chat.graph as graph_agent
     graph_agent._agent_model = None
     
     mock_model = MagicMock()
@@ -293,8 +293,8 @@ def test_agent_node_metadata_injection():
         version="1.0.0",
         config={}
     )
-    with patch("app.agents.opgroeien.graph._get_agent_model", return_value=mock_model):
-        with patch("app.agents.opgroeien.utils.get_all_tools", return_value=[]):
+    with patch("app.flows.opgroeien.poc.chat.graph._get_agent_model", return_value=mock_model):
+        with patch("app.flows.opgroeien.poc.chat.tools.get_all_tools", return_value=[]):
             with patch("app.prompts.loader.get_system_prompt", return_value=mock_prompt_obj):
                 with patch("app.config.get_metadata", return_value=test_metadata):
                     state: AgentState = {

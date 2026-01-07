@@ -3,13 +3,13 @@ Unit tests for LangGraph logic.
 """
 from unittest.mock import patch, MagicMock
 from langchain_core.messages import HumanMessage, AIMessage
-from app.agents.simple.graph import generate_node, AgentState, _get_model
+from app.flows.hit8.hit8.chat.graph import generate_node, AgentState, _get_model
 
 
 def test_generate_node_adds_response():
     """Test that generate_node adds AI response to state."""
     # Reset the model cache
-    import app.agents.simple.graph as simple_graph
+    import app.flows.hit8.hit8.chat.graph as simple_graph
     simple_graph._model = None
     
     # Setup: Mock the model getter
@@ -17,7 +17,7 @@ def test_generate_node_adds_response():
     mock_ai_message = AIMessage(content="Mocked AI Response")
     mock_model.invoke.return_value = mock_ai_message
     
-    with patch("app.agents.simple.graph._get_model", return_value=mock_model):
+    with patch("app.flows.hit8.hit8.chat.graph._get_model", return_value=mock_model):
         # Setup: Initial state
         state: AgentState = {"messages": [HumanMessage(content="Hi")]}
         

@@ -16,8 +16,8 @@ logger = structlog.get_logger(__name__)
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     app = FastAPI(
-        title=settings.app_name,
-        version=settings.app_version,
+        title=settings.APP_NAME,
+        version=settings.APP_VERSION,
     )
     
     # Setup middleware

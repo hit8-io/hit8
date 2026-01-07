@@ -15,8 +15,8 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from app.agents.common import get_langfuse_handler
-from app.agents.opgroeien.graph import AgentState
+from app.flows.common import get_langfuse_handler
+from app.flows.opgroeien.poc.chat.graph import AgentState
 from app.api.constants import EVENT_ERROR, EVENT_GRAPH_END
 from app.api.models import ChatRequest
 from app.api.streaming import (
@@ -27,6 +27,7 @@ from app.api.streaming import (
 from app.config import settings
 from app.auth import verify_google_token
 from app.prompts.loader import get_system_prompt
+import importlib
 
 if TYPE_CHECKING:
     from langfuse.langchain import CallbackHandler
@@ -154,7 +155,7 @@ async def chat(
     thread_id = request.thread_id if request.thread_id else str(uuid.uuid4())
     
     # Initialize system prompt for the configured agent type
-    system_prompt_obj = get_system_prompt(settings.agent_graph_type)
+    system_prompt_obj = get_system_prompt(settings.FLOW)
     system_prompt = system_prompt_obj.render()
     
     initial_state: AgentState = {
@@ -179,18 +180,42 @@ async def chat(
             thread_id=thread_id,
         )
     
-    # Add metadata for Langfuse tracing using centralized metadata
+    # Get flow constants for org/project based on agent type
+    agent_type = settings.FLOW
+    constants_modules = {
+        "opgroeien": "app.flows.opgroeien.poc.constants",
+        "simple": "app.flows.hit8.hit8.constants",
+    }
+    
+    # Import flow constants to get org and project
+    if agent_type in constants_modules:
+        flow_constants = importlib.import_module(constants_modules[agent_type])
+        org = flow_constants.ORG
+        project = flow_constants.PROJECT
+    else:
+        # Fallback for unknown agent types
+        org = "unknown"
+        project = "unknown"
+        logger.warning(
+            "unknown_agent_type_for_metadata",
+            agent_type=agent_type,
+            thread_id=thread_id,
+        )
+    
+    # Build metadata: environment and account from settings, org/project from flow constants
     centralized_metadata = settings.metadata
     metadata: dict[str, Any] = {
         "langfuse_user_id": user_id,
-        **centralized_metadata,  # Includes environment, account, org, project
+        **centralized_metadata,  # Includes environment, account
+        "org": org,
+        "project": project,
     }
     logger.debug(
         "langfuse_metadata_constructed",
         environment=centralized_metadata["environment"],
         account=centralized_metadata["account"],
-        org=centralized_metadata["org"],
-        project=centralized_metadata["project"],
+        org=org,
+        project=project,
         thread_id=thread_id,
     )
     

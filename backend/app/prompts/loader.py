@@ -17,7 +17,7 @@ logger = structlog.get_logger(__name__)
 
 jinja_env = Environment(undefined=StrictUndefined)
 IS_DEV = settings.environment == "dev"
-PROMPTS_DIR = Path(settings.prompts_dir)
+PROMPTS_DIR = Path(settings.PROMPTS_DIR)
 _prompt_cache: dict[str, "PromptObject"] = {}
 
 
@@ -48,7 +48,9 @@ def load_prompt(prompt_name: str, force_refresh: bool = False) -> PromptObject:
     Load a prompt from YAML file.
     
     Args:
-        prompt_name: Filename without .yaml extension
+        prompt_name: Path relative to PROMPTS_DIR, following org/project structure.
+                    Prompt paths are determined from flow constants.py (ORG, PROJECT).
+                    Format: "{org}/{project}/system_prompt" (e.g., "opgroeien/poc/system_prompt")
         force_refresh: Bypass cache (automatic in dev mode)
         
     Returns:
@@ -57,6 +59,10 @@ def load_prompt(prompt_name: str, force_refresh: bool = False) -> PromptObject:
     Raises:
         FileNotFoundError: If prompt file doesn't exist
         ValueError: If prompt file is invalid
+        
+    Note:
+        Use get_system_prompt() to automatically resolve prompt paths from flow constants.
+        This function is a low-level loader that expects the full path.
     """
     # Return cached version if available and not in dev mode
     if not IS_DEV and not force_refresh and prompt_name in _prompt_cache:
@@ -112,15 +118,48 @@ def get_system_prompt(agent_type: str | None = None) -> PromptObject:
     """
     Get the system prompt for the specified agent type.
     
+    Derives prompt path from ORG/PROJECT/FLOW structure:
+    - If agent_type is "chat" or None: uses main constants (ORG, PROJECT, FLOW)
+    - Otherwise: uses flow-specific constants modules
+    
     Args:
-        agent_type: Agent type (e.g., "opgroeien", "simple"). 
-                   If None, uses settings.agent_graph_type
+        agent_type: Agent type (e.g., "chat", "opgroeien", "simple"). 
+                   If None, uses settings.FLOW
     
     Returns:
         PromptObject with render() method
     """
     if agent_type is None:
-        agent_type = settings.agent_graph_type
+        agent_type = settings.FLOW
     
-    prompt_name = f"{agent_type}_system_prompt"
+    # Special handling for "chat" flow: use main constants
+    if agent_type == "chat":
+        from app import constants
+        org = constants.CONSTANTS["ORG"]
+        project = constants.CONSTANTS["PROJECT"]
+        # Import flow constants to get SYSTEM_PROMPT
+        import importlib
+        flow_constants_path = f"app.flows.{org}.{project}.constants"
+        flow_constants = importlib.import_module(flow_constants_path)
+        prompt_name = f"{org}/{project}/{flow_constants.SYSTEM_PROMPT}"
+    else:
+        # Map agent types to their flow constants modules
+        # This allows each flow to define its own prompt path
+        constants_modules = {
+            "opgroeien": "app.flows.opgroeien.poc.constants",
+            "simple": "app.flows.hit8.hit8.constants",
+        }
+        
+        # Import constants module based on agent type
+        if agent_type in constants_modules:
+            module_path = constants_modules[agent_type]
+            # Dynamic import to avoid circular dependencies
+            import importlib
+            constants = importlib.import_module(module_path)
+            # Construct path from ORG, PROJECT, and SYSTEM_PROMPT
+            prompt_name = f"{constants.ORG}/{constants.PROJECT}/{constants.SYSTEM_PROMPT}"
+        else:
+            # Fall back to old naming convention for unknown agent types
+            prompt_name = f"{agent_type}_system_prompt"
+    
     return load_prompt(prompt_name)

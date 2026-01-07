@@ -176,8 +176,8 @@ class TestSettings:
             app.config._settings_instance = None
             
             settings = Settings.load()
-            assert settings.gcp_project == "test-project"
-            assert settings.database_connection_string.startswith("postgresql://")
+            assert settings.GCP_PROJECT == "test-project"
+            assert settings.DATABASE_CONNECTION_STRING.startswith("postgresql://")
     
     def test_settings_env_vars_override_yaml(self, minimal_env_vars):
         """Test that env vars override YAML values."""
@@ -186,7 +186,7 @@ class TestSettings:
             app.config._settings_instance = None
             
             settings = Settings.load()
-            assert settings.gcp_project == "override-project"
+            assert settings.GCP_PROJECT == "override-project"
     
     def test_settings_required_fields_raise_error(self):
         """Test that missing required fields raise validation errors."""
@@ -249,8 +249,6 @@ class TestSettings:
             
             assert "environment" in metadata
             assert "account" in metadata
-            assert "org" in metadata
-            assert "project" in metadata
     
     def test_settings_optional_langfuse_fields(self, minimal_env_vars):
         """Test that optional Langfuse fields can be None."""
@@ -260,9 +258,9 @@ class TestSettings:
             
             settings = Settings.load()
             # These should be None if not set
-            assert settings.langfuse_public_key is None or isinstance(settings.langfuse_public_key, str)
-            assert settings.langfuse_secret_key is None or isinstance(settings.langfuse_secret_key, str)
-            assert settings.langfuse_base_url is None or isinstance(settings.langfuse_base_url, str)
+            assert settings.LANGFUSE_PUBLIC_KEY is None or isinstance(settings.LANGFUSE_PUBLIC_KEY, str)
+            assert settings.LANGFUSE_SECRET_KEY is None or isinstance(settings.LANGFUSE_SECRET_KEY, str)
+            assert settings.LANGFUSE_BASE_URL is None or isinstance(settings.LANGFUSE_BASE_URL, str)
     
     def test_settings_uppercase_env_vars_map_to_lowercase_fields(self, minimal_env_vars):
         """Test that uppercase env vars map to lowercase field names."""
@@ -271,7 +269,7 @@ class TestSettings:
             app.config._settings_instance = None
             
             settings = Settings.load()
-            assert settings.gcp_project == "test-gcp"  # lowercase field name
+            assert settings.GCP_PROJECT == "test-gcp"
 
 
 class TestGetSettings:
@@ -326,9 +324,9 @@ class TestSettingsSourcePriority:
             app.config._settings_instance = None
             
             settings = Settings.load()
-            # YAML should provide app_name, app_version, etc.
-            assert hasattr(settings, "app_name")
-            assert hasattr(settings, "app_version")
+            # YAML should provide APP_NAME, APP_VERSION, etc.
+            assert hasattr(settings, "APP_NAME")
+            assert hasattr(settings, "APP_VERSION")
     
     def test_env_vars_override_yaml(self, minimal_env_vars):
         """Test that env vars override YAML values."""
@@ -340,7 +338,7 @@ class TestSettingsSourcePriority:
             
             settings = Settings.load()
             # Env var should be used (GCP_PROJECT is not in YAML, only in env)
-            assert settings.gcp_project == "override-project"
+            assert settings.GCP_PROJECT == "override-project"
 
 
 class TestSettingsEdgeCases:
@@ -374,5 +372,5 @@ class TestSettingsEdgeCases:
             
             # Should work if Pydantic can parse it
             settings = Settings.load()
-            assert isinstance(settings.cors_allow_origins, list)
+            assert isinstance(settings.CORS_ALLOW_ORIGINS, list)
 

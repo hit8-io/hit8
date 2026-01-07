@@ -19,38 +19,49 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger(__name__)
 
-# Graph registry: maps graph type names to their creation functions
-_GRAPH_REGISTRY: dict[str, Callable[[], CompiledGraph]] = {}
-
-
-def register_graph(graph_type: str, create_func: Callable[[], CompiledGraph]) -> None:
-    """Register a graph creation function for a given graph type.
-    
-    Args:
-        graph_type: Name identifier for the graph type (e.g., "opgroeien", "simple")
-        create_func: Function that creates and returns a CompiledGraph
-    """
-    _GRAPH_REGISTRY[graph_type] = create_func
-    logger.debug("graph_registered", graph_type=graph_type)
-
 
 def _get_graph_creator() -> Callable[[], CompiledGraph]:
-    """Get the graph creation function based on configuration."""
-    # Lazy import to ensure agents are registered
-    # This avoids circular import issues
-    if not _GRAPH_REGISTRY:
-        import app.agents  # noqa: F401
+    """Get the graph creation function dynamically from ORG/PROJECT/FLOW/graph.py.
     
-    graph_type = settings.agent_graph_type
+    Derives the graph module path from constants:
+    - Module: app.flows.{ORG}.{PROJECT}.{FLOW}.graph
+    - Function: create_graph() or create_agent_graph() (tries both)
     
-    if graph_type not in _GRAPH_REGISTRY:
-        available = ", ".join(_GRAPH_REGISTRY.keys())
+    Example: ORG="opgroeien", PROJECT="poc", FLOW="chat"
+    -> app.flows.opgroeien.poc.chat.graph
+    """
+    from app import constants
+    
+    org = constants.CONSTANTS["ORG"]
+    project = constants.CONSTANTS["PROJECT"]
+    flow = settings.FLOW
+    
+    # Build module path: app.flows.{org}.{project}.{flow}.graph
+    module_path = f"app.flows.{org}.{project}.{flow}.graph"
+    
+    try:
+        # Dynamically import the graph module
+        import importlib
+        graph_module = importlib.import_module(module_path)
+        
+        # Try to get create_graph or create_agent_graph function
+        create_func = getattr(graph_module, "create_graph", None)
+        if create_func is None:
+            create_func = getattr(graph_module, "create_agent_graph", None)
+        
+        if create_func is None:
+            available_funcs = [name for name in dir(graph_module) if name.startswith("create")]
+            raise ValueError(
+                f"Graph module '{module_path}' does not export 'create_graph' or 'create_agent_graph'. "
+                f"Available functions: {available_funcs}"
+            )
+        
+        return create_func
+    except ImportError as e:
         raise ValueError(
-            f"Unknown graph type '{graph_type}'. "
-            f"Available types: {available if available else 'none registered'}"
-        )
-    
-    return _GRAPH_REGISTRY[graph_type]
+            f"Failed to import graph module '{module_path}': {e}. "
+            f"Expected path: flows/{org}/{project}/{flow}/graph.py"
+        ) from e
 
 
 # Thread-safe lazy initialization
@@ -62,7 +73,7 @@ def get_graph() -> CompiledGraph:
     """Get or create the compiled agent graph instance.
     
     Uses double-check locking to ensure thread-safe lazy initialization.
-    The graph type is determined by the AGENT_GRAPH_TYPE setting.
+    The graph type is determined by the flow setting.
     
     Returns:
         CompiledGraph: The compiled LangGraph agent graph.
@@ -82,18 +93,24 @@ def get_graph() -> CompiledGraph:
         if _graph is None:
             try:
                 create_func = _get_graph_creator()
-                graph_type = settings.agent_graph_type
+                from app import constants
+                org = constants.CONSTANTS["ORG"]
+                project = constants.CONSTANTS["PROJECT"]
+                flow = settings.FLOW
                 _graph = create_func()
                 logger.info(
                     "agent_graph_initialized",
-                    graph_type=graph_type,
+                    org=org,
+                    project=project,
+                    flow=flow,
+                    graph_path=f"{org}/{project}/{flow}/graph.py",
                 )
             except Exception as e:
                 logger.error(
                     "graph_initialization_failed",
                     error=str(e),
                     error_type=type(e).__name__,
-                    graph_type=settings.agent_graph_type,
+                    flow=settings.FLOW,
                 )
                 raise
     

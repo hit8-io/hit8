@@ -15,7 +15,7 @@ def get_cors_headers(request: Request) -> dict[str, str]:
     """Get CORS headers for the given request."""
     origin = request.headers.get("origin")
     headers: dict[str, str] = {}
-    if origin and origin in settings.cors_allow_origins:
+    if origin and origin in settings.CORS_ALLOW_ORIGINS:
         headers["Access-Control-Allow-Origin"] = origin
         headers["Access-Control-Allow-Credentials"] = "true"
     return headers

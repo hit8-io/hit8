@@ -21,8 +21,8 @@ def setup_cors(app: FastAPI) -> None:
     """Setup CORS middleware."""
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.cors_allow_origins,
-        allow_credentials=settings.cors_allow_credentials,
+        allow_origins=settings.CORS_ALLOW_ORIGINS,
+        allow_credentials=settings.CORS_ALLOW_CREDENTIALS,
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -72,7 +72,7 @@ def setup_api_token_middleware(app: FastAPI) -> None:
         
         # Validate token for all other requests
         token = request.headers.get("X-Source-Token")
-        if token != settings.api_token:
+        if token != settings.API_TOKEN:
             logger.warning(
                 "api_token_invalid",
                 path=request.url.path,

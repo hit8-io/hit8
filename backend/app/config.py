@@ -1,18 +1,18 @@
 """
-Unified configuration management: YAML + environment variables with validation.
+Unified configuration management: constants + environment variables with validation.
 """
 from __future__ import annotations
 
 import json
 import os
 import threading
-from pathlib import Path
 from typing import Any
 
 import structlog
-import yaml
-from pydantic import Field, computed_field, model_validator
+from pydantic import Field, computed_field
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
+
+from app import constants
 
 logger = structlog.get_logger(__name__)
 
@@ -35,87 +35,92 @@ def _load_doppler_secrets() -> None:
             os.environ[key] = str(value)
 
 
-def _load_yaml_config() -> dict[str, Any]:
-    """Load and merge YAML configuration based on environment.
+def _load_constants_config(settings_fields: set[str] | None = None) -> dict[str, Any]:
+    """Load configuration from constants module.
     
-    YAML uses uppercase keys (e.g., APP_NAME) that match the aliases generated
-    by alias_generator. This allows both YAML and env vars to use the same
-    uppercase naming convention.
+    All configuration uses uppercase keys (e.g., APP_NAME).
+    Automatically loads all constants from constants.CONSTANTS dictionary.
+    Only includes constants that are defined in the Settings model.
     """
-    config_file = Path(__file__).parent / "config.yaml"
-    with open(config_file) as f:
-        config_data = yaml.safe_load(f) or {}
+    if settings_fields is None:
+        # Get Settings fields from the class (defined later in this module)
+        # This avoids circular import by using a parameter
+        settings_fields = set(Settings.model_fields.keys())
     
-    env = os.getenv("ENVIRONMENT")
-    defaults = config_data.get("defaults", {}) or {}
-    env_config = config_data.get(env, {}) or {}
+    # Filter constants to only include Settings fields
+    config = {
+        key: value 
+        for key, value in constants.CONSTANTS.items() 
+        if key in settings_fields
+    }
     
-    # Merge configs
-    # YAML keys are uppercase (APP_NAME), alias_generator maps field names to uppercase
-    merged = {**defaults, **env_config}
-    return merged
+    return config
 
 
-class YamlConfigSettingsSource(PydanticBaseSettingsSource):
-    """Custom settings source that loads configuration from config.yaml."""
+class ConstantsConfigSettingsSource(PydanticBaseSettingsSource):
+    """Custom settings source that loads configuration from constants.py."""
+    
+    def __init__(self, settings_cls: type[BaseSettings]):
+        super().__init__(settings_cls)
+        self._settings_cls = settings_cls
     
     def get_field_value(self, field: Any, field_name: str) -> tuple[Any, str, bool]:
         return super().get_field_value(field, field_name)
     
     def __call__(self) -> dict[str, Any]:
-        return _load_yaml_config()
+        # Get Settings fields to automatically filter constants
+        settings_fields = set(self._settings_cls.model_fields.keys())
+        return _load_constants_config(settings_fields)
 
 
 class Settings(BaseSettings):
     """Application settings with validation and metadata."""
     
     # App metadata
-    app_name: str
-    app_version: str
-    account: str
-    org: str
-    project: str
+    APP_NAME: str
+    APP_VERSION: str
+    ACCOUNT: str
     
     # Logging
-    log_level: str
-    log_format: str
+    LOG_LEVEL: str
+    LOG_FORMAT: str
     
     # CORS
-    cors_allow_origins: list[str]
-    cors_allow_credentials: bool
+    CORS_ALLOW_ORIGINS: list[str]
+    CORS_ALLOW_CREDENTIALS: bool
     
     # Vertex AI
-    vertex_ai_model_name: str
-    vertex_ai_location: str
-    gcp_project: str
-    vertex_service_account: str = Field(exclude=True)
+    VERTEX_AI_MODEL_NAME: str
+    VERTEX_AI_LOCATION: str
+    GCP_PROJECT: str
+    VERTEX_SERVICE_ACCOUNT: str = Field(exclude=True)
     
     # Database
-    database_connection_string: str
+    DATABASE_CONNECTION_STRING: str = Field(exclude=True)
     
     # Google Identity Platform
-    google_identity_platform_domain: str
+    GOOGLE_IDENTITY_PLATFORM_DOMAIN: str
     
     # Langfuse
-    langfuse_enabled: bool
-    langfuse_public_key: str | None = None
-    langfuse_secret_key: str | None = None
-    langfuse_base_url: str | None = None
+    LANGFUSE_ENABLED: bool
+    LANGFUSE_PUBLIC_KEY: str | None = None
+    LANGFUSE_SECRET_KEY: str | None = Field(default=None, exclude=True)
+    LANGFUSE_BASE_URL: str | None = None
     
     # API
-    api_token: str
+    API_TOKEN: str = Field(exclude=True)
     
     # Prompts
-    prompts_dir: str
+    PROMPTS_DIR: str
     
     # Agent configuration
-    agent_graph_type: str
+    FLOW: str
     
     @computed_field
     @property
     def environment(self) -> str:
         """Current environment (dev or prd)."""
-        return os.getenv("ENVIRONMENT", "")
+        return constants.ENVIRONMENT
     
     @computed_field
     @property
@@ -123,9 +128,9 @@ class Settings(BaseSettings):
         """Centralized metadata for tracing and logging."""
         return {
             "environment": self.environment,
-            "account": self.account,
-            "org": self.org,
-            "project": self.project,
+            "account": self.ACCOUNT,
+            "org": constants.CONSTANTS["ORG"],
+            "project": constants.CONSTANTS["PROJECT"],
         }
     
     model_config = SettingsConfigDict(
@@ -133,8 +138,6 @@ class Settings(BaseSettings):
         case_sensitive=True,
         populate_by_name=True,
         env_file=None,
-        alias_generator=lambda field_name: field_name.upper(),
-        validation_alias_generator=lambda field_name: field_name.upper(),
     )
     
     @classmethod
@@ -146,31 +149,33 @@ class Settings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        """Customize settings sources: YAML first, then env vars (which override)."""
+        """Customize settings sources: constants first, then env vars (which override)."""
         return (
             init_settings,
-            YamlConfigSettingsSource(settings_cls),  # YAML provides defaults (field names)
-            env_settings,  # Env vars override YAML (uses validation_alias_generator)
+            ConstantsConfigSettingsSource(settings_cls),  # Constants provide defaults (auto-filters to Settings fields)
+            env_settings,  # Env vars override constants
             dotenv_settings,
             file_secret_settings,
         )
     
     @classmethod
     def load(cls) -> "Settings":
-        """Load settings from YAML and environment variables.
+        """Load settings from constants and environment variables.
         
         Loading order:
         1. Doppler secrets (sets env vars)
-        2. YAML config (defaults + environment-specific) via custom source
-        3. Environment variables (override YAML) via validation_alias_generator
+        2. Constants config (defaults + environment-specific) via custom source
+        3. Environment variables (override constants)
         
-        YAML and env vars both use uppercase keys (generated by validation_alias_generator).
+        All configuration uses uppercase keys.
+        Pydantic will raise ValidationError if required Settings fields are missing.
         """
         # 1. Load Doppler secrets first (sets env vars)
         _load_doppler_secrets()
         
         # 2. Create Settings: Pydantic will use custom sources
-        # YAML and env vars both use uppercase keys via validation_alias_generator
+        # All configuration uses uppercase keys
+        # If Settings fields are missing from CONSTANTS, Pydantic will raise ValidationError
         return cls()
 
 

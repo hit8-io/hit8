@@ -18,9 +18,9 @@ from langchain_core.messages import ToolMessage
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 if TYPE_CHECKING:
-    from app.agents.opgroeien.graph import AgentState
+    from app.flows.opgroeien.poc.chat.graph import AgentState
 
-from app.agents.opgroeien.constants import (
+from app.flows.opgroeien.poc.constants import (
     COLLECTION_PROCEDURES,
     COLLECTION_REGELGEVING,
     EMBEDDING_MODEL_NAME,
@@ -70,7 +70,7 @@ def _get_embedding_model() -> GoogleGenerativeAIEmbeddings:
     """Get or create cached embedding model."""
     global _embedding_model
     if _embedding_model is None:
-        service_account_info = json.loads(settings.vertex_service_account)
+        service_account_info = json.loads(settings.VERTEX_SERVICE_ACCOUNT)
         project_id = service_account_info["project_id"]        
         creds = service_account.Credentials.from_service_account_info(
             service_account_info,
@@ -83,7 +83,7 @@ def _get_embedding_model() -> GoogleGenerativeAIEmbeddings:
             output_dimensionality=EMBEDDING_OUTPUT_DIMENSIONALITY,
             model_kwargs={"provider": EMBEDDING_PROVIDER},
             project=project_id,
-            location=settings.vertex_ai_location,
+            location=settings.VERTEX_AI_LOCATION,
             credentials=creds,
         )
     return _embedding_model
@@ -157,7 +157,7 @@ def _vector_search_raw_sql(  # noqa: PLR0911
         embedding_array = _format_embedding_for_postgres(query_embedding)
         
         # Connect to database and execute query
-        with psycopg.connect(settings.database_connection_string) as conn:
+        with psycopg.connect(settings.DATABASE_CONNECTION_STRING) as conn:
             with conn.cursor() as cursor:
                 # Use cosine distance operator (<=>) and convert to similarity score
                 # Cosine distance: 0 = identical, 1 = orthogonal, 2 = opposite
