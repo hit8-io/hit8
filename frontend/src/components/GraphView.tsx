@@ -146,7 +146,7 @@ function handleApiError(
 }
 
 
-export default function GraphView({ apiUrl, token, executionState }: GraphViewProps) {
+export default function GraphView({ apiUrl, token, executionState }: Readonly<GraphViewProps>) {
   const [graphStructure, setGraphStructure] = useState<GraphStructure | null>(null)
   
   // Use execution state from stream events (no polling)
@@ -490,103 +490,111 @@ export default function GraphView({ apiUrl, token, executionState }: GraphViewPr
     nodeUpdateVersionRef.current += 1
     const updateVersion = nodeUpdateVersionRef.current
     
+    // Helper function to update a single node
+    const updateNode = (node: Node): Node => {
+      const isActive = activeNodes.includes(node.id)
+      const isVisited = visitedNodes.includes(node.id)
+
+      // Only update nodes that have changed state (active or visited)
+      // This prevents unnecessary updates to all nodes
+      // Extract nested ternary operations into independent statements
+      let expectedBorder: string
+      if (isActive) {
+        expectedBorder = '2px solid #22c55e'
+      } else if (isVisited) {
+        expectedBorder = '1px solid #94a3b8'
+      } else {
+        expectedBorder = '1px solid #e2e8f0'
+      }
+      
+      let expectedBackgroundColor: string
+      if (isActive) {
+        expectedBackgroundColor = '#dcfce7'
+      } else if (isVisited) {
+        expectedBackgroundColor = '#f1f5f9'
+      } else {
+        expectedBackgroundColor = '#ffffff'
+      }
+      
+      let className: string
+      if (isActive) {
+        className = 'node-active'
+      } else if (isVisited) {
+        className = 'node-visited'
+      } else {
+        className = 'node-default'
+      }
+      
+      const needsUpdate = isActive || isVisited || 
+        (node.style?.border !== expectedBorder) ||
+        (node.style?.backgroundColor !== expectedBackgroundColor)
+      
+      if (!needsUpdate) {
+        return node // Return unchanged node to avoid unnecessary re-renders
+      }
+      
+      // Create new node object with updated style and className to force React Flow re-render
+      // Use both style and className to ensure React Flow detects the change
+      const updatedNode = {
+        ...node,
+        data: {
+          ...(node.data as Record<string, unknown>),
+          _updateVersion: updateVersion, // Use version number to force re-render
+        },
+        // Add className to force React Flow to update the DOM element
+        className,
+        // Create completely new style object (don't spread old style)
+        style: {
+          border: expectedBorder,
+          backgroundColor: expectedBackgroundColor,
+          transition: 'border 0.1s ease-in-out, background-color 0.1s ease-in-out', // Add transition to force repaint
+        },
+      }
+      return updatedNode
+    }
+
+    // Helper function to update a single edge
+    const updateEdge = (edge: Edge): Edge => {
+      const isActive = activeNodes.includes(edge.target)
+      return {
+        ...edge,
+        animated: isActive,
+        style: {
+          stroke: isActive ? '#22c55e' : '#b1b1b7',
+        },
+      }
+    }
+
+    // Helper function to update all nodes
+    const updateAllNodes = (nds: Node[]): Node[] => nds.map(updateNode)
+
+    // Helper function to update all edges
+    const updateAllEdges = (eds: Edge[]): Edge[] => eds.map(updateEdge)
+    
     // Add a small delay to allow React Flow to process previous updates
     // This prevents updates from being batched together
     const updateDelay = 50 // 50ms delay between updates
     setTimeout(() => {
       // Use flushSync to force immediate visual update (not batched)
       flushSync(() => {
-      setNodes((nds) => {
-      // Create a new array to force React Flow to detect the change
-      const updatedNodes = nds.map((node) => {
-        const isActive = activeNodes.includes(node.id)
-        const isVisited = visitedNodes.includes(node.id)
-
-        // Only update nodes that have changed state (active or visited)
-        // This prevents unnecessary updates to all nodes
-        // Extract nested ternary operations into independent statements
-        let expectedBorder: string
-        if (isActive) {
-          expectedBorder = '2px solid #22c55e'
-        } else if (isVisited) {
-          expectedBorder = '1px solid #94a3b8'
-        } else {
-          expectedBorder = '1px solid #e2e8f0'
-        }
-        
-        let expectedBackgroundColor: string
-        if (isActive) {
-          expectedBackgroundColor = '#dcfce7'
-        } else if (isVisited) {
-          expectedBackgroundColor = '#f1f5f9'
-        } else {
-          expectedBackgroundColor = '#ffffff'
-        }
-        
-        let className: string
-        if (isActive) {
-          className = 'node-active'
-        } else if (isVisited) {
-          className = 'node-visited'
-        } else {
-          className = 'node-default'
-        }
-        
-        const needsUpdate = isActive || isVisited || 
-          (node.style?.border !== expectedBorder) ||
-          (node.style?.backgroundColor !== expectedBackgroundColor)
-        
-        if (!needsUpdate) {
-          return node // Return unchanged node to avoid unnecessary re-renders
-        }
-        
-        // Create new node object with updated style and className to force React Flow re-render
-        // Use both style and className to ensure React Flow detects the change
-        const updatedNode = {
-          ...node,
-          data: {
-            ...node.data,
-            _updateVersion: updateVersion, // Use version number to force re-render
-          },
-          // Add className to force React Flow to update the DOM element
-          className,
-          // Create completely new style object (don't spread old style)
-          style: {
-            border: expectedBorder,
-            backgroundColor: expectedBackgroundColor,
-            transition: 'border 0.1s ease-in-out, background-color 0.1s ease-in-out', // Add transition to force repaint
-          },
-        }
-        return updatedNode
+        setNodes(updateAllNodes)
       })
-      return updatedNodes
-      })
-    })
 
-    flushSync(() => {
-      setEdges((eds) =>
-        eds.map((edge) => {
-          const isActive = activeNodes.includes(edge.target)
-          return {
-            ...edge,
-            animated: isActive,
-            style: {
-              stroke: isActive ? '#22c55e' : '#b1b1b7',
-            },
-          }
-        })
-      )
-    })
-    
-    // Use requestAnimationFrame to ensure browser has a chance to repaint
-    // This gives the browser a frame to render the visual updates
-    requestAnimationFrame(() => {
-      // Force a repaint by reading a layout property
-      // This ensures the browser actually renders the changes
-      if (document.body) {
-        void document.body.offsetHeight
-      }
-    })
+      flushSync(() => {
+        setEdges(updateAllEdges)
+      })
+      
+      // Use requestAnimationFrame to ensure browser has a chance to repaint
+      // This gives the browser a frame to render the visual updates
+      requestAnimationFrame(() => {
+        // Force a repaint by reading a layout property
+        // This ensures the browser actually renders the changes
+        if (document.body) {
+          // Property read forces browser repaint (value intentionally unused)
+          // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+          document.body.offsetHeight
+        }
+      })
     }, updateDelay)
   }, [currentExecutionState, setNodes, setEdges])
 
