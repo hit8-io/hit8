@@ -12,6 +12,7 @@ export default defineConfig(({ mode }) => {
   process.env.VITE_GCP_PROJECT = process.env.VITE_GCP_PROJECT || process.env.GCP_PROJECT || env.GCP_PROJECT
   process.env.VITE_API_TOKEN = process.env.VITE_API_TOKEN || process.env.API_TOKEN || env.API_TOKEN
   process.env.VITE_API_URL = process.env.VITE_API_URL || process.env.API_URL || env.API_URL
+  process.env.VITE_SENTRY_DSN = process.env.VITE_SENTRY_DSN || process.env.SENTRY_DSN || env.SENTRY_DSN
   
   return {
     plugins: [react()],

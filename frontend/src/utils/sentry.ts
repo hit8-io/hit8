@@ -1,31 +1,60 @@
 /**
  * Sentry error tracking configuration and initialization.
  * Only initializes in production builds.
+ * Uses dynamic imports to prevent Sentry from loading when not needed.
  */
 
-import * as Sentry from '@sentry/react'
+// Lazy-loaded Sentry module - only loaded when actually needed
+let SentryModule: typeof import('@sentry/react') | null = null
+let isSentryInitialized = false
 
 /**
- * Initialize Sentry for error tracking.
- * Only runs in production builds.
+ * Load Sentry module dynamically. Only loads in production.
  */
-export function initSentry(): void {
-  const dsn = import.meta.env.VITE_SENTRY_DSN
+async function loadSentry(): Promise<typeof import('@sentry/react') | null> {
+  if (SentryModule) {
+    return SentryModule
+  }
+
   const isProduction = import.meta.env.PROD
 
-  // Only initialize in production if DSN is provided
-  if (!isProduction || !dsn) {
-    if (!isProduction) {
-      console.debug('[Sentry] Not initializing in development mode')
-    } else if (!dsn) {
-      console.warn('[Sentry] VITE_SENTRY_DSN is not set, Sentry will not be initialized')
-    }
-    return
+  // Only load Sentry in production
+  if (!isProduction) {
+    return null
   }
 
   try {
+    SentryModule = await import('@sentry/react')
+    return SentryModule
+  } catch (error) {
+    console.error('[Sentry] Failed to load Sentry module:', error)
+    return null
+  }
+}
+
+/**
+ * Initialize Sentry for error tracking.
+ * Only runs in production builds. Always initializes in production.
+ */
+export async function initSentry(): Promise<void> {
+  const isProduction = import.meta.env.PROD
+
+  // Only initialize in production
+  if (!isProduction) {
+    console.debug('[Sentry] Not initializing in development mode')
+    return
+  }
+
+  const Sentry = await loadSentry()
+  if (!Sentry) {
+    return
+  }
+
+  const dsn = import.meta.env.VITE_SENTRY_DSN
+
+  try {
     Sentry.init({
-      dsn,
+      dsn: dsn || undefined, // Initialize even without DSN (will just not send events)
       environment: 'production',
       integrations: [
         Sentry.browserTracingIntegration(),
@@ -53,10 +82,16 @@ export function initSentry(): void {
       },
     })
 
-    // Set up global error handlers
-    setupGlobalErrorHandlers()
+    isSentryInitialized = true
 
-    console.info('[Sentry] Initialized successfully')
+    // Set up global error handlers
+    setupGlobalErrorHandlers(Sentry)
+
+    if (dsn) {
+      console.info('[Sentry] Initialized successfully in production mode')
+    } else {
+      console.warn('[Sentry] Initialized without DSN - events will not be sent')
+    }
   } catch (error) {
     // Non-blocking: if Sentry initialization fails, don't break the app
     console.error('[Sentry] Failed to initialize:', error)
@@ -67,7 +102,7 @@ export function initSentry(): void {
  * Set up global error handlers for unhandled errors and promise rejections.
  * These catch errors that escape React's error boundary.
  */
-function setupGlobalErrorHandlers(): void {
+function setupGlobalErrorHandlers(Sentry: typeof import('@sentry/react')): void {
   // Handle unhandled errors
   window.addEventListener('error', (event) => {
     // Sentry's default error handler will capture this, but we can add custom context
@@ -100,24 +135,33 @@ function setupGlobalErrorHandlers(): void {
  * Call this after user authentication.
  */
 export function setSentryUser(user: { id: string; email?: string; name?: string } | null): void {
-  if (!import.meta.env.PROD) {
+  if (!isSentryInitialized) {
     return
   }
 
-  try {
-    if (user) {
-      Sentry.setUser({
-        id: user.id,
-        email: user.email,
-        username: user.name,
-      })
-    } else {
-      Sentry.setUser(null)
+  // Fire-and-forget: load Sentry and set user context asynchronously
+  void loadSentry().then((Sentry) => {
+    if (!Sentry) {
+      return
     }
-  } catch (error) {
-    // Non-blocking: if setting user context fails, don't break the app
-    console.error('[Sentry] Failed to set user context:', error)
-  }
+
+    try {
+      if (user) {
+        Sentry.setUser({
+          id: user.id,
+          email: user.email,
+          username: user.name,
+        })
+      } else {
+        Sentry.setUser(null)
+      }
+    } catch (error) {
+      // Non-blocking: if setting user context fails, don't break the app
+      console.error('[Sentry] Failed to set user context:', error)
+    }
+  }).catch((error) => {
+    console.error('[Sentry] Failed to load Sentry for setUser:', error)
+  })
 }
 
 /**
@@ -125,43 +169,61 @@ export function setSentryUser(user: { id: string; email?: string; name?: string 
  * Safe to call even if Sentry is not initialized.
  */
 export function captureException(error: unknown, context?: Record<string, unknown>): void {
-  if (!import.meta.env.PROD) {
+  if (!isSentryInitialized) {
     return
   }
 
-  try {
-    if (context) {
-      Sentry.withScope((scope) => {
-        Object.entries(context).forEach(([key, value]) => {
-          // Sentry's setContext expects Context | null, where Context is a serializable object
-          // Cast to the expected type - Sentry will handle serialization
-          scope.setContext(key, value as Record<string, unknown> | null)
-        })
-        Sentry.captureException(error)
-      })
-    } else {
-      Sentry.captureException(error)
+  // Fire-and-forget: load Sentry and capture exception asynchronously
+  void loadSentry().then((Sentry) => {
+    if (!Sentry) {
+      return
     }
-  } catch (err) {
-    // Non-blocking: if Sentry capture fails, don't break the app
-    console.error('[Sentry] Failed to capture exception:', err)
-  }
+
+    try {
+      if (context) {
+        Sentry.withScope((scope) => {
+          Object.entries(context).forEach(([key, value]) => {
+            // Sentry's setContext expects Context | null, where Context is a serializable object
+            // Cast to the expected type - Sentry will handle serialization
+            scope.setContext(key, value as Record<string, unknown> | null)
+          })
+          Sentry.captureException(error)
+        })
+      } else {
+        Sentry.captureException(error)
+      }
+    } catch (err) {
+      // Non-blocking: if Sentry capture fails, don't break the app
+      console.error('[Sentry] Failed to capture exception:', err)
+    }
+  }).catch((err) => {
+    console.error('[Sentry] Failed to load Sentry for captureException:', err)
+  })
 }
 
 /**
  * Capture a message and send it to Sentry.
  * Safe to call even if Sentry is not initialized.
  */
-export function captureMessage(message: string, level: Sentry.SeverityLevel = 'info'): void {
-  if (!import.meta.env.PROD) {
+export function captureMessage(message: string, level: import('@sentry/react').SeverityLevel = 'info'): void {
+  if (!isSentryInitialized) {
     return
   }
 
-  try {
-    Sentry.captureMessage(message, level)
-  } catch (error) {
-    // Non-blocking: if Sentry capture fails, don't break the app
-    console.error('[Sentry] Failed to capture message:', error)
-  }
+  // Fire-and-forget: load Sentry and capture message asynchronously
+  void loadSentry().then((Sentry) => {
+    if (!Sentry) {
+      return
+    }
+
+    try {
+      Sentry.captureMessage(message, level)
+    } catch (error) {
+      // Non-blocking: if Sentry capture fails, don't break the app
+      console.error('[Sentry] Failed to capture message:', error)
+    }
+  }).catch((error) => {
+    console.error('[Sentry] Failed to load Sentry for captureMessage:', error)
+  })
 }
 

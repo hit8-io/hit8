@@ -6,8 +6,8 @@ import { initSentry } from './utils/sentry'
 import './index.css'
 import 'reactflow/dist/style.css'
 
-// Initialize Sentry before React renders
-initSentry()
+// Initialize Sentry before React renders (fire-and-forget)
+void initSentry()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
