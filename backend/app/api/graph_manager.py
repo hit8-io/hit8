@@ -2,7 +2,7 @@
 Graph management and initialization.
 
 Provides thread-safe lazy initialization of the LangGraph agent graph.
-The graph type is configurable via settings, allowing different agent
+The graph type is configurable via org/project parameters, allowing different agent
 implementations to be used without code changes.
 """
 from __future__ import annotations
@@ -20,20 +20,20 @@ if TYPE_CHECKING:
 logger = structlog.get_logger(__name__)
 
 
-def _get_graph_creator() -> Callable[[], CompiledGraph]:
+def _get_graph_creator(org: str, project: str) -> Callable[[], CompiledGraph]:
     """Get the graph creation function dynamically from ORG/PROJECT/FLOW/graph.py.
     
-    Derives the graph module path from constants:
+    Args:
+        org: Organization name
+        project: Project name
+    
+    Derives the graph module path:
     - Module: app.flows.{ORG}.{PROJECT}.{FLOW}.graph
     - Function: create_graph() or create_agent_graph() (tries both)
     
     Example: ORG="opgroeien", PROJECT="poc", FLOW="chat"
     -> app.flows.opgroeien.poc.chat.graph
     """
-    from app import constants
-    
-    org = constants.CONSTANTS["ORG"]
-    project = constants.CONSTANTS["PROJECT"]
     flow = settings.FLOW
     
     # Build module path: app.flows.{org}.{project}.{flow}.graph
@@ -64,16 +64,20 @@ def _get_graph_creator() -> Callable[[], CompiledGraph]:
         ) from e
 
 
-# Thread-safe lazy initialization
-_graph: CompiledGraph | None = None
+# Thread-safe lazy initialization with caching per org/project combination
+_graphs: dict[tuple[str, str], CompiledGraph] = {}
 _graph_lock = threading.Lock()
 
 
-def get_graph() -> CompiledGraph:
-    """Get or create the compiled agent graph instance.
+def get_graph(org: str, project: str) -> CompiledGraph:
+    """Get or create the compiled agent graph instance for a specific org/project.
     
     Uses double-check locking to ensure thread-safe lazy initialization.
-    The graph type is determined by the flow setting.
+    Graphs are cached per org/project combination.
+    
+    Args:
+        org: Organization name
+        project: Project name
     
     Returns:
         CompiledGraph: The compiled LangGraph agent graph.
@@ -82,22 +86,20 @@ def get_graph() -> CompiledGraph:
         ValueError: If the configured graph type is not registered.
         Exception: Re-raises any exception from graph creation after logging.
     """
-    global _graph
+    cache_key = (org, project)
     
     # Fast path: return cached graph if already initialized
-    if _graph is not None:
-        return _graph
+    if cache_key in _graphs:
+        return _graphs[cache_key]
     
     # Slow path: initialize graph with thread-safe double-check locking
     with _graph_lock:
-        if _graph is None:
+        if cache_key not in _graphs:
             try:
-                create_func = _get_graph_creator()
-                from app import constants
-                org = constants.CONSTANTS["ORG"]
-                project = constants.CONSTANTS["PROJECT"]
+                create_func = _get_graph_creator(org, project)
                 flow = settings.FLOW
-                _graph = create_func()
+                graph_instance = create_func()
+                _graphs[cache_key] = graph_instance
                 logger.info(
                     "agent_graph_initialized",
                     org=org,
@@ -110,9 +112,11 @@ def get_graph() -> CompiledGraph:
                     "graph_initialization_failed",
                     error=str(e),
                     error_type=type(e).__name__,
-                    flow=settings.FLOW,
+                    org=org,
+                    project=project,
+                    flow=flow,
                 )
                 raise
     
-    return _graph
+    return _graphs[cache_key]
 

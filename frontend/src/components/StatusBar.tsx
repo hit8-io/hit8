@@ -23,6 +23,9 @@ export default function StatusBar({ apiUrl, token, userName }: StatusBarProps) {
   const [errors, setErrors] = useState<ErrorItem[]>([])
   const [metadata, setMetadata] = useState<{ account?: string; org?: string; project?: string; environment?: string; log_level?: string } | null>(null)
   const [version, setVersion] = useState<string | null>(null)
+  const [selectedOrg, setSelectedOrg] = useState<string | null>(null)
+  const [selectedProject, setSelectedProject] = useState<string | null>(null)
+  const [userAccount, setUserAccount] = useState<string | null>(null)
 
   // Define dismissError helper to reduce nesting
   const dismissError = useCallback((errorId: string) => {
@@ -46,6 +49,46 @@ export default function StatusBar({ apiUrl, token, userName }: StatusBarProps) {
 
   // Derive connection status from apiUrl and token instead of setting in effect
   const shouldBeConnected = !!(apiUrl && token)
+
+  // Listen for org/project selection changes and user account
+  useEffect(() => {
+    const checkOrgProject = () => {
+      setSelectedOrg(localStorage.getItem('activeOrg'))
+      setSelectedProject(localStorage.getItem('activeProject'))
+      // Try to get account from user config stored in localStorage
+      try {
+        const userConfigStr = localStorage.getItem('userConfig')
+        if (userConfigStr) {
+          const userConfig = JSON.parse(userConfigStr)
+          if (userConfig?.account) {
+            setUserAccount(userConfig.account)
+          }
+        }
+      } catch {
+        // Ignore parse errors
+      }
+    }
+
+    // Check initially
+    checkOrgProject()
+
+    // Listen for storage events (from other tabs/windows)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'activeOrg' || e.key === 'activeProject' || e.key === 'userConfig') {
+        checkOrgProject()
+      }
+    }
+
+    // Poll for changes (since same-tab localStorage changes don't trigger storage events)
+    const interval = setInterval(checkOrgProject, 500)
+
+    window.addEventListener('storage', handleStorageChange)
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+      clearInterval(interval)
+    }
+  }, [])
 
   useEffect(() => {
     if (!shouldBeConnected) {
@@ -180,24 +223,24 @@ export default function StatusBar({ apiUrl, token, userName }: StatusBarProps) {
         </div>
       )}
 
-      {metadata?.account && (
+      {(userAccount || metadata?.account) && (
         <div className="flex items-center gap-2">
           <span className="text-muted-foreground">Account:</span>
-          <span className="font-medium">{metadata.account}</span>
+          <span className="font-medium">{userAccount || metadata.account}</span>
         </div>
       )}
 
-      {metadata?.org && (
+      {selectedOrg && (
         <div className="flex items-center gap-2">
           <span className="text-muted-foreground">Org:</span>
-          <span className="font-medium">{metadata.org}</span>
+          <span className="font-medium">{selectedOrg}</span>
         </div>
       )}
 
-      {metadata?.project && (
+      {selectedProject && (
         <div className="flex items-center gap-2">
           <span className="text-muted-foreground">Project:</span>
-          <span className="font-medium">{metadata.project}</span>
+          <span className="font-medium">{selectedProject}</span>
         </div>
       )}
 

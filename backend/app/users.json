@@ -1,0 +1,13 @@
+{
+  "users": [
+    {
+      "email": "jan@hit8.io",
+      "account": "hit8",
+      "projects": {
+        "opgroeien": ["poc"],
+        "hit8": ["hit8"]
+      }
+    }
+  ]
+}
+

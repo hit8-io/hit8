@@ -11,5 +11,16 @@ export interface Message {
   content: string
 }
 
+export interface UserConfig {
+  account: string
+  orgs: string[]
+  projects: Record<string, string[]>
+}
+
+export interface OrgProjectSelection {
+  org: string
+  project: string
+}
+
 export type { ExecutionState, StreamEvent } from './execution'
 

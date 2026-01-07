@@ -4,6 +4,8 @@ import { Popover } from "./ui/popover"
 import { Button } from "./ui/button"
 import { cn } from "@/lib/utils"
 import type { User } from "../types"
+import { useUserConfig } from "../hooks/useUserConfig"
+import { useAuth } from "../hooks/useAuth"
 
 interface UserMenuProps {
   user: User
@@ -21,6 +23,24 @@ function getInitials(name: string): string {
 export function UserMenu({ user, onLogout }: UserMenuProps) {
   const [open, setOpen] = React.useState(false)
   const [imageError, setImageError] = React.useState(false)
+  const { idToken } = useAuth()
+  const { config, loading: configLoading, selection, setSelection, isSelectionValid } = useUserConfig(idToken)
+
+  const handleOrgChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newOrg = e.target.value
+    if (config && config.projects[newOrg] && config.projects[newOrg].length > 0) {
+      // Auto-select first project for the new org
+      setSelection(newOrg, config.projects[newOrg][0])
+    }
+  }
+
+  const handleProjectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    if (selection) {
+      setSelection(selection.org, e.target.value)
+    }
+  }
+
+  const availableProjects = selection && config ? (config.projects[selection.org] || []) : []
 
   return (
     <div className="relative">
@@ -53,13 +73,81 @@ export function UserMenu({ user, onLogout }: UserMenuProps) {
         }
         side="bottom"
         align="start"
-        className="w-56"
+        className="w-64"
       >
       <div className="p-2">
         <div className="px-2 py-1.5 text-sm font-medium text-foreground">{user.name}</div>
         <div className="px-2 py-1 text-xs text-muted-foreground truncate">
           {user.email}
         </div>
+        {config && (
+          <div className="px-2 py-1 text-xs text-muted-foreground">
+            Account: {config.account}
+          </div>
+        )}
+        <div className="h-px bg-border my-2" />
+        
+        {configLoading ? (
+          <div className="px-2 py-2 text-xs text-muted-foreground">Loading config...</div>
+        ) : config ? (
+          <div className="space-y-2">
+            <div>
+              <label className="block text-xs font-medium text-foreground mb-1 px-2">
+                Organization
+              </label>
+              <select
+                value={selection?.org || ""}
+                onChange={handleOrgChange}
+                className={cn(
+                  "w-full px-2 py-1.5 text-sm rounded-md border border-border",
+                  "bg-background text-foreground",
+                  "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+                )}
+              >
+                <option value="">Select org...</option>
+                {Object.keys(config.projects).map((org) => (
+                  <option key={org} value={org}>
+                    {org}
+                  </option>
+                ))}
+              </select>
+            </div>
+            
+            {selection && availableProjects.length > 0 && (
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-1 px-2">
+                  Project
+                </label>
+                <select
+                  value={selection.project}
+                  onChange={handleProjectChange}
+                  className={cn(
+                    "w-full px-2 py-1.5 text-sm rounded-md border border-border",
+                    "bg-background text-foreground",
+                    "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+                  )}
+                >
+                  {availableProjects.map((project) => (
+                    <option key={project} value={project}>
+                      {project}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            
+            {!isSelectionValid && selection && (
+              <div className="px-2 py-1 text-xs text-destructive">
+                Please select a valid org and project
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="px-2 py-2 text-xs text-destructive">
+            Failed to load configuration
+          </div>
+        )}
+        
         <div className="h-px bg-border my-2" />
         <Button
           variant="ghost"

@@ -110,11 +110,55 @@ export default function GraphView({ apiUrl, token, executionState }: GraphViewPr
   }, [nodes, edges, onNodesChange, onEdgesChange, proOptions])
 
 
-  // Fetch graph structure on mount
+  // Track org/project selection to trigger re-fetch
+  const [orgProjectKey, setOrgProjectKey] = useState<string>('')
+
+  // Listen for localStorage changes
+  useEffect(() => {
+    const checkOrgProject = () => {
+      const org = localStorage.getItem('activeOrg')
+      const project = localStorage.getItem('activeProject')
+      setOrgProjectKey(`${org || ''}:${project || ''}`)
+    }
+
+    // Check initially
+    checkOrgProject()
+
+    // Listen for storage events (from other tabs/windows)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'activeOrg' || e.key === 'activeProject') {
+        checkOrgProject()
+      }
+    }
+
+    // Poll for changes (since same-tab localStorage changes don't trigger storage events)
+    const interval = setInterval(checkOrgProject, 500)
+
+    window.addEventListener('storage', handleStorageChange)
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+      clearInterval(interval)
+    }
+  }, [])
+
+  // Fetch graph structure when org/project selection changes
   useEffect(() => {
     const fetchGraphStructure = async () => {
       if (!apiUrl || !token) {
         setLoading(false)
+        return
+      }
+
+      // Check if org/project are selected
+      const org = localStorage.getItem('activeOrg')
+      const project = localStorage.getItem('activeProject')
+      
+      if (!org || !project) {
+        // Don't fetch if org/project not selected - this is expected
+        setLoading(false)
+        setError(null)
+        setGraphStructure(null) // Clear previous structure
         return
       }
 
@@ -133,7 +177,36 @@ export default function GraphView({ apiUrl, token, executionState }: GraphViewPr
             setError(null)
             return
           }
-          const errorMessage = err.response?.data?.detail || 'Failed to load graph structure'
+          if (err.response?.status === 422 || err.response?.status === 400) {
+            // Validation error - might be missing headers
+            // Don't show error if org/project not selected (expected)
+            const org = localStorage.getItem('activeOrg')
+            const project = localStorage.getItem('activeProject')
+            if (!org || !project) {
+              setError(null)
+              return
+            }
+          }
+          // Handle error response - detail might be a string, object, or array
+          let errorMessage = 'Failed to load graph structure'
+          if (err.response?.data) {
+            const detail = err.response.data.detail
+            if (typeof detail === 'string') {
+              errorMessage = detail
+            } else if (Array.isArray(detail) && detail.length > 0) {
+              // FastAPI validation errors are arrays
+              const firstError = detail[0]
+              if (typeof firstError === 'string') {
+                errorMessage = firstError
+              } else if (firstError && typeof firstError === 'object' && 'msg' in firstError) {
+                errorMessage = String(firstError.msg)
+              }
+            } else if (detail && typeof detail === 'object' && 'msg' in detail) {
+              errorMessage = String(detail.msg)
+            } else if (typeof err.response.data === 'string') {
+              errorMessage = err.response.data
+            }
+          }
           setError(errorMessage)
         } else {
           setError('Failed to load graph structure')
@@ -144,7 +217,7 @@ export default function GraphView({ apiUrl, token, executionState }: GraphViewPr
     }
 
     fetchGraphStructure()
-  }, [apiUrl, token])
+  }, [apiUrl, token, orgProjectKey])
 
   // Convert graph structure to React Flow format and apply layout
   useEffect(() => {

@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -27,6 +27,7 @@ from app.api.streaming import (
 from app.config import settings
 from app.auth import verify_google_token
 from app.prompts.loader import get_system_prompt
+from app.user_config import validate_user_access
 import importlib
 
 if TYPE_CHECKING:
@@ -44,6 +45,8 @@ async def stream_chat_events(
     config: dict[str, Any],
     langfuse_handler: CallbackHandler | None,
     centralized_metadata: dict[str, str],
+    org: str,
+    project: str,
 ):
     """Stream chat execution events using LangGraph stream_events().
     
@@ -68,7 +71,7 @@ async def stream_chat_events(
         
         # Create and start unified streaming thread
         stream_threads, stream_errors = create_stream_thread(
-            initial_state, config, thread_id, event_queue, stream_done
+            initial_state, config, thread_id, event_queue, stream_done, org, project
         )
         
         # Process events and chunks from queue
@@ -97,11 +100,11 @@ async def stream_chat_events(
             final_response = final_response_ref[0]
         else:
             # Try to get final state
-            final_response = extract_final_response(config, thread_id)
+            final_response = extract_final_response(config, thread_id, org, project)
         
         # If still no response, try one more time to get final state
         if not final_response:
-            final_response = extract_final_response(config, thread_id)
+            final_response = extract_final_response(config, thread_id, org, project)
         
         # Always send graph_end event (even if response is empty, to signal completion)
         logger.debug(
@@ -146,10 +149,32 @@ async def stream_chat_events(
 @router.post("")
 async def chat(
     request: ChatRequest,
-    user_payload: dict = Depends(verify_google_token)
+    user_payload: dict = Depends(verify_google_token),
+    x_org: str = Header(..., alias="X-Org"),
+    x_project: str = Header(..., alias="X-Project"),
 ):
-    """Chat endpoint that processes user messages through LangGraph with streaming support."""
+    """Chat endpoint that processes user messages through LangGraph with streaming support.
+    
+    Requires X-Org and X-Project headers to specify which org/project to use.
+    """
     user_id = user_payload["sub"]
+    email = user_payload["email"]
+    org = x_org.strip()
+    project = x_project.strip()
+    
+    # Validate user has access to the requested org/project
+    if not validate_user_access(email, org, project):
+        logger.warning(
+            "user_access_denied",
+            email=email,
+            org=org,
+            project=project,
+            thread_id=request.thread_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"User does not have access to org '{org}' / project '{project}'",
+        )
     
     # Use provided thread_id or generate one for state tracking
     thread_id = request.thread_id if request.thread_id else str(uuid.uuid4())
@@ -180,29 +205,7 @@ async def chat(
             thread_id=thread_id,
         )
     
-    # Get flow constants for org/project based on agent type
-    agent_type = settings.FLOW
-    constants_modules = {
-        "opgroeien": "app.flows.opgroeien.poc.constants",
-        "simple": "app.flows.hit8.hit8.constants",
-    }
-    
-    # Import flow constants to get org and project
-    if agent_type in constants_modules:
-        flow_constants = importlib.import_module(constants_modules[agent_type])
-        org = flow_constants.ORG
-        project = flow_constants.PROJECT
-    else:
-        # Fallback for unknown agent types
-        org = "unknown"
-        project = "unknown"
-        logger.warning(
-            "unknown_agent_type_for_metadata",
-            agent_type=agent_type,
-            thread_id=thread_id,
-        )
-    
-    # Build metadata: environment and account from settings, org/project from flow constants
+    # Build metadata: environment and account from settings, org/project from headers
     centralized_metadata = settings.metadata
     metadata: dict[str, Any] = {
         "langfuse_user_id": user_id,
@@ -226,6 +229,8 @@ async def chat(
         "graph_execution_started",
         thread_id=thread_id,
         message_length=len(request.message),
+        org=org,
+        project=project,
     )
     
     # Return streaming response with Server-Sent Events
@@ -238,6 +243,8 @@ async def chat(
             config=config,
             langfuse_handler=langfuse_handler,
             centralized_metadata=centralized_metadata,
+            org=org,
+            project=project,
         ),
         media_type="text/event-stream",
         headers={

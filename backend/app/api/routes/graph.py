@@ -6,10 +6,11 @@ from __future__ import annotations
 from typing import Any
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 
 from app.api.graph_manager import get_graph
 from app.auth import verify_google_token
+from app.user_config import validate_user_access
 
 logger = structlog.get_logger(__name__)
 router = APIRouter()
@@ -37,11 +38,33 @@ def _extract_graph_history(state: Any, state_dict: dict[str, Any]) -> list[dict[
 
 @router.get("/structure")
 async def get_graph_structure(
-    user_payload: dict = Depends(verify_google_token)
+    user_payload: dict = Depends(verify_google_token),
+    x_org: str = Header(..., alias="X-Org"),
+    x_project: str = Header(..., alias="X-Project"),
 ):
-    """Get the LangGraph structure as JSON."""
+    """Get the LangGraph structure as JSON.
+    
+    Requires X-Org and X-Project headers to specify which org/project to use.
+    """
+    email = user_payload["email"]
+    org = x_org.strip()
+    project = x_project.strip()
+    
+    # Validate user has access to the requested org/project
+    if not validate_user_access(email, org, project):
+        logger.warning(
+            "user_access_denied",
+            email=email,
+            org=org,
+            project=project,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"User does not have access to org '{org}' / project '{project}'",
+        )
+    
     try:
-        return get_graph().get_graph().to_json()
+        return get_graph(org, project).get_graph().to_json()
     except Exception as e:
         logger.exception("graph_structure_export_failed", error=str(e), error_type=type(e).__name__)
         raise HTTPException(
@@ -53,15 +76,38 @@ async def get_graph_structure(
 @router.get("/state")
 async def get_graph_state(
     thread_id: str,
-    user_payload: dict = Depends(verify_google_token)
+    user_payload: dict = Depends(verify_google_token),
+    x_org: str = Header(..., alias="X-Org"),
+    x_project: str = Header(..., alias="X-Project"),
 ):
-    """Get the current execution state for a thread."""
+    """Get the current execution state for a thread.
+    
+    Requires X-Org and X-Project headers to specify which org/project to use.
+    """
+    email = user_payload["email"]
+    org = x_org.strip()
+    project = x_project.strip()
+    
+    # Validate user has access to the requested org/project
+    if not validate_user_access(email, org, project):
+        logger.warning(
+            "user_access_denied",
+            email=email,
+            org=org,
+            project=project,
+            thread_id=thread_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"User does not have access to org '{org}' / project '{project}'",
+        )
+    
     try:
         config: dict[str, Any] = {"configurable": {"thread_id": thread_id}}
         
         # Get state with history to track visited nodes
         try:
-            state = get_graph().get_state(config)
+            state = get_graph(org, project).get_state(config)
         except Exception as state_error:
             # If state retrieval fails, return empty state
             logger.debug(

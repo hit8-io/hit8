@@ -56,6 +56,8 @@ def stream(
     event_queue: queue.Queue,
     stream_done: threading.Event,
     stream_error: list[Exception | None],
+    org: str,
+    project: str,
 ) -> None:
     """Stream content, LLM/tool events, and node tracking using astream() and astream_events().
     
@@ -74,7 +76,7 @@ def stream(
             initial_message_count=len(initial_state.get("messages", [])),
         )
         
-        graph = get_graph()
+        graph = get_graph(org, project)
         
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -156,7 +158,8 @@ def stream(
         _finalize_stream(
             event_queue, thread_id, config,
             current_node, visited_nodes,
-            accumulated_content, last_ai_message_content
+            accumulated_content, last_ai_message_content,
+            org, project
         )
             
     except Exception as e:
@@ -295,6 +298,8 @@ def _finalize_stream(
     visited_nodes: list[str],
     accumulated_content: str,
     last_ai_message_content: str,
+    org: str,
+    project: str,
 ) -> None:
     """Finalize stream by sending final state update and content."""
     # End any remaining active node
@@ -307,7 +312,7 @@ def _finalize_stream(
     
     # Extract final state and content
     try:
-        final_state = get_graph().get_state(config)
+        final_state = get_graph(org, project).get_state(config)
         
         # Send final state update
         state_data = get_final_state_data(final_state, visited_nodes)
@@ -475,6 +480,8 @@ def create_stream_thread(
     thread_id: str,
     event_queue: queue.Queue,
     stream_done: threading.Event,
+    org: str,
+    project: str,
 ) -> tuple[list[threading.Thread], list[Exception | None]]:
     """Create and start streaming thread using astream() and astream_events()."""
     event_queue.put((QUEUE_EVENT, {"type": EVENT_GRAPH_START, "thread_id": thread_id}))
@@ -484,7 +491,7 @@ def create_stream_thread(
     
     stream_thread = threading.Thread(
         target=stream,
-        args=(initial_state, config, thread_id, event_queue, stream_done, stream_error),
+        args=(initial_state, config, thread_id, event_queue, stream_done, stream_error, org, project),
         daemon=True,
     )
     stream_thread.start()
@@ -575,10 +582,10 @@ async def process_stream_queue(
             raise
 
 
-def extract_final_response(config: dict[str, Any], thread_id: str) -> str | None:
+def extract_final_response(config: dict[str, Any], thread_id: str, org: str, project: str) -> str | None:
     """Extract final response from graph state."""
     try:
-        final_state = get_graph().get_state(config)
+        final_state = get_graph(org, project).get_state(config)
         if hasattr(final_state, "values") and "messages" in final_state.values:
             ai_message = extract_ai_message(final_state.values["messages"])
             return extract_message_content(ai_message.content)
