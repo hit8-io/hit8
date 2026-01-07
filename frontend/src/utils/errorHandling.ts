@@ -2,6 +2,8 @@
  * Error handling utilities for API calls.
  */
 
+import { captureException } from './sentry'
+
 export interface ApiError {
   message: string
   statusCode?: number
@@ -116,9 +118,10 @@ export function getUserFriendlyError(error: unknown): ApiError {
 }
 
 /**
- * Log error for debugging (only in development).
+ * Log error for debugging (only in development) and send to Sentry (in production).
  */
-export function logError(context: string, error: unknown): void {
+export function logError(context: string, error: unknown, additionalContext?: Record<string, unknown>): void {
+  // Always log to console in development
   if (import.meta.env.DEV) {
     // Handle Error objects
     if (error instanceof Error) {
@@ -149,6 +152,24 @@ export function logError(context: string, error: unknown): void {
     else {
       console.error(`[${context}]`, error)
     }
+  }
+
+  // Send to Sentry in production
+  if (import.meta.env.PROD) {
+    const sentryContext: Record<string, unknown> = {
+      context,
+      ...additionalContext,
+    }
+    
+    // Extract request context from error if available
+    if (error instanceof Error) {
+      const errorWithContext = error as Error & { requestContext?: Record<string, unknown> }
+      if (errorWithContext.requestContext) {
+        sentryContext.request = errorWithContext.requestContext
+      }
+    }
+    
+    captureException(error, sentryContext)
   }
 }
 

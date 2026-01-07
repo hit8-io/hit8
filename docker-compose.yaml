@@ -205,6 +205,7 @@ services:
       - VITE_GCP_PROJECT=${GCP_PROJECT}
       - VITE_API_URL=${VITE_API_URL}
       - VITE_API_TOKEN=${API_TOKEN}
+      - VITE_SENTRY_DSN=${SENTRY_DSN}
 
 volumes:
   postgres-data:

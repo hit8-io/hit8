@@ -41,16 +41,38 @@ export async function getUserConfig(token: string | null): Promise<UserConfig> {
     throw new Error('API URL is not configured')
   }
 
-  const response = await fetch(`${API_URL}/config/user`, {
-    method: 'GET',
-    headers: getApiHeaders(token),
-  })
+  const url = `${API_URL}/config/user`
+  const method = 'GET'
 
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(`Failed to fetch user config: ${response.status} ${errorText}`)
+  try {
+    const response = await fetch(url, {
+      method,
+      headers: getApiHeaders(token),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      const error = new Error(`Failed to fetch user config: ${response.status} ${errorText}`)
+      // Add request context to error for Sentry
+      ;(error as Error & { requestContext?: Record<string, unknown> }).requestContext = {
+        url,
+        method,
+        statusCode: response.status,
+        statusText: response.statusText,
+      }
+      throw error
+    }
+
+    return response.json()
+  } catch (error) {
+    // If it's a network error, add request context
+    if (error instanceof Error && !(error as Error & { requestContext?: Record<string, unknown> }).requestContext) {
+      ;(error as Error & { requestContext?: Record<string, unknown> }).requestContext = {
+        url,
+        method,
+      }
+    }
+    throw error
   }
-
-  return response.json()
 }
 

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app'
 import { getAuth, User as FirebaseUser, signOut, onAuthStateChanged } from 'firebase/auth'
 import { logError } from '../utils/errorHandling'
+import { setSentryUser } from '../utils/sentry'
 import type { User } from '../types'
 
 interface UseAuthResult {
@@ -63,15 +64,24 @@ export function useAuth(): UseAuthResult {
           }
           const token = await firebaseUser.getIdToken(false)
           setIdToken(token)
-          setUser({
+          const userData: User = {
             id: firebaseUser.uid,
             email: firebaseUser.email,
             name: firebaseUser.displayName,
             picture: firebaseUser.photoURL,
+          }
+          setUser(userData)
+          // Set Sentry user context
+          setSentryUser({
+            id: userData.id,
+            email: userData.email,
+            name: userData.name,
           })
         } else {
           setUser(null)
           setIdToken(null)
+          // Clear Sentry user context on logout
+          setSentryUser(null)
         }
       } catch (error) {
         logError('useAuth: Error in auth state change', error)

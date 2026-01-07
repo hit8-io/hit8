@@ -2,6 +2,7 @@ import { Component, ErrorInfo, ReactNode } from 'react'
 import { Card, CardDescription, CardHeader, CardTitle } from './ui/card'
 import { Button } from './ui/button'
 import { logError } from '../utils/errorHandling'
+import { captureException } from '../utils/sentry'
 
 interface Props {
   readonly children: ReactNode
@@ -25,6 +26,14 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     logError('ErrorBoundary: Caught an error', { error, errorInfo })
+    
+    // Report to Sentry with component stack context
+    captureException(error, {
+      errorBoundary: {
+        componentStack: errorInfo.componentStack,
+        errorBoundary: true,
+      },
+    })
   }
 
   handleReset = () => {
