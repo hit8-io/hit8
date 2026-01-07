@@ -504,9 +504,37 @@ export default function GraphView({ apiUrl, token, executionState }: GraphViewPr
 
         // Only update nodes that have changed state (active or visited)
         // This prevents unnecessary updates to all nodes
+        // Extract nested ternary operations into independent statements
+        let expectedBorder: string
+        if (isActive) {
+          expectedBorder = '2px solid #22c55e'
+        } else if (isVisited) {
+          expectedBorder = '1px solid #94a3b8'
+        } else {
+          expectedBorder = '1px solid #e2e8f0'
+        }
+        
+        let expectedBackgroundColor: string
+        if (isActive) {
+          expectedBackgroundColor = '#dcfce7'
+        } else if (isVisited) {
+          expectedBackgroundColor = '#f1f5f9'
+        } else {
+          expectedBackgroundColor = '#ffffff'
+        }
+        
+        let className: string
+        if (isActive) {
+          className = 'node-active'
+        } else if (isVisited) {
+          className = 'node-visited'
+        } else {
+          className = 'node-default'
+        }
+        
         const needsUpdate = isActive || isVisited || 
-          (node.style?.border !== (isActive ? '2px solid #22c55e' : isVisited ? '1px solid #94a3b8' : '1px solid #e2e8f0')) ||
-          (node.style?.backgroundColor !== (isActive ? '#dcfce7' : isVisited ? '#f1f5f9' : '#ffffff'))
+          (node.style?.border !== expectedBorder) ||
+          (node.style?.backgroundColor !== expectedBackgroundColor)
         
         if (!needsUpdate) {
           return node // Return unchanged node to avoid unnecessary re-renders
@@ -521,11 +549,11 @@ export default function GraphView({ apiUrl, token, executionState }: GraphViewPr
             _updateVersion: updateVersion, // Use version number to force re-render
           },
           // Add className to force React Flow to update the DOM element
-          className: isActive ? 'node-active' : isVisited ? 'node-visited' : 'node-default',
+          className,
           // Create completely new style object (don't spread old style)
           style: {
-            border: isActive ? '2px solid #22c55e' : isVisited ? '1px solid #94a3b8' : '1px solid #e2e8f0',
-            backgroundColor: isActive ? '#dcfce7' : isVisited ? '#f1f5f9' : '#ffffff',
+            border: expectedBorder,
+            backgroundColor: expectedBackgroundColor,
             transition: 'border 0.1s ease-in-out, background-color 0.1s ease-in-out', // Add transition to force repaint
           },
         }
