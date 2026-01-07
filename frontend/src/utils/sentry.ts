@@ -5,13 +5,15 @@
  */
 
 // Lazy-loaded Sentry module - only loaded when actually needed
-let SentryModule: typeof import('@sentry/react') | null = null
+// Using 'any' type to avoid Vite pre-transforming the import
+let SentryModule: any = null
 let isSentryInitialized = false
 
 /**
  * Load Sentry module dynamically. Only loads in production.
+ * Uses a dynamic import path to prevent Vite from pre-analyzing it.
  */
-async function loadSentry(): Promise<typeof import('@sentry/react') | null> {
+async function loadSentry(): Promise<any> {
   if (SentryModule) {
     return SentryModule
   }
@@ -24,7 +26,9 @@ async function loadSentry(): Promise<typeof import('@sentry/react') | null> {
   }
 
   try {
-    SentryModule = await import('@sentry/react')
+    // Use dynamic import with a variable to prevent Vite from pre-analyzing
+    const sentryModulePath = '@sentry/react'
+    SentryModule = await import(/* @vite-ignore */ sentryModulePath)
     return SentryModule
   } catch (error) {
     console.error('[Sentry] Failed to load Sentry module:', error)
@@ -71,7 +75,7 @@ export async function initSentry(): Promise<void> {
       // Release tracking
       release: import.meta.env.VITE_APP_VERSION || undefined,
       // Error filtering - don't send certain errors
-      beforeSend(event, hint) {
+      beforeSend(event: any, hint: any) {
         // Filter out benign errors if needed
         const error = hint.originalException
         if (error instanceof Error) {
@@ -85,7 +89,7 @@ export async function initSentry(): Promise<void> {
     isSentryInitialized = true
 
     // Set up global error handlers
-    setupGlobalErrorHandlers(Sentry)
+    setupGlobalErrorHandlers()
 
     if (dsn) {
       console.info('[Sentry] Initialized successfully in production mode')
@@ -102,7 +106,7 @@ export async function initSentry(): Promise<void> {
  * Set up global error handlers for unhandled errors and promise rejections.
  * These catch errors that escape React's error boundary.
  */
-function setupGlobalErrorHandlers(Sentry: typeof import('@sentry/react')): void {
+function setupGlobalErrorHandlers(): void {
   // Handle unhandled errors
   window.addEventListener('error', (event) => {
     // Sentry's default error handler will capture this, but we can add custom context
@@ -181,7 +185,7 @@ export function captureException(error: unknown, context?: Record<string, unknow
 
     try {
       if (context) {
-        Sentry.withScope((scope) => {
+        Sentry.withScope((scope: any) => {
           Object.entries(context).forEach(([key, value]) => {
             // Sentry's setContext expects Context | null, where Context is a serializable object
             // Cast to the expected type - Sentry will handle serialization
@@ -205,7 +209,7 @@ export function captureException(error: unknown, context?: Record<string, unknow
  * Capture a message and send it to Sentry.
  * Safe to call even if Sentry is not initialized.
  */
-export function captureMessage(message: string, level: import('@sentry/react').SeverityLevel = 'info'): void {
+export function captureMessage(message: string, level: 'debug' | 'info' | 'warning' | 'error' | 'fatal' = 'info'): void {
   if (!isSentryInitialized) {
     return
   }
