@@ -131,7 +131,7 @@ export function logError(context: string, error: unknown): void {
       if (errorKeys.length > 0) {
         const errorProps: Record<string, unknown> = {}
         for (const key of errorKeys) {
-          errorProps[key] = (error as Record<string, unknown>)[key]
+          errorProps[key] = (error as unknown as Record<string, unknown>)[key]
         }
         console.error('Error properties:', errorProps)
       }
