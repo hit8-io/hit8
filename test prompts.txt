@@ -7,3 +7,7 @@ Welke entiteiten zijn verbonden in de interne knowledge graph met de entiteit "l
 geef een word document met een samenvatting van de procedures over het opstarten van een kinderopvang
 
 maak een lijst van de belangrijkste procedures bij opstarten van een kinderopvang in excel
+
+welke entiteiten kan je vinden in de tekst over het opstarten van een kinderopvang?
+
+extracteer alle entiteiten uit de volgende tekst: 'De Vlaamse Overheid heeft via Opgroeien nieuwe regels opgesteld voor kinderopvang. Minister Beke van CD&V heeft het decreet kinderopvang ondertekend. Het document PR-AV-02 beschrijft de procedures.'

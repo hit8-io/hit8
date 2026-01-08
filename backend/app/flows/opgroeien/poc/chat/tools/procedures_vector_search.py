@@ -30,7 +30,7 @@ def _format_vector_search_results(
         results: List of (result_dict, score) tuples from vector search
         
     Returns:
-        List of formatted result dictionaries with content, score, and optional metadata
+        List of formatted result dictionaries with content, score, doc, and optional metadata
     """
     formatted_results = []
     for result_dict, score in results:
@@ -38,6 +38,9 @@ def _format_vector_search_results(
             "content": result_dict.get("content", ""),
             "score": score,
         }
+        # Add doc (document identifier) if available - this is critical for referencing procedures
+        if result_dict.get("doc"):
+            formatted_result["doc"] = result_dict["doc"]
         # Add metadata if available
         if result_dict.get("metadata"):
             formatted_result["metadata"] = result_dict["metadata"]
@@ -48,17 +51,60 @@ def _format_vector_search_results(
 @tool
 def procedures_vector_search(query: str) -> str:
     """
-    Vector database with internal procedures. Returns extensive metadata, e.g.:
-    {"run": 1, "date": "2024-04-18", "file": "PR-JH-06.docx", "titel": "Beslissing toekenning erkenning", "domain": "Jeugdhulp", "folder": "Jeugdhulp/Procedures", "source": "intern", "project": "opgroeien", "doc_type": "regelgeving", "language": "nl", "chunk_size": 1000, "content_type": "markdown", "total_chunks": 13, "chunk_overlap": 200, "chunk_algorithm": "markdown recursive", "embedding_model": "gemini-embedding-001", "embedding_dimension": 1536}
+    Vector database with internal procedures. Returns results with:
+    - content: The procedure content text
+    - doc: Document identifier (e.g., "PR-AV-02", "PR-JH-06") - USE THIS for citations
+    - score: Similarity score
+    - metadata: JSON object with additional info including:
+      * "titel": Document title
+      * "date": Document date
+      * "file": Original filename
+      * Other fields as available
+    
+    IMPORTANT: Always use the "doc" field for document citations in the format: [Interne Bron: Titel, Document ID, Datum]
+    The "doc" field contains the document identifier needed for proper citation.
+    
+    Example result structure:
+    [
+      {
+        "content": "...",
+        "doc": "PR-AV-02",
+        "score": 0.85,
+        "metadata": {
+          "titel": "Procedure titel",
+          "date": "2024-04-18",
+          "file": "PR-AV-02.docx"
+        }
+      }
+    ]
     
     Args:
         query: The search query
         
     Returns:
-        JSON string with search results and metadata
+        JSON string with search results containing content, doc, score, and metadata
     """
+    # #region agent log
+    logger.debug(
+        "debug_vector_search_start",
+        hypothesisId="A",
+        query=query,
+        collection=COLLECTION_PROCEDURES,
+    )
+    # #endregion
+    
     try:
         results = _vector_search_raw_sql(query, COLLECTION_PROCEDURES, k=VECTOR_SEARCH_DEFAULT_K)
+        
+        # #region agent log
+        logger.debug(
+            "debug_vector_search_completed",
+            hypothesisId="A",
+            result_count=len(results) if results else 0,
+            has_results=results is not None and len(results) > 0,
+            sample_raw_result_doc=results[0][0].get("doc") if results and len(results) > 0 else None,
+        )
+        # #endregion
         
         if not results:
             logger.warning(
@@ -73,14 +119,45 @@ def procedures_vector_search(query: str) -> str:
         
         formatted_results = _format_vector_search_results(results)
         
+        # #region agent log
+        logger.debug(
+            "debug_formatted_results_check",
+            hypothesisId="A",
+            result_count=len(formatted_results),
+            has_doc_fields=[r.get("doc") is not None for r in formatted_results],
+            doc_values=[r.get("doc") for r in formatted_results[:3]],  # First 3 doc values
+            sample_result_keys=list(formatted_results[0].keys()) if formatted_results else None,
+            sample_result_doc=formatted_results[0].get("doc") if formatted_results else None,
+        )
+        # #endregion
+        
         logger.info(
             "procedures_vector_search_success",
             query=query,
             result_count=len(formatted_results),
         )
         
-        return json.dumps(formatted_results, ensure_ascii=False)
+        json_output = json.dumps(formatted_results, ensure_ascii=False)
+        
+        # #region agent log
+        logger.debug(
+            "debug_json_output_ready",
+            hypothesisId="A",
+            json_length=len(json_output),
+            json_preview=json_output[:500] if len(json_output) > 500 else json_output,
+        )
+        # #endregion
+        
+        return json_output
     except Exception as e:
+        # #region agent log
+        logger.debug(
+            "debug_vector_search_exception",
+            hypothesisId="A",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        # #endregion
         logger.error(
             "procedures_vector_search_failed",
             error=str(e),

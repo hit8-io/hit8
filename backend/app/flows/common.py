@@ -142,30 +142,32 @@ def get_agent_model(
     return _agent_model
 
 
-# Cache entity extraction model at module level
-_entity_extraction_model: ChatGoogleGenerativeAI | None = None
-_entity_extraction_model_lock = threading.Lock()
+# Cache tool model at module level
+_tool_model: ChatGoogleGenerativeAI | None = None
+_tool_model_lock = threading.Lock()
 
 
-def get_entity_extraction_model(
+def get_tool_model(
     thinking_level: str | None = None,
     temperature: float | None = None,
 ) -> ChatGoogleGenerativeAI:
     """
-    Get or create cached Vertex AI model for entity extraction.
+    Get or create cached Vertex AI model for tool operations.
     
     Args:
-        thinking_level: Optional thinking level override. If set, thinking_level is used. Otherwise, temperature is used if set.
-        temperature: Optional temperature override. Only used if thinking_level is not set.
+        thinking_level: Optional thinking level override. If None, uses TOOL_LLM_THINKING_LEVEL from constants.
+            If set, thinking_level is used. Otherwise, temperature is used if set.
+        temperature: Optional temperature override. If None, uses TOOL_LLM_TEMPERATURE from constants.
+            Only used if thinking_level is not set.
     
     Returns:
-        ChatGoogleGenerativeAI model instance configured for entity extraction
+        ChatGoogleGenerativeAI model instance configured for tool operations
     """
-    global _entity_extraction_model
+    global _tool_model
     
-    if _entity_extraction_model is None:
-        with _entity_extraction_model_lock:
-            if _entity_extraction_model is None:
+    if _tool_model is None:
+        with _tool_model_lock:
+            if _tool_model is None:
                 service_account_info = json.loads(settings.VERTEX_SERVICE_ACCOUNT)
                 project_id = service_account_info["project_id"]
                 
@@ -178,15 +180,18 @@ def get_entity_extraction_model(
                     "provider": AGENT_MODEL_PROVIDER,
                 }
                 
-                model_name = settings.LLM_MODEL_NAME
+                model_name = constants.CONSTANTS.get("TOOL_LLM_MODEL") or settings.LLM_MODEL_NAME
                 
                 # Use thinking_level if set, otherwise use temperature if set
-                if thinking_level is not None:
-                    model_kwargs["thinking_level"] = thinking_level
-                elif temperature is not None:
-                    model_kwargs["temperature"] = temperature
+                final_thinking_level = thinking_level or constants.CONSTANTS.get("TOOL_LLM_THINKING_LEVEL")
+                final_temperature = temperature or constants.CONSTANTS.get("TOOL_LLM_TEMPERATURE")
                 
-                _entity_extraction_model = ChatGoogleGenerativeAI(
+                if final_thinking_level is not None:
+                    model_kwargs["thinking_level"] = final_thinking_level
+                elif final_temperature is not None:
+                    model_kwargs["temperature"] = final_temperature
+                
+                _tool_model = ChatGoogleGenerativeAI(
                     model=model_name,
                     model_kwargs=model_kwargs,
                     project=project_id,
@@ -197,12 +202,12 @@ def get_entity_extraction_model(
                 log_data = {
                     "model": model_name,
                 }
-                if thinking_level is not None:
-                    log_data["thinking_level"] = thinking_level
-                elif temperature is not None:
-                    log_data["temperature"] = temperature
+                if final_thinking_level is not None:
+                    log_data["thinking_level"] = final_thinking_level
+                elif final_temperature is not None:
+                    log_data["temperature"] = final_temperature
                 
-                logger.info("entity_extraction_model_initialized", **log_data)
+                logger.info("tool_model_initialized", **log_data)
     
-    return _entity_extraction_model
+    return _tool_model
 

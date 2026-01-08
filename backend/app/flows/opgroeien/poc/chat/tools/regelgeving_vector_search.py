@@ -30,7 +30,7 @@ def _format_vector_search_results(
         results: List of (result_dict, score) tuples from vector search
         
     Returns:
-        List of formatted result dictionaries with content, score, and optional metadata
+        List of formatted result dictionaries with content, score, doc, and optional metadata
     """
     formatted_results = []
     for result_dict, score in results:
@@ -38,6 +38,9 @@ def _format_vector_search_results(
             "content": result_dict.get("content", ""),
             "score": score,
         }
+        # Add doc (document identifier) if available - this is critical for referencing documents
+        if result_dict.get("doc"):
+            formatted_result["doc"] = result_dict["doc"]
         # Add metadata if available
         if result_dict.get("metadata"):
             formatted_result["metadata"] = result_dict["metadata"]
@@ -48,13 +51,24 @@ def _format_vector_search_results(
 @tool
 def regelgeving_vector_search(query: str) -> str:
     """
-    Vector database with all applicable official regulations.
+    Vector database with all applicable official regulations. Returns results with:
+    - content: The regulation content text
+    - doc: Document identifier - USE THIS for citations
+    - score: Similarity score
+    - metadata: JSON object with additional info including:
+      * "titel": Document title
+      * "date": Document date
+      * "file": Original filename
+      * Other fields as available
+    
+    IMPORTANT: Always use the "doc" field for document citations in the format: [Interne Bron: Titel, Document ID, Datum]
+    The "doc" field contains the document identifier needed for proper citation.
     
     Args:
         query: The search query
         
     Returns:
-        JSON string with search results
+        JSON string with search results containing content, doc, score, and metadata
     """
     try:
         results = _vector_search_raw_sql(query, COLLECTION_REGELGEVING, k=VECTOR_SEARCH_DEFAULT_K)

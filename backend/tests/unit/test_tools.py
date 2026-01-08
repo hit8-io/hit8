@@ -440,9 +440,9 @@ def test_extract_entities_successful():
     
     # Reset the cached model
     import app.flows.common as common_module
-    common_module._entity_extraction_model = None
+    common_module._tool_model = None
     
-    with patch("app.flows.common.get_entity_extraction_model", return_value=mock_model):
+    with patch("app.flows.common.get_tool_model", return_value=mock_model):
         # Call the tool
         result = extract_entities.invoke({"chatInput": "De Vlaamse Overheid heeft regelgeving rond kinderopvang."})
         
@@ -492,9 +492,9 @@ def test_extract_entities_no_function_call():
     
     # Reset the cached model
     import app.flows.common as common_module
-    common_module._entity_extraction_model = None
+    common_module._tool_model = None
     
-    with patch("app.flows.common.get_entity_extraction_model", return_value=mock_model):
+    with patch("app.flows.common.get_tool_model", return_value=mock_model):
         result = extract_entities.invoke({"chatInput": "Some text"})
         result_data = json.loads(result)
         

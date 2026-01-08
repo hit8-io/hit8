@@ -25,12 +25,27 @@ def extract_message_content(content: Any) -> str:
     """Extract message content, handling various formats."""
     if isinstance(content, list):
         # If content is a list (e.g., from multimodal responses), join or take first
-        if content and isinstance(content[0], dict) and "text" in content[0]:
-            return content[0]["text"]
-        elif content and isinstance(content[0], str):
-            return content[0]
-        else:
-            return str(content)
+        if not content:
+            # Empty list should return empty string, not "[]"
+            return ""
+        
+        # Try to extract text from all blocks in the list
+        text_parts = []
+        for block in content:
+            if isinstance(block, dict) and "text" in block:
+                text = block.get("text", "")
+                if text:
+                    text_parts.append(str(text))
+            elif isinstance(block, str) and block:
+                text_parts.append(block)
+        
+        if text_parts:
+            # Join all text parts if multiple blocks found
+            return "".join(text_parts)
+        
+        # If list has items but none matched expected format, return empty string
+        # instead of string representation of the list
+        return ""
     elif not isinstance(content, str):
         return str(content)
     return content

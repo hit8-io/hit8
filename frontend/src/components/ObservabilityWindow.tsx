@@ -208,30 +208,45 @@ export default function ObservabilityWindow({
                       
                       {/* Model rows */}
                       {allLLMModels.map((model) => {
-                        const currentCall = executionMetrics?.llm_calls.find(call => call.model === model)
+                        // Aggregate all calls for this model (not just the first one)
+                        const modelCalls = executionMetrics?.llm_calls.filter(call => call.model === model) || []
                         const aggregatedStats = aggregatedMetrics?.llm.by_model[model]
+                        
+                        // Calculate aggregated metrics for current execution
+                        const currentModelStats = modelCalls.length > 0 ? {
+                          calls: modelCalls.length,
+                          input: modelCalls.reduce((sum, call) => sum + call.input_tokens, 0),
+                          output: modelCalls.reduce((sum, call) => sum + call.output_tokens, 0),
+                          thinking: modelCalls.reduce((sum, call) => sum + (call.thinking_tokens || 0), 0),
+                          duration: modelCalls.reduce((sum, call) => sum + call.duration_ms, 0),
+                          // Average TTFT across all calls (only if all have TTFT)
+                          avgTtft: (() => {
+                            const ttfts = modelCalls.filter(call => call.ttft_ms !== null).map(call => call.ttft_ms!)
+                            return ttfts.length > 0 ? ttfts.reduce((sum, ttft) => sum + ttft, 0) / ttfts.length : null
+                          })(),
+                        } : null
                         
                         return (
                           <tr key={model} className="border-b border-border/50">
                             <td className="p-1">{model}</td>
                             <td className="p-1 text-right border-l border-border">
-                              {currentCall ? formatNumber(currentCall.input_tokens) : '-'}
+                              {currentModelStats ? formatNumber(currentModelStats.input) : '-'}
                             </td>
                             <td className="p-1 text-right">
-                              {currentCall ? formatNumber(currentCall.output_tokens) : '-'}
+                              {currentModelStats ? formatNumber(currentModelStats.output) : '-'}
                             </td>
                             <td className="p-1 text-right">
-                              {currentCall && currentCall.thinking_tokens !== null
-                                ? formatNumber(currentCall.thinking_tokens)
+                              {currentModelStats && currentModelStats.thinking > 0
+                                ? formatNumber(currentModelStats.thinking)
                                 : '-'}
                             </td>
                             <td className="p-1 text-right">
-                              {currentCall && currentCall.ttft_ms !== null
-                                ? formatDuration(currentCall.ttft_ms)
+                              {currentModelStats && currentModelStats.avgTtft !== null
+                                ? formatDuration(currentModelStats.avgTtft)
                                 : '-'}
                             </td>
                             <td className="p-1 text-right">
-                              {currentCall ? formatDuration(currentCall.duration_ms) : '-'}
+                              {currentModelStats ? formatDuration(currentModelStats.duration) : '-'}
                             </td>
                             <td className="p-1 text-right border-l border-border">
                               {aggregatedStats ? formatNumber(aggregatedStats.call_count) : '-'}

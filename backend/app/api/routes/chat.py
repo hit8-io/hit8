@@ -202,8 +202,9 @@ async def chat(
     langfuse_handler = get_langfuse_handler()
     
     # Prepare config with callbacks, metadata, and thread_id
+    # Use session_id (the actual thread_id being used) not the form parameter
     config: dict[str, Any] = {
-        "configurable": {"thread_id": thread_id}
+        "configurable": {"thread_id": session_id}
     }
     if langfuse_handler:
         config["callbacks"] = [langfuse_handler]

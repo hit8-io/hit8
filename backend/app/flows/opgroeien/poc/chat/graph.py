@@ -96,6 +96,30 @@ def agent_node(state: AgentState, config: Optional[RunnableConfig] = None) -> Ag
     config_dict["metadata"]["org"] = flow_constants.ORG
     config_dict["metadata"]["project"] = flow_constants.PROJECT
     
+    # Check if there are any AIMessages with tool calls that don't have all ToolMessages
+    # If so, don't invoke the model - just return empty state and let routing handle it
+    for msg in messages:
+        if isinstance(msg, AIMessage) and hasattr(msg, "tool_calls") and msg.tool_calls:
+            tool_call_ids = []
+            for tc in msg.tool_calls:
+                if isinstance(tc, dict):
+                    tool_call_ids.append(tc.get("id", ""))
+                else:
+                    tool_call_ids.append(getattr(tc, "id", ""))
+            tool_message_ids = {m.tool_call_id for m in messages if isinstance(m, ToolMessage)}
+            missing_responses = [tid for tid in tool_call_ids if tid not in tool_message_ids]
+            
+            if missing_responses:
+                # There are pending tool calls - don't invoke the model, just return empty state
+                # The routing function will handle routing to the next tool
+                logger.debug(
+                    "agent_node_skipping_invoke_pending_tool_calls",
+                    missing_responses=missing_responses,
+                    total_tool_calls=len(tool_call_ids),
+                    responded_tool_calls=len(tool_message_ids),
+                )
+                return {"messages": []}  # Return empty to not add anything to state
+    
     # Invoke model with messages
     try:
         response = model_with_tools.invoke(messages, config=config_dict)
@@ -181,10 +205,12 @@ def route_to_tool(state: AgentState) -> str:
     
     # Find the first tool call that hasn't been responded to
     tool_node_map = _get_tool_node_name_map()
+    
     for tool_call in ai_message_with_tool_calls.tool_calls:
-        tool_call_id = tool_call.get("id", "")
+        # Handle both dict and object formats for tool_call
+        tool_call_id = tool_call.get("id", "") if isinstance(tool_call, dict) else getattr(tool_call, "id", "")
         if tool_call_id not in responded_tool_call_ids:
-            tool_name = tool_call.get("name", "")
+            tool_name = tool_call.get("name", "") if isinstance(tool_call, dict) else getattr(tool_call, "name", "")
             node_name = tool_node_map.get(tool_name, END)
             
             logger.debug(

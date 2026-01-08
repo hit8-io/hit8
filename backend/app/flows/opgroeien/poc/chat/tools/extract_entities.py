@@ -4,6 +4,8 @@ Tool for extracting entities from text using LLM.
 from __future__ import annotations
 
 import json
+import time
+import uuid
 from datetime import datetime
 from enum import Enum
 
@@ -12,7 +14,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
-from app.flows.common import get_entity_extraction_model
+from app.flows.common import get_tool_model
 from app.flows.opgroeien.poc import constants as flow_constants
 from app.prompts.opgroeien.poc.extract_system_prompt import EXTRACT_SYSTEM_INSTRUCTION
 
@@ -61,16 +63,24 @@ class ExtractKnowledgeInput(BaseModel):
     )
 
 
-def _extract_entities_impl(chatInput: str) -> str:
+def _extract_entities_impl(chatInput: str, thread_id: str | None = None) -> str:
     """
     Extract entities from text using LLM with function calling.
     
     Args:
         chatInput: The text to extract entities from
+        thread_id: Optional thread ID for observability tracking (can also be from context)
         
     Returns:
         JSON string with extracted entities and metadata
     """
+    # Get thread_id from parameter or context variable
+    if not thread_id:
+        try:
+            from app.api.observability import _current_thread_id
+            thread_id = _current_thread_id.get()
+        except Exception:
+            pass
     try:
         if not chatInput or not chatInput.strip():
             logger.warning("extract_entities_empty_input")
@@ -86,10 +96,12 @@ def _extract_entities_impl(chatInput: str) -> str:
         # Get model and bind the extraction function
         # Bind Pydantic model directly - LangChain will use the class name as function name
         # We'll check for both "ExtractKnowledgeInput" and "extract_knowledge" in the response
-        model = get_entity_extraction_model(
+        model = get_tool_model(
             thinking_level=flow_constants.ENTITY_EXTRACTION_THINKING_LEVEL,
             temperature=flow_constants.ENTITY_EXTRACTION_TEMPERATURE,
         )
+        # Get model name for observability tracking
+        model_name = getattr(model, "model", None) or getattr(model, "model_name", "unknown")
         model_with_tools = model.bind_tools(
             [ExtractKnowledgeInput],
             tool_choice="any"  # Force function call (equivalent to "ANY" in JSON spec)
@@ -106,8 +118,96 @@ def _extract_entities_impl(chatInput: str) -> str:
             input_length=len(chatInput),
         )
         
+        # Track LLM call for observability (if thread_id is available)
+        call_id = None
+        start_time = None
+        if thread_id:
+            try:
+                from app.api.observability import record_llm_start
+                call_id = str(uuid.uuid4())
+                # Extract model config
+                config = {}
+                if hasattr(model, "model_kwargs"):
+                    model_kwargs = model.model_kwargs or {}
+                    if "temperature" in model_kwargs:
+                        config["temperature"] = model_kwargs["temperature"]
+                    if "thinking_level" in model_kwargs:
+                        config["thinking_level"] = model_kwargs["thinking_level"]
+                record_llm_start(thread_id, call_id, model_name, config if config else None, None)
+                start_time = time.perf_counter()
+            except Exception as e:
+                logger.warning(
+                    "extract_entities_observability_start_failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+        
         # Invoke model
         response = model_with_tools.invoke(messages)
+        
+        # Extract token usage from response
+        token_usage = None
+        if hasattr(response, "usage_metadata"):
+            try:
+                token_usage = response.usage_metadata
+            except Exception:
+                pass
+        if not token_usage and hasattr(response, "response_metadata"):
+            try:
+                rm = response.response_metadata
+                if rm:
+                    if hasattr(rm, "get"):
+                        token_usage = rm.get("token_usage") or rm.get("usage_metadata")
+                    elif hasattr(rm, "token_usage"):
+                        token_usage = rm.token_usage
+                    elif hasattr(rm, "usage_metadata"):
+                        token_usage = rm.usage_metadata
+            except Exception:
+                pass
+        
+        # Extract token counts
+        input_tokens = 0
+        output_tokens = 0
+        thinking_tokens = None
+        
+        if token_usage:
+            if isinstance(token_usage, dict):
+                input_tokens = token_usage.get("prompt_tokens", token_usage.get("input_tokens", 0))
+                output_tokens = token_usage.get("completion_tokens", token_usage.get("output_tokens", 0))
+                thinking_tokens = token_usage.get("thinking_tokens", token_usage.get("cached_tokens"))
+            elif hasattr(token_usage, "prompt_tokens") or hasattr(token_usage, "input_tokens"):
+                input_tokens = getattr(token_usage, "prompt_tokens", 0) or getattr(token_usage, "input_tokens", 0)
+                output_tokens = getattr(token_usage, "completion_tokens", 0) or getattr(token_usage, "output_tokens", 0)
+                thinking_tokens = getattr(token_usage, "thinking_tokens", None)
+        
+        # Record LLM usage for observability (if thread_id is available)
+        if thread_id and call_id:
+            try:
+                from app.api.observability import record_llm_usage
+                # Extract model config
+                config = {}
+                if hasattr(model, "model_kwargs"):
+                    model_kwargs = model.model_kwargs or {}
+                    if "temperature" in model_kwargs:
+                        config["temperature"] = model_kwargs["temperature"]
+                    if "thinking_level" in model_kwargs:
+                        config["thinking_level"] = model_kwargs["thinking_level"]
+                record_llm_usage(
+                    thread_id=thread_id,
+                    call_id=call_id,
+                    model=model_name,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    thinking_tokens=thinking_tokens,
+                    config=config if config else None,
+                )
+            except Exception as e:
+                logger.warning(
+                    "extract_entities_observability_usage_failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+        
         
         # Extract function call result
         if not hasattr(response, "tool_calls") or not response.tool_calls:

@@ -12,20 +12,20 @@ ENVIRONMENT: Literal["dev", "prd"] = os.getenv("ENVIRONMENT", "dev")
 CONSTANTS: dict[str, Any] = {
     "APP_NAME": "Hit8 Chat API",
     "APP_VERSION": "0.3.0",
-    "LLM_MODEL_NAME": "gemini-2.5-flash",
+    "LLM_MODEL_NAME": "gemini-3-pro-preview",
+    "TOOL_LLM_MODEL": "gemini-2.5-flash",
     "LLM_THINKING_LEVEL": None,
+    "TOOL_LLM_THINKING_LEVEL": None,
     "LLM_TEMPERATURE": None,
-    "VERTEX_AI_LOCATION": "europe-west1",
+    "TOOL_LLM_TEMPERATURE": 0.1,
+    "VERTEX_AI_LOCATION": "global",
     "CORS_ALLOW_CREDENTIALS": True,
     "ACCOUNT": "hit8",
     "ORG": "opgroeien",
     "PROJECT": "poc",
     "FLOW": "chat",
     "PROMPTS_DIR": "app/prompts",
-    "LANGFUSE_ENABLED": False,
-    "LANGFUSE_PUBLIC_KEY": None,
-    "LANGFUSE_SECRET_KEY": None,
-    "LANGFUSE_BASE_URL": None,
+    "LANGFUSE_ENABLED": True,
 }
 
 # dev

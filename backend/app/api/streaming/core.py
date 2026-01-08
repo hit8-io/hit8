@@ -39,9 +39,10 @@ def stream(
     current_node: str | None = None
     
     try:
-        # Initialize execution metrics tracking
+        # Set thread_id in observability context for tools to access
         try:
-            from app.api.observability import initialize_execution
+            from app.api.observability import _current_thread_id, initialize_execution
+            _current_thread_id.set(thread_id)
             initialize_execution(thread_id)
         except Exception:
             # Don't fail if observability is not available
