@@ -40,19 +40,6 @@ function formatCost(cost: number | null): string {
 }
 
 /**
- * Format execution duration from start and end times.
- */
-function formatExecutionDuration(startTime: string, endTime: string | null): string {
-  if (!endTime) return 'In progress...'
-  
-  const start = new Date(startTime).getTime()
-  const end = new Date(endTime).getTime()
-  const durationMs = end - start
-  
-  return formatDuration(durationMs)
-}
-
-/**
  * Extract thread_id from execution state.
  */
 function extractThreadId(executionState: ExecutionState | null): string | null {
