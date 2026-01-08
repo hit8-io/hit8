@@ -11,7 +11,7 @@ ENVIRONMENT: Literal["dev", "prd"] = os.getenv("ENVIRONMENT", "dev")
 # Defaults
 CONSTANTS: dict[str, Any] = {
     "APP_NAME": "Hit8 Chat API",
-    "APP_VERSION": "0.2.0",
+    "APP_VERSION": "0.3.0",
     "LLM_MODEL_NAME": "gemini-2.5-flash",
     "LLM_THINKING_LEVEL": None,
     "LLM_TEMPERATURE": None,
