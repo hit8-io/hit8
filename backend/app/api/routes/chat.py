@@ -114,6 +114,22 @@ async def stream_chat_events(
             has_response=bool(final_response),
         )
         
+        # Flush Langfuse traces to ensure they're sent
+        if langfuse_handler:
+            try:
+                from app.flows.common import get_langfuse_client
+                langfuse_client = get_langfuse_client()
+                if langfuse_client:
+                    langfuse_client.flush()
+                    logger.debug("langfuse_traces_flushed", thread_id=thread_id)
+            except Exception as e:
+                logger.warning(
+                    "langfuse_flush_failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    thread_id=thread_id,
+                )
+        
         state_data = {
             "type": EVENT_GRAPH_END,
             "thread_id": thread_id,
