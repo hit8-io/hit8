@@ -42,24 +42,24 @@ jobs:
           sed -i "s/^version = \".*\"/version = \"${{ steps.version.outputs.version }}\"/" pyproject.toml
           echo "Updated backend/pyproject.toml to version ${{ steps.version.outputs.version }}"
 
-      - name: Update Backend config.yaml Version
+      - name: Update Backend constants.py Version
         working-directory: ./backend/app
         run: |
-          # Update config.yaml app_version field
-          sed -i "s/^  app_version: \".*\"/  app_version: \"${{ steps.version.outputs.version }}\"/" config.yaml
-          echo "Updated backend/app/config.yaml app_version to ${{ steps.version.outputs.version }}"
+          # Update constants.py APP_VERSION field
+          sed -i "s/    \"APP_VERSION\": \".*\"/    \"APP_VERSION\": \"${{ steps.version.outputs.version }}\"/" constants.py
+          echo "Updated backend/app/constants.py APP_VERSION to ${{ steps.version.outputs.version }}"
 
       - name: Check for changes
         id: changes
         run: |
-          git diff --exit-code frontend/package.json backend/pyproject.toml backend/app/config.yaml || echo "changed=true" >> $GITHUB_OUTPUT
+          git diff --exit-code frontend/package.json backend/pyproject.toml backend/app/constants.py || echo "changed=true" >> $GITHUB_OUTPUT
 
       - name: Commit and push changes
         if: steps.changes.outputs.changed == 'true'
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add frontend/package.json backend/pyproject.toml backend/app/config.yaml
+          git add frontend/package.json backend/pyproject.toml backend/app/constants.py
           git commit -m "chore: sync version to ${{ steps.version.outputs.version }} from VERSION file"
           git push
 
