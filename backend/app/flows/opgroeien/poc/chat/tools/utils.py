@@ -4,7 +4,7 @@ Utility functions for the opgroeien agent - vector stores and embeddings.
 from __future__ import annotations
 
 # Exported functions (used by other modules)
-__all__ = ["_vector_search_raw_sql", "create_tool_node"]
+__all__ = ["_vector_search_raw_sql", "_get_procedure_raw_sql", "_get_regelgeving_raw_sql", "create_tool_node"]
 
 import json
 import math
@@ -19,6 +19,7 @@ from psycopg import sql as psql
 import structlog
 from google.oauth2 import service_account
 from langchain_core.messages import ToolMessage
+from langchain_core.runnables import RunnableConfig
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 if TYPE_CHECKING:
@@ -228,9 +229,30 @@ def _vector_search_raw_sql(  # noqa: PLR0911
         raise ValueError(f"Invalid table name: {table_name}. Allowed: {allowed_tables}")
     
     try:
-        # Get query embedding
+        # Get query embedding with timing
+        import time
         embedding_model = _get_embedding_model()
+        model_name = EMBEDDING_MODEL_NAME
+        
+        start_time = time.perf_counter()
         query_embedding = embedding_model.embed_query(query)
+        duration_ms = (time.perf_counter() - start_time) * 1000.0
+        
+        # Estimate input tokens (rough approximation: ~4 characters per token)
+        input_tokens = len(query) // 4
+        
+        # Record embedding usage metrics
+        try:
+            from app.api.observability import record_embedding_usage
+            record_embedding_usage(
+                model=model_name,
+                input_tokens=input_tokens,
+                output_tokens=0,  # Embeddings don't have output tokens
+                duration_ms=duration_ms,
+            )
+        except Exception:
+            # Don't fail if observability is not available
+            pass
         
         # Verify dimension matches expected
         if len(query_embedding) != EMBEDDING_OUTPUT_DIMENSIONALITY:
@@ -295,10 +317,138 @@ def _vector_search_raw_sql(  # noqa: PLR0911
         raise
 
 
+def _get_procedure_raw_sql(doc: str) -> dict[str, Any] | None:
+    """
+    Get a procedure document by document identifier using raw SQL query.
+    
+    Args:
+        doc: The document identifier (e.g., "PR-AV-02")
+        
+    Returns:
+        Dictionary with keys: doc, content, metadata; or None if not found
+    """
+    # Validate input
+    if not doc or not doc.strip():
+        raise ValueError("doc parameter cannot be empty")
+    
+    try:
+        # Connect to database and execute query (with SSL support for production)
+        with _get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                # Use psycopg.sql to safely compose SQL with identifiers
+                # This properly quotes and escapes the table name, preventing SQL injection
+                query_sql = psql.SQL("""
+                    SELECT 
+                        doc,
+                        content,
+                        metadata
+                    FROM {table}
+                    WHERE doc = %s
+                    LIMIT 1
+                """).format(table=psql.Identifier("documents_proc"))
+                
+                cursor.execute(query_sql, (doc,))
+                
+                # Fetch result (0 or 1 row)
+                row = cursor.fetchone()
+                
+                if row is None:
+                    return None
+                
+                doc_id, content, metadata = row
+                
+                result_dict = {
+                    "doc": doc_id,
+                    "content": content or "",
+                    "metadata": _parse_metadata(metadata),
+                }
+                
+                return result_dict
+                
+    except Exception as e:
+        logger.error(
+            "get_procedure_raw_sql_failed",
+            doc=doc,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+def _get_regelgeving_raw_sql(doc: str) -> dict[str, Any] | None:
+    """
+    Get a regelgeving document by document identifier using raw SQL query.
+    
+    Args:
+        doc: The document identifier
+        
+    Returns:
+        Dictionary with keys: doc, content, metadata; or None if not found
+    """
+    # Validate input
+    if not doc or not doc.strip():
+        raise ValueError("doc parameter cannot be empty")
+    
+    try:
+        # Connect to database and execute query (with SSL support for production)
+        with _get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                # Use psycopg.sql to safely compose SQL with identifiers
+                # This properly quotes and escapes the table name, preventing SQL injection
+                query_sql = psql.SQL("""
+                    SELECT 
+                        doc,
+                        content,
+                        metadata
+                    FROM {table}
+                    WHERE doc = %s
+                    LIMIT 1
+                """).format(table=psql.Identifier("documents_regel"))
+                
+                cursor.execute(query_sql, (doc,))
+                
+                # Fetch result (0 or 1 row)
+                row = cursor.fetchone()
+                
+                if row is None:
+                    return None
+                
+                doc_id, content, metadata = row
+                
+                result_dict = {
+                    "doc": doc_id,
+                    "content": content or "",
+                    "metadata": _parse_metadata(metadata),
+                }
+                
+                return result_dict
+                
+    except Exception as e:
+        logger.error(
+            "get_regelgeving_raw_sql_failed",
+            doc=doc,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
 def create_tool_node(tool_name: str, tool_func: Callable[..., Any]):
     """Factory to create individual tool nodes."""
-    def tool_node(state: "AgentState") -> "AgentState":
+    def tool_node(state: "AgentState", config: RunnableConfig | None = None) -> "AgentState":
         """Execute a specific tool and return ToolMessage."""
+        # Extract thread_id from config
+        thread_id = None
+        if config and hasattr(config, 'configurable') and config.configurable:
+            thread_id = config.configurable.get("thread_id")
+        
+        # If thread_id not found, log warning (shouldn't happen in normal flow)
+        if not thread_id:
+            logger.warning(
+                f"tool_{tool_name}_no_thread_id",
+                tool_name=tool_name,
+            )
+        
         last_message = state["messages"][-1]
         
         # Find and execute tool calls for this specific tool
@@ -311,10 +461,23 @@ def create_tool_node(tool_name: str, tool_func: Callable[..., Any]):
                         f"tool_{tool_name}_executing",
                         tool_call_id=tool_call_id,
                         args=tool_call.get("args", {}),
+                        thread_id=thread_id,
                     )
                     
+                    # Prepare tool arguments
+                    tool_args = tool_call.get("args", {})
+                    
+                    # Add thread_id to tools that need it (e.g., generate_docx, generate_xlsx)
+                    if tool_name in ["generate_docx", "generate_xlsx"] and thread_id:
+                        tool_args["thread_id"] = thread_id
+                    
                     # Execute the tool with the provided arguments
-                    result = tool_func(**tool_call.get("args", {}))
+                    # Handle both callable functions and StructuredTool objects
+                    from langchain_core.tools import StructuredTool
+                    if isinstance(tool_func, StructuredTool):
+                        result = tool_func.invoke(tool_args)
+                    else:
+                        result = tool_func(**tool_args)
                     
                     # Create ToolMessage
                     tool_messages.append(
@@ -328,6 +491,7 @@ def create_tool_node(tool_name: str, tool_func: Callable[..., Any]):
                         f"tool_{tool_name}_success",
                         tool_call_id=tool_call_id,
                         result_length=len(str(result)),
+                        thread_id=thread_id,
                     )
                 except Exception as e:
                     logger.error(
@@ -335,6 +499,7 @@ def create_tool_node(tool_name: str, tool_func: Callable[..., Any]):
                         error=str(e),
                         error_type=type(e).__name__,
                         tool_call_id=tool_call_id,
+                        thread_id=thread_id,
                     )
                     tool_messages.append(
                         ToolMessage(

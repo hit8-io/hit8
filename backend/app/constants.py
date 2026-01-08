@@ -12,8 +12,10 @@ ENVIRONMENT: Literal["dev", "prd"] = os.getenv("ENVIRONMENT", "dev")
 CONSTANTS: dict[str, Any] = {
     "APP_NAME": "Hit8 Chat API",
     "APP_VERSION": "0.2.0",
-    "VERTEX_AI_MODEL_NAME": "gemini-3-flash-preview",
-    "VERTEX_AI_LOCATION": "global",
+    "LLM_MODEL_NAME": "gemini-2.5-flash",
+    "LLM_THINKING_LEVEL": None,
+    "LLM_TEMPERATURE": None,
+    "VERTEX_AI_LOCATION": "europe-west1",
     "CORS_ALLOW_CREDENTIALS": True,
     "ACCOUNT": "hit8",
     "ORG": "opgroeien",

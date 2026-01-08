@@ -37,30 +37,11 @@ def extract_message_content(content: Any) -> str:
 
 
 def extract_ai_message(messages: list[BaseMessage]) -> BaseMessage:
-    """Extract the last AI message from the message list.
-    
-    Prefers AI messages without tool calls (final responses) over ones with tool calls.
-    """
-    from langchain_core.messages import AIMessage, ToolMessage
-    
-    # First, try to find an AIMessage without tool calls (final response)
-    for msg in reversed(messages):
-        if isinstance(msg, AIMessage):
-            # Check if this message has tool calls
-            has_tool_calls = hasattr(msg, "tool_calls") and msg.tool_calls
-            if not has_tool_calls:
-                return msg
-    
-    # If no final response found, get the last AIMessage (even if it has tool calls)
-    ai_messages = [msg for msg in messages if isinstance(msg, AIMessage)]
-    if ai_messages:
-        return ai_messages[-1]
-    
-    # Fallback: any non-human message
-    non_human_messages = [msg for msg in messages if not isinstance(msg, HumanMessage)]
-    if not non_human_messages:
+    """Extract the last AI message from the message list."""
+    ai_messages = [msg for msg in messages if not isinstance(msg, HumanMessage)]
+    if not ai_messages:
         raise ValueError("No AI response generated")
-    return non_human_messages[-1]
+    return ai_messages[-1]
 
 
 def serialize_message(msg: Any) -> dict[str, Any]:

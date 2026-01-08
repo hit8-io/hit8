@@ -22,6 +22,10 @@ EMBEDDING_TASK_TYPE = "retrieval_document"
 EMBEDDING_OUTPUT_DIMENSIONALITY = 1536  # Match database embedding dimensions
 EMBEDDING_PROVIDER = "vertexai"
 
+# Entity extraction model configuration
+ENTITY_EXTRACTION_TEMPERATURE = 0.0
+ENTITY_EXTRACTION_THINKING_LEVEL = None
+
 # Graph node names
 NODE_AGENT = "agent"
 NODE_TOOLS = "tools"  # Legacy - kept for backward compatibility
@@ -29,7 +33,7 @@ NODE_TOOLS = "tools"  # Legacy - kept for backward compatibility
 # Individual tool node names
 NODE_PROCEDURES_VECTOR_SEARCH = "node_procedures_vector_search"
 NODE_REGELGEVING_VECTOR_SEARCH = "node_regelgeving_vector_search"
-NODE_FETCH_WEBPAGE = "node_fetch_webpage"
+NODE_FETCH_WEBPAGE = "node_fetch_website"
 NODE_GENERATE_DOCX = "node_generate_docx"
 NODE_GENERATE_XLSX = "node_generate_xlsx"
 NODE_EXTRACT_ENTITIES = "node_extract_entities"

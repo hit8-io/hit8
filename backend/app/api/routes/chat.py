@@ -11,14 +11,14 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.flows.common import get_langfuse_handler
 from app.flows.opgroeien.poc.chat.graph import AgentState
 from app.api.constants import EVENT_ERROR, EVENT_GRAPH_END
-from app.api.models import ChatRequest
+from app.api.file_processing import process_uploaded_files
 from app.api.streaming import (
     create_stream_thread,
     extract_final_response,
@@ -38,7 +38,7 @@ router = APIRouter()
 
 
 async def stream_chat_events(
-    request: ChatRequest,
+    message: str,
     user_id: str,
     thread_id: str,
     initial_state: AgentState,
@@ -51,7 +51,7 @@ async def stream_chat_events(
     """Stream chat execution events using LangGraph stream_events().
     
     Args:
-        request: Chat request
+        message: User message content
         user_id: User identifier
         thread_id: Thread identifier
         initial_state: Initial agent state
@@ -148,19 +148,25 @@ async def stream_chat_events(
 
 @router.post("")
 async def chat(
-    request: ChatRequest,
+    message: str = Form(...),
+    thread_id: str | None = Form(None),
+    files: list[UploadFile] = File(None),
     user_payload: dict = Depends(verify_google_token),
     x_org: str = Header(..., alias="X-Org"),
     x_project: str = Header(..., alias="X-Project"),
 ):
     """Chat endpoint that processes user messages through LangGraph with streaming support.
     
+    Accepts multipart/form-data with message, optional thread_id, and optional files.
     Requires X-Org and X-Project headers to specify which org/project to use.
     """
     user_id = user_payload["sub"]
     email = user_payload["email"]
     org = x_org.strip()
     project = x_project.strip()
+    
+    # Use provided thread_id or generate one for state tracking
+    session_id = thread_id if thread_id else str(uuid.uuid4())
     
     # Validate user has access to the requested org/project
     if not validate_user_access(email, org, project):
@@ -169,15 +175,17 @@ async def chat(
             email=email,
             org=org,
             project=project,
-            thread_id=request.thread_id,
+            thread_id=session_id,
         )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"User does not have access to org '{org}' / project '{project}'",
         )
     
-    # Use provided thread_id or generate one for state tracking
-    thread_id = request.thread_id if request.thread_id else str(uuid.uuid4())
+    # Process uploaded files and append converted content to message
+    document_content = await process_uploaded_files(files or [], session_id)
+    if document_content:
+        message = f"{message}\n\n---\n\nUploaded Documents:\n{document_content}"
     
     # Initialize system prompt for the configured agent type
     system_prompt_obj = get_system_prompt(settings.FLOW)
@@ -186,7 +194,7 @@ async def chat(
     initial_state: AgentState = {
         "messages": [
             SystemMessage(content=system_prompt),
-            HumanMessage(content=request.message)
+            HumanMessage(content=message)
         ]
     }
     
@@ -227,8 +235,9 @@ async def chat(
     # Log start of execution
     logger.debug(
         "graph_execution_started",
-        thread_id=thread_id,
-        message_length=len(request.message),
+        thread_id=session_id,
+        message_length=len(message),
+        file_count=len(files) if files else 0,
         org=org,
         project=project,
     )
@@ -236,9 +245,9 @@ async def chat(
     # Return streaming response with Server-Sent Events
     return StreamingResponse(
         stream_chat_events(
-            request=request,
+            message=message,
             user_id=user_id,
-            thread_id=thread_id,
+            thread_id=session_id,
             initial_state=initial_state,
             config=config,
             langfuse_handler=langfuse_handler,

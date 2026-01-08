@@ -90,7 +90,7 @@ class Settings(BaseSettings):
     CORS_ALLOW_CREDENTIALS: bool
     
     # Vertex AI
-    VERTEX_AI_MODEL_NAME: str
+    LLM_MODEL_NAME: str
     VERTEX_AI_LOCATION: str
     GCP_PROJECT: str
     VERTEX_SERVICE_ACCOUNT: str = Field(exclude=True)
@@ -122,6 +122,9 @@ class Settings(BaseSettings):
     
     # API
     API_TOKEN: str = Field(exclude=True)
+    
+    # BrightData
+    BRIGHTDATA_API_KEY: str = Field(exclude=True)
     
     # Prompts
     PROMPTS_DIR: str

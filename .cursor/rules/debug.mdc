@@ -1,0 +1,15 @@
+# Debug Mode Rules
+
+## Logging
+
+- **Backend runs in Docker**: Always use `structlog` for logging in backend code, not file writes to the local filesystem
+  - Use `logger.debug()`, `logger.info()`, etc. from structlog
+  - Logs will appear in Docker logs via `docker-compose logs api`
+  - Never write to local filesystem paths like `/Users/jan/dev/hit8/.cursor/debug.log` from backend code
+
+## Secrets Management
+
+- **Always use Doppler for secrets**: When restarting or running backend services, always use `doppler run --` prefix
+  - Example: `doppler run -- docker-compose restart api`
+  - Example: `doppler run -- docker-compose up api web`
+  - Never run Docker commands without Doppler when secrets are needed

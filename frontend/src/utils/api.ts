@@ -76,3 +76,96 @@ export async function getUserConfig(token: string | null): Promise<UserConfig> {
   }
 }
 
+export async function getExecutionMetrics(
+  token: string | null,
+  threadId: string
+): Promise<import('../types/observability').ExecutionMetrics> {
+  if (!token) {
+    throw new Error('Authentication token is required')
+  }
+
+  if (!API_URL) {
+    throw new Error('API URL is not configured')
+  }
+
+  const url = `${API_URL}/usage/execution/${threadId}`
+  const method = 'GET'
+
+  try {
+    const response = await fetch(url, {
+      method,
+      headers: getApiHeaders(token),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      const error = new Error(`Failed to fetch execution metrics: ${response.status} ${errorText}`)
+      // Add request context to error for Sentry
+      ;(error as Error & { requestContext?: Record<string, unknown> }).requestContext = {
+        url,
+        method,
+        statusCode: response.status,
+        statusText: response.statusText,
+      }
+      throw error
+    }
+
+    return response.json()
+  } catch (error) {
+    // If it's a network error, add request context
+    if (error instanceof Error && !(error as Error & { requestContext?: Record<string, unknown> }).requestContext) {
+      ;(error as Error & { requestContext?: Record<string, unknown> }).requestContext = {
+        url,
+        method,
+      }
+    }
+    throw error
+  }
+}
+
+export async function getAggregatedMetrics(
+  token: string | null
+): Promise<import('../types/observability').AggregatedMetrics> {
+  if (!token) {
+    throw new Error('Authentication token is required')
+  }
+
+  if (!API_URL) {
+    throw new Error('API URL is not configured')
+  }
+
+  const url = `${API_URL}/usage/aggregated`
+  const method = 'GET'
+
+  try {
+    const response = await fetch(url, {
+      method,
+      headers: getApiHeaders(token),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      const error = new Error(`Failed to fetch aggregated metrics: ${response.status} ${errorText}`)
+      // Add request context to error for Sentry
+      ;(error as Error & { requestContext?: Record<string, unknown> }).requestContext = {
+        url,
+        method,
+        statusCode: response.status,
+        statusText: response.statusText,
+      }
+      throw error
+    }
+
+    return response.json()
+  } catch (error) {
+    // If it's a network error, add request context
+    if (error instanceof Error && !(error as Error & { requestContext?: Record<string, unknown> }).requestContext) {
+      ;(error as Error & { requestContext?: Record<string, unknown> }).requestContext = {
+        url,
+        method,
+      }
+    }
+    throw error
+  }
+}
+

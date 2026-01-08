@@ -3,6 +3,7 @@ import ChatInterface from './components/ChatInterface'
 import LoginScreen from './components/LoginScreen'
 import GraphView from './components/GraphView'
 import StatusWindow from './components/StatusWindow'
+import ObservabilityWindow from './components/ObservabilityWindow'
 import StatusBar from './components/StatusBar'
 import { Sidebar } from './components/Sidebar'
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -105,9 +106,9 @@ function App() {
         {/* Main Content - Adjusted for sidebar (always minimal width) */}
         <div className="flex-1 min-h-0 ml-16 flex flex-col overflow-hidden">
           {/* Grid Layout */}
-          <div className="flex-1 min-h-0 grid grid-cols-12 grid-rows-[auto_1fr] gap-4 p-4 overflow-hidden transition-all duration-300 ease-in-out">
+          <div className="flex-1 min-h-0 grid grid-cols-12 grid-rows-[1fr_1fr_1fr] gap-4 p-4 overflow-hidden transition-all duration-300 ease-in-out">
             {/* Chat Interface - Left Column */}
-            <div className={`${isChatExpanded ? 'col-span-12' : 'col-span-12 lg:col-span-7'} row-span-2 flex flex-col min-h-0 overflow-hidden transition-all duration-300 ease-in-out`}>
+            <div className={`${isChatExpanded ? 'col-span-12' : 'col-span-12 lg:col-span-7'} row-span-3 flex flex-col min-h-0 overflow-hidden transition-all duration-300 ease-in-out`}>
             <ChatInterface 
               token={idToken} 
               onChatStateChange={handleChatStateChange}
@@ -128,10 +129,22 @@ function App() {
               </div>
             )}
 
-            {/* Status Window - Bottom Right */}
+            {/* Status Window - Middle Right */}
             {!isChatExpanded && (
               <div className="col-span-12 lg:col-span-5 row-span-1 flex flex-col min-h-0 overflow-hidden transition-all duration-300 ease-in-out">
                 <StatusWindow
+                  executionState={executionState}
+                  isLoading={isChatActive}
+                />
+              </div>
+            )}
+
+            {/* Observability Window - Bottom Right */}
+            {!isChatExpanded && (
+              <div className="col-span-12 lg:col-span-5 row-span-1 flex flex-col min-h-0 overflow-hidden transition-all duration-300 ease-in-out">
+                <ObservabilityWindow
+                  apiUrl={API_URL}
+                  token={idToken}
                   executionState={executionState}
                   isLoading={isChatActive}
                 />

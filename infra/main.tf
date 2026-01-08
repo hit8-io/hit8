@@ -6,7 +6,7 @@ provider "google" {
 
 # 0. GCS Bucket for Terraform State
 resource "google_storage_bucket" "terraform_state" {
-  name          = "hit8-hit8-poc-prd-tfstate"
+  name          = "hit8-poc-prd-tfstate"
   location      = var.region
   force_destroy = false  # Prevent accidental deletion
   
@@ -24,6 +24,55 @@ resource "google_storage_bucket" "terraform_state" {
   }
   
   uniform_bucket_level_access = true
+}
+
+# GCS Bucket for Chat Documents (Dev)
+resource "google_storage_bucket" "chat_documents_dev" {
+  name          = "hit8-poc-dev-chat"
+  location      = var.region
+  force_destroy = false
+  
+  uniform_bucket_level_access = true
+  
+  lifecycle_rule {
+    condition {
+      age = 1  # 24 hours (1 day)
+    }
+    action {
+      type = "Delete"
+    }
+  }
+}
+
+# GCS Bucket for Chat Documents (Prd)
+resource "google_storage_bucket" "chat_documents_prd" {
+  name          = "hit8-poc-prd-chat"
+  location      = var.region
+  force_destroy = false
+  
+  uniform_bucket_level_access = true
+  
+  lifecycle_rule {
+    condition {
+      age = 1  # 24 hours (1 day)
+    }
+    action {
+      type = "Delete"
+    }
+  }
+}
+
+# IAM: Grant service account read and write access to all GCS buckets in project
+resource "google_project_iam_member" "storage_object_creator" {
+  project = var.project_id
+  role    = "roles/storage.objectCreator"
+  member  = "serviceAccount:vertex@hit8-poc.iam.gserviceaccount.com"
+}
+
+resource "google_project_iam_member" "storage_object_viewer" {
+  project = var.project_id
+  role    = "roles/storage.objectViewer"
+  member  = "serviceAccount:vertex@hit8-poc.iam.gserviceaccount.com"
 }
 
 # 1. The Static IP (Crucial to import this first to save it)
@@ -151,8 +200,6 @@ resource "google_cloud_run_service" "api" {
 }
 
 # 7. IAM: Allow unauthenticated access
-# Note: This may already exist - check with: gcloud run services get-iam-policy hit8-api
-# If it exists, import it: terraform import google_cloud_run_service_iam_member.public_access "projects/hit8-poc/locations/europe-west1/services/hit8-api roles/run.invoker allUsers"
 resource "google_cloud_run_service_iam_member" "public_access" {
   service  = google_cloud_run_service.api.name
   location = google_cloud_run_service.api.location

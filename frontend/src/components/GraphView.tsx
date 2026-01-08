@@ -321,8 +321,8 @@ export default function GraphView({ apiUrl, token, executionState }: Readonly<Gr
       const allToolNodeNames = [
         'node_procedures_vector_search',
         'node_regelgeving_vector_search',
+        'node_fetch_website',
         // Future tools (commented out until enabled):
-        // 'node_fetch_webpage',
         // 'node_generate_docx',
         // 'node_generate_xlsx',
         // 'node_extract_entities',
@@ -429,6 +429,7 @@ export default function GraphView({ apiUrl, token, executionState }: Readonly<Gr
 
     const activeNodes = currentExecutionState.next || []
     
+    
     // Extract visited nodes from history
     // LangGraph history structure: array of state snapshots, each with tasks array
     const visitedNodes: string[] = []
@@ -457,6 +458,15 @@ export default function GraphView({ apiUrl, token, executionState }: Readonly<Gr
         }
       })
     }
+    
+    // Also include active nodes in visited nodes to ensure they're highlighted
+    // This ensures that nodes in the 'next' array are always highlighted
+    activeNodes.forEach((nodeName) => {
+      if (nodeName && !visitedNodes.includes(nodeName)) {
+        visitedNodes.push(nodeName)
+      }
+    })
+    
     
 
     // Tool nodes are now created from the start, so we don't need to add them dynamically
@@ -494,6 +504,7 @@ export default function GraphView({ apiUrl, token, executionState }: Readonly<Gr
     const updateNode = (node: Node): Node => {
       const isActive = activeNodes.includes(node.id)
       const isVisited = visitedNodes.includes(node.id)
+      
 
       // Only update nodes that have changed state (active or visited)
       // This prevents unnecessary updates to all nodes

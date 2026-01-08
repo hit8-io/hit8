@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Send, Maximize2, Minimize2 } from 'lucide-react'
+import { Send, Maximize2, Minimize2, Paperclip, X } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Button } from './ui/button'
@@ -37,6 +37,8 @@ export default function ChatInterface({ token, onChatStateChange, onExecutionSta
   const [visitedNodes, setVisitedNodes] = useState<string[]>([]) // Track visited nodes for history
   const [activeNode, setActiveNode] = useState<string | null>(null) // Track currently active node
   const [streamEvents, setStreamEvents] = useState<StreamEvent[]>([]) // Track stream events for real-time logging
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const timeoutRef = useRef<number | null>(null)
   const executionStateUpdateRef = useRef(onExecutionStateUpdate)
   const prevStateRef = useRef<{ visitedNodes: string[], activeNode: string | null }>({ visitedNodes: [], activeNode: null })
@@ -140,6 +142,7 @@ export default function ChatInterface({ token, onChatStateChange, onExecutionSta
     const eventVisitedNodes = data.visited_nodes || []
     // Merge with local visitedNodes to ensure we don't lose any
     const allVisitedNodes = [...new Set([...visitedNodes, ...eventVisitedNodes])]
+    
     
     // Update local visitedNodes state so useEffect can read the correct value
     setVisitedNodes(allVisitedNodes)
@@ -396,6 +399,7 @@ export default function ChatInterface({ token, onChatStateChange, onExecutionSta
       content: input 
     }
     setMessages((prev) => [...prev, userMessage])
+    const messageContent = input
     setInput('')
     setIsLoading(true)
 
@@ -406,14 +410,26 @@ export default function ChatInterface({ token, onChatStateChange, onExecutionSta
     setStreamEvents([])
 
     try {
+      // Use FormData for multipart/form-data
+      const formData = new FormData()
+      formData.append('message', messageContent)
+      formData.append('thread_id', threadId)
+      selectedFiles.forEach(file => {
+        formData.append('files', file)
+      })
+
+      const headers = getApiHeaders(token)
+      // Remove Content-Type - browser must set it with boundary for FormData
+      delete headers['Content-Type']
+      
       const response = await fetch(`${API_URL}/chat`, {
         method: 'POST',
-        headers: getApiHeaders(token),
-        body: JSON.stringify({
-          message: userMessage.content,
-          thread_id: threadId,
-        }),
+        headers,
+        body: formData,
       })
+
+      // Clear files after send
+      setSelectedFiles([])
 
       if (!response.ok) {
         await handleResponseError(response)
@@ -479,6 +495,29 @@ export default function ChatInterface({ token, onChatStateChange, onExecutionSta
       e.preventDefault()
       void handleSend()
     }
+  }
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    // Filter to only allowed file types
+    const allowedExtensions = ['.docx', '.xlsx', '.pptx', '.pdf', '.html', '.txt', '.csv', '.json', '.xml', '.epub']
+    const validFiles = files.filter(file => {
+      const ext = '.' + file.name.split('.').pop()?.toLowerCase()
+      return allowedExtensions.includes(ext)
+    })
+    setSelectedFiles(prev => [...prev, ...validFiles])
+    // Reset input to allow selecting same file again
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  const removeFile = (index: number) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const handleFileButtonClick = () => {
+    fileInputRef.current?.click()
   }
 
   return (
@@ -615,7 +654,45 @@ export default function ChatInterface({ token, onChatStateChange, onExecutionSta
         </ScrollArea>
 
         <div className="p-4 border-t">
+          {selectedFiles.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-2">
+              {selectedFiles.map((file, index) => (
+                <div
+                  key={index}
+                  className="flex items-center gap-1 bg-muted px-2 py-1 rounded-md text-sm"
+                >
+                  <span className="truncate max-w-[200px]">{file.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeFile(index)}
+                    className="ml-1 hover:bg-muted-foreground/20 rounded p-0.5"
+                    disabled={isLoading}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="flex gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept=".docx,.xlsx,.pptx,.pdf,.html,.txt,.csv,.json,.xml,.epub"
+              onChange={handleFileSelect}
+              className="hidden"
+              disabled={isLoading}
+            />
+            <Button
+              type="button"
+              onClick={handleFileButtonClick}
+              disabled={isLoading}
+              size="icon"
+              variant="outline"
+            >
+              <Paperclip className="h-4 w-4" />
+            </Button>
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}

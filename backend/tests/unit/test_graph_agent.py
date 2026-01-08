@@ -249,7 +249,7 @@ def test_get_agent_model_initialization():
     # Set required env vars
     os.environ.setdefault("VERTEX_SERVICE_ACCOUNT", 
                          '{"project_id": "test-project", "type": "service_account"}')
-    os.environ.setdefault("VERTEX_AI_MODEL_NAME", "gemini-3-flash-preview")
+    os.environ.setdefault("LLM_MODEL_NAME", "gemini-3-flash-preview")
     os.environ.setdefault("VERTEX_AI_LOCATION", "global")
     
     with patch("app.flows.opgroeien.poc.chat.graph.ChatGoogleGenerativeAI") as mock_chat_class:

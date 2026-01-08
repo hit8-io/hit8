@@ -1,37 +1,25 @@
 """
 Test configuration and fixtures.
+
+Note: Tests should be run with Doppler to inject secrets:
+    doppler run --project hit8 --config dev -- pytest ...
+
+Doppler will inject all required secrets as environment variables.
+No defaults are provided - all secrets must come from Doppler.
 """
 import pytest
 import pytest_asyncio
-import os
 from unittest.mock import MagicMock
 from httpx import AsyncClient, ASGITransport
 from typing import AsyncGenerator
 
-# 1. SET FAKE ENV VARS (Must happen at module import time, before any app imports)
-# Set these immediately when conftest is imported, before any fixtures run
-os.environ.setdefault("VERTEX_SERVICE_ACCOUNT", '{"project_id": "mock", "type": "service_account"}')
-os.environ.setdefault("VERTEX_AI_MODEL_NAME", "mock-model")
-os.environ.setdefault("GCP_PROJECT", "mock-project")
-os.environ.setdefault("GOOGLE_IDENTITY_PLATFORM_DOMAIN", "mock-domain")
-os.environ.setdefault("CORS_ALLOW_ORIGINS", '["*"]')
-
-
-@pytest.fixture(scope="session", autouse=True)
-def mock_env():
-    """Ensure fake environment variables are set."""
-    # These are already set at module level, but this fixture ensures they persist
-    os.environ["VERTEX_SERVICE_ACCOUNT"] = '{"project_id": "mock", "type": "service_account"}'
-    os.environ["VERTEX_AI_MODEL_NAME"] = "mock-model"
-    os.environ["GCP_PROJECT"] = "mock-project"
-    os.environ["GOOGLE_IDENTITY_PLATFORM_DOMAIN"] = "mock-domain"
-    os.environ["CORS_ALLOW_ORIGINS"] = '["*"]'
-    yield
+# No environment variable defaults - all secrets must be provided by Doppler
+# Run tests with: doppler run --project hit8 --config dev -- pytest ...
 
 
 # 2. MOCK FIREBASE (Prevent real connection attempts)
 @pytest.fixture(scope="session", autouse=True)
-def mock_firebase(mock_env):
+def mock_firebase():
     """Mock firebase so we don't need real creds."""
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr("firebase_admin.initialize_app", MagicMock())
