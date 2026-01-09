@@ -19,11 +19,9 @@ from app.flows.common import get_langfuse_handler
 from app.flows.opgroeien.poc.chat.graph import AgentState
 from app.api.constants import EVENT_ERROR, EVENT_GRAPH_END
 from app.api.file_processing import process_uploaded_files
-from app.api.streaming import (
-    create_stream_thread,
-    extract_final_response,
-    process_stream_queue,
-)
+from app.api.streaming.async_events import process_async_stream_events
+from app.api.streaming.finalize import extract_final_response
+from app.api.graph_manager import get_graph
 from app.config import settings
 from app.auth import verify_google_token
 from app.prompts.loader import get_system_prompt
@@ -48,7 +46,10 @@ async def stream_chat_events(
     org: str,
     project: str,
 ):
-    """Stream chat execution events using LangGraph stream_events().
+    """Stream chat execution events using LangGraph astream_events() directly.
+    
+    Pure async implementation - runs entirely in the FastAPI event loop,
+    eliminating the need for background threads and event loop synchronization.
     
     Args:
         message: User message content
@@ -62,47 +63,40 @@ async def stream_chat_events(
     Yields:
         Server-Sent Event strings
     """
+    from app.api.streaming.async_events import process_async_stream_events
+    
     final_response: str | None = None
     
     try:
-        # Run stream_events() in a background thread to avoid blocking
-        event_queue: queue.Queue = queue.Queue()
-        stream_done = threading.Event()
+        # Set thread_id in observability context
+        try:
+            from app.api.observability import _current_thread_id, initialize_execution
+            _current_thread_id.set(thread_id)
+            initialize_execution(thread_id)
+        except Exception:
+            # Don't fail if observability is not available
+            pass
         
-        # Create and start unified streaming thread
-        stream_threads, stream_errors = create_stream_thread(
-            initial_state, config, thread_id, event_queue, stream_done, org, project
+        logger.info(
+            "stream_started",
+            thread_id=thread_id,
+            initial_message_count=len(initial_state.get("messages", [])),
         )
         
-        # Process events and chunks from queue
-        final_response_ref: list[str | None] = [None]
-        async for event_str in process_stream_queue(event_queue, stream_done, final_response_ref, thread_id):
+        # Get graph (uses checkpointer initialized in main event loop)
+        graph = get_graph(org, project)
+        
+        # Process events directly from astream_events - runs in main event loop
+        # This ensures checkpointer operations work correctly (no event loop issues)
+        # Use mutable dict to track accumulated content
+        accumulated_content_ref: dict[str, str] = {"content": ""}
+        async for event_str in process_async_stream_events(
+            graph, initial_state, config, thread_id, org, project, accumulated_content_ref
+        ):
             yield event_str
         
-        # Wait for thread to complete
-        for thread in stream_threads:
-            thread.join(timeout=30.0)        
-        
-        # Check for errors
-        stream_error = stream_errors[0][0] if len(stream_errors) > 0 and stream_errors[0] else None
-        
-        if stream_error:
-            logger.error(
-                "stream_error",
-                error=str(stream_error),
-                error_type=type(stream_error).__name__,
-                thread_id=thread_id,
-            )
-            # Don't raise - we've already sent error event, now send graph_end to complete stream
-        
-        # Get final response - prefer from queue, then from final state extraction
-        if final_response_ref[0]:
-            final_response = final_response_ref[0]
-        else:
-            # Try to get final state
-            final_response = extract_final_response(config, thread_id, org, project)
-        
-        # If still no response, try one more time to get final state
+        # Get final response from accumulated content reference
+        final_response = accumulated_content_ref.get("content", "")
         if not final_response:
             final_response = extract_final_response(config, thread_id, org, project)
         
@@ -160,6 +154,14 @@ async def stream_chat_events(
             "thread_id": thread_id,
         }
         yield f"data: {json.dumps(error_data)}\n\n"
+    finally:
+        # Finalize execution metrics tracking
+        try:
+            from app.api.observability import finalize_execution
+            finalize_execution(thread_id)
+        except Exception:
+            # Don't fail if observability is not available
+            pass
 
 
 @router.post("")

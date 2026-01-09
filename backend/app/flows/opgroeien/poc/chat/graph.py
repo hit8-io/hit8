@@ -9,9 +9,9 @@ from typing import TYPE_CHECKING, Annotated, Any, Callable, Optional, TypedDict
 import structlog
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
-from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
+from app.api.checkpointer import get_checkpointer
 from app.flows.common import get_agent_model, get_langfuse_handler
 from app.flows.opgroeien.poc import constants as flow_constants
 from app.flows.opgroeien.poc.constants import (
@@ -54,12 +54,6 @@ class AgentState(TypedDict):
     messages: Annotated[list[BaseMessage], operator.add]
 
 
-_agent_checkpointer: MemorySaver | None = None
-
-
-def get_agent_checkpointer() -> MemorySaver | None:
-    """Get the checkpointer instance."""
-    return _agent_checkpointer
 
 
 def agent_node(state: AgentState, config: Optional[RunnableConfig] = None) -> AgentState:
@@ -251,18 +245,9 @@ def _get_tool_node_function_map() -> dict[str, tuple[str, Callable[..., Any]]]:
 
 
 def create_agent_graph() -> CompiledGraph:
-    """Create and compile the LangGraph agent state machine.
-    
-    Note: We use MemorySaver instead of PostgresSaver. See docs/debt.md for details.
-    """
-    global _agent_checkpointer
-    
-    if _agent_checkpointer is None:
-        _agent_checkpointer = MemorySaver()
-        logger.info(
-            "agent_memory_checkpointer_initialized",
-            checkpointer_type="MemorySaver",
-        )
+    """Create and compile the LangGraph agent state machine."""
+    # Get checkpointer (initialized at application startup via FastAPI lifespan)
+    checkpointer = get_checkpointer()
     
     # Get all tools
     tools = get_all_tools()
@@ -309,4 +294,4 @@ def create_agent_graph() -> CompiledGraph:
             node_name, _ = tool_node_map[tool_name]
             graph.add_edge(node_name, NODE_AGENT)
     
-    return graph.compile(checkpointer=_agent_checkpointer)
+    return graph.compile(checkpointer=checkpointer)

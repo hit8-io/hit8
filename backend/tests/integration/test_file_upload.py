@@ -26,18 +26,15 @@ async def test_chat_endpoint_with_file_upload(client):
         # Mock user access validation
         with patch("app.api.routes.chat.validate_user_access", return_value=True), \
              patch("app.api.routes.chat.process_uploaded_files") as mock_process, \
-             patch("app.api.routes.chat.create_stream_thread") as mock_stream, \
-             patch("app.api.routes.chat.process_stream_queue") as mock_queue:
+             patch("app.api.streaming.async_events.process_async_stream_events") as mock_stream:
             
             # Mock file processing to return document content
             mock_process.return_value = "## test.docx\n\n# Test Document\n\nContent"
             
-            # Mock streaming
-            mock_stream.return_value = ([], [])
-            mock_queue.return_value = AsyncMock()
-            async def mock_queue_gen():
-                yield 'data: {"type": "graph_end", "response": "Test response"}\n\n'
-            mock_queue.return_value = mock_queue_gen()
+            # Mock streaming - async generator that yields SSE strings only
+            async def mock_stream_gen():
+                yield 'data: {"type": "graph_end", "thread_id": "test", "response": "Test response"}\n\n'
+            mock_stream.return_value = mock_stream_gen()
             
             # Create test file
             file_content = b"fake docx content"
@@ -90,13 +87,12 @@ async def test_chat_endpoint_without_files(client):
     try:
         # Mock user access validation
         with patch("app.api.routes.chat.validate_user_access", return_value=True), \
-             patch("app.api.routes.chat.create_stream_thread") as mock_stream, \
-             patch("app.api.routes.chat.process_stream_queue") as mock_queue:
+             patch("app.api.streaming.async_events.process_async_stream_events") as mock_stream:
             
-            mock_stream.return_value = ([], [])
-            async def mock_queue_gen():
-                yield 'data: {"type": "graph_end", "response": "Test response"}\n\n'
-            mock_queue.return_value = mock_queue_gen()
+            # Mock streaming - async generator that yields SSE strings only
+            async def mock_stream_gen():
+                yield 'data: {"type": "graph_end", "thread_id": "test", "response": "Test response"}\n\n'
+            mock_stream.return_value = mock_stream_gen()
             
             # Get API token from environment (injected by Doppler)
             api_token = os.getenv("API_TOKEN", "test-token")

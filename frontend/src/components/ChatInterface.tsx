@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { Send, Maximize2, Minimize2, Paperclip, X } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Send, Maximize2, Minimize2, Paperclip, X, Plus } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Button } from './ui/button'
@@ -13,6 +14,7 @@ import { STREAM_TIMEOUT, STREAM_INACTIVITY_TIMEOUT, CHAT_CLEANUP_DELAY } from '.
 
 interface ChatInterfaceProps {
   readonly token: string
+  readonly threadId: string
   readonly onChatStateChange?: (active: boolean, threadId?: string | null) => void
   readonly onExecutionStateUpdate?: (state: ExecutionState | null) => void
   readonly isExpanded?: boolean
@@ -29,7 +31,8 @@ interface ErrorWithType extends Error {
 
 const API_URL = import.meta.env.VITE_API_URL
 
-export default function ChatInterface({ token, onChatStateChange, onExecutionStateUpdate, isExpanded = false, onToggleExpand }: ChatInterfaceProps) {
+export default function ChatInterface({ token, threadId, onChatStateChange, onExecutionStateUpdate, isExpanded = false, onToggleExpand }: ChatInterfaceProps) {
+  const navigate = useNavigate()
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
@@ -44,6 +47,9 @@ export default function ChatInterface({ token, onChatStateChange, onExecutionSta
   const prevStateRef = useRef<{ visitedNodes: string[], activeNode: string | null }>({ visitedNodes: [], activeNode: null })
   const lastMessageCountRef = useRef<number>(0) // Track last message count to preserve in final state
   
+  // Validate UUID format
+  const isValidUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(threadId || '')
+  
   // Update ref on each render (safe for refs, doesn't cause re-renders)
   executionStateUpdateRef.current = onExecutionStateUpdate
   
@@ -55,6 +61,67 @@ export default function ChatInterface({ token, onChatStateChange, onExecutionSta
       }
     }
   }, [])
+
+  // Validate UUID and redirect if invalid
+  useEffect(() => {
+    if (threadId && !isValidUUID) {
+      // Malformed URL? Redirect to new chat
+      navigate('/', { replace: true })
+    }
+  }, [threadId, isValidUUID, navigate])
+
+  // Mandatory: Restore conversation history when threadId changes
+  useEffect(() => {
+    if (!threadId || !isValidUUID || !API_URL) return
+    
+    // 1. Clear current UI messages immediately
+    setMessages([])
+    setStreamingContent('')
+    setStreamEvents([])
+    setVisitedNodes([])
+    setActiveNode(null)
+    
+    // 2. Fetch history from backend
+    // Note: getApiHeaders() automatically includes X-Org and X-Project from localStorage
+    fetch(`${API_URL}/graph/state?thread_id=${threadId}`, {
+      headers: getApiHeaders(token)
+    })
+      .then(res => {
+        if (!res.ok) {
+          if (res.status === 404) {
+            // Thread doesn't exist - start fresh
+            console.log('Thread not found, starting fresh')
+            return null
+          }
+          throw new Error(`Failed to load thread: ${res.status}`)
+        }
+        return res.json()
+      })
+      .then(state => {
+        if (state && state.values && state.values.messages) {
+          // 3. Rehydrate the chat UI
+          // Map LangGraph messages to UI format
+          // Backend returns messages with type: "HumanMessage", "AIMessage", "ToolMessage", etc.
+          const uiMessages = state.values.messages
+            .filter((msg: any) => {
+              // Filter out SystemMessage and ToolMessage, only show HumanMessage and AIMessage
+              const msgType = msg.type || ''
+              return msgType === 'HumanMessage' || msgType === 'AIMessage'
+            })
+            .map((msg: any) => ({
+              id: crypto.randomUUID(),
+              role: msg.type === 'HumanMessage' ? 'user' : 'assistant',
+              content: typeof msg.content === 'string' ? msg.content : (msg.content || '')
+            }))
+          setMessages(uiMessages)
+          lastMessageCountRef.current = uiMessages.length
+        }
+      })
+      .catch(err => {
+        console.error('Failed to load thread:', err)
+        // Start with empty state on error
+      })
+  }, [threadId, token, isValidUUID])
 
   // Sync execution state updates to parent (avoid calling during render) - must be called before any early returns
   // NOTE: visitedNodes updates are handled by handleStateUpdate, not this useEffect
@@ -390,8 +457,13 @@ export default function ChatInterface({ token, onChatStateChange, onExecutionSta
     return { accumulatedContent, finalResponse, graphEndReceived, hasError }
   }
 
+  const handleNewChat = () => {
+    // Let the router handle the generation logic defined in App.tsx
+    navigate('/')
+  }
+
   const handleSend = async () => {
-    if (!input.trim() || isLoading) return
+    if (!input.trim() || isLoading || !isValidUUID) return
 
     const userMessage: Message = { 
       id: crypto.randomUUID(),
@@ -403,8 +475,9 @@ export default function ChatInterface({ token, onChatStateChange, onExecutionSta
     setInput('')
     setIsLoading(true)
 
-    const threadId = crypto.randomUUID()
-    onChatStateChange?.(true, threadId)
+    // Use threadId from URL (required route param)
+    const activeThreadId = threadId
+    onChatStateChange?.(true, activeThreadId)
 
     setStreamingContent('')
     setStreamEvents([])
@@ -413,7 +486,7 @@ export default function ChatInterface({ token, onChatStateChange, onExecutionSta
       // Use FormData for multipart/form-data
       const formData = new FormData()
       formData.append('message', messageContent)
-      formData.append('thread_id', threadId)
+      formData.append('thread_id', activeThreadId)
       selectedFiles.forEach(file => {
         formData.append('files', file)
       })
@@ -452,11 +525,11 @@ export default function ChatInterface({ token, onChatStateChange, onExecutionSta
             message: error.message,
             type: (error as ErrorWithType).type || error.constructor.name,
             stack: error.stack,
-            threadId,
+            threadId: activeThreadId,
           }
         : {
             error: String(error),
-            threadId,
+            threadId: activeThreadId,
           }
       logError('ChatInterface: Chat stream error', errorDetails)
       
@@ -526,6 +599,15 @@ export default function ChatInterface({ token, onChatStateChange, onExecutionSta
         <div className="p-4 border-b flex justify-between items-center">
           <h1 className="text-2xl font-bold">Hit8 Chat</h1>
           <div className="flex items-center gap-4">
+            <Button 
+              variant="outline" 
+              size="icon" 
+              onClick={handleNewChat}
+              title="New Chat"
+              disabled={isLoading}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
             {onToggleExpand && (
               <Button variant="outline" size="icon" onClick={onToggleExpand} title={isExpanded ? "Show graph and status" : "Expand chat"}>
                 {isExpanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}

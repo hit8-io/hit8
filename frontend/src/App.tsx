@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom'
 import ChatInterface from './components/ChatInterface'
 import LoginScreen from './components/LoginScreen'
 import GraphView from './components/GraphView'
@@ -14,7 +15,21 @@ import type { ExecutionState } from './types/execution'
 
 const API_URL = import.meta.env.VITE_API_URL
 
-function App() {
+// Helper to generate ID immediately, avoiding redirect flash
+const NewChatRedirect = () => {
+  const newId = crypto.randomUUID()
+  return <Navigate to={`/chat/${newId}`} replace />
+}
+
+// ChatPage component that reads threadId from URL and renders the main app
+function ChatPage() {
+  const { threadId } = useParams<{ threadId: string }>()
+  
+  return <AppContent threadId={threadId!} />
+}
+
+// Main app content (extracted from original App function)
+function AppContent({ threadId }: { threadId: string }) {
   const { user, idToken, loading, firebaseApp, isConfigValid, logout } = useAuth()
   const [isChatActive, setIsChatActive] = useState(false)
   const [executionState, setExecutionState] = useState<ExecutionState | null>(null)
@@ -110,7 +125,8 @@ function App() {
             {/* Chat Interface - Left Column */}
             <div className={`${isChatExpanded ? 'col-span-12' : 'col-span-12 lg:col-span-7'} row-span-3 flex flex-col min-h-0 overflow-hidden transition-all duration-300 ease-in-out`}>
             <ChatInterface 
-              token={idToken} 
+              token={idToken}
+              threadId={threadId}
               onChatStateChange={handleChatStateChange}
               onExecutionStateUpdate={handleExecutionStateUpdate}
               isExpanded={isChatExpanded}
@@ -157,6 +173,24 @@ function App() {
         </div>
       </div>
     </ErrorBoundary>
+  )
+}
+
+// Root App component with routing
+function App() {
+  return (
+    <BrowserRouter
+      future={{
+        v7_startTransition: true,
+        v7_relativeSplatPath: true,
+      }}
+    >
+      <Routes>
+        <Route path="/chat/:threadId" element={<ChatPage />} />
+        <Route path="/" element={<NewChatRedirect />} />
+        <Route path="*" element={<NewChatRedirect />} />
+      </Routes>
+    </BrowserRouter>
   )
 }
 
