@@ -20,8 +20,6 @@ services:
       - "8000:8000"
       - "8888:8888"
     depends_on:
-      supabase:
-        condition: service_healthy
       langfuse:
         condition: service_started
     environment:
@@ -37,22 +35,6 @@ services:
       - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL}
       - GOOGLE_IDENTITY_PLATFORM_KEY=${GOOGLE_IDENTITY_PLATFORM_KEY}
       - BRIGHTDATA_API_KEY=${BRIGHTDATA_API_KEY}
-
-  supabase:
-    image: supabase/postgres:15.1.0.147
-    ports:
-      - "5432:5432"
-    environment:
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: postgres
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      retries: 5
-      start_period: 10s
-      timeout: 5s
 
   clickhouse:
     image: clickhouse/clickhouse-server:latest
@@ -113,8 +95,6 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      supabase:
-        condition: service_healthy
       clickhouse:
         condition: service_healthy
       redis:
@@ -124,7 +104,7 @@ services:
     environment:
       NEXTAUTH_URL: http://localhost:3000
       NEXTAUTH_SECRET: langfuse-secret-key-change-in-production
-      DATABASE_URL: postgresql://postgres:postgres@supabase:5432/langfuse
+      DATABASE_URL: postgresql://postgres:postgres@host.docker.internal:54322/langfuse
       SALT: langfuse-salt-change-in-production
       ENCRYPTION_KEY: bed99b51d6fc2699d820e0f7f68f6de0ac73613b00a9908bf957a9df1d7ed31d
       CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
@@ -155,8 +135,6 @@ services:
     image: langfuse/langfuse-worker:3
     restart: always
     depends_on:
-      supabase:
-        condition: service_healthy
       clickhouse:
         condition: service_healthy
       redis:
@@ -166,7 +144,7 @@ services:
     environment:
       NEXTAUTH_URL: http://localhost:3000
       NEXTAUTH_SECRET: langfuse-secret-key-change-in-production
-      DATABASE_URL: postgresql://postgres:postgres@supabase:5432/langfuse
+      DATABASE_URL: postgresql://postgres:postgres@host.docker.internal:54322/langfuse
       SALT: langfuse-salt-change-in-production
       ENCRYPTION_KEY: bed99b51d6fc2699d820e0f7f68f6de0ac73613b00a9908bf957a9df1d7ed31d
       CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
@@ -209,8 +187,6 @@ services:
       - VITE_SENTRY_DSN=${SENTRY_DSN}
 
 volumes:
-  postgres-data:
-    driver: local
   langfuse-data:
   langfuse-clickhouse-data:
   langfuse-clickhouse-logs:
