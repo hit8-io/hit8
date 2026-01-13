@@ -5,10 +5,7 @@ import type { ExecutionState, StreamEvent } from '../types/execution'
 import type { ExecutionMetrics } from '../types/observability'
 
 interface ObservabilityWindowProps {
-  apiUrl: string
-  token: string | null
   executionState: ExecutionState | null
-  isLoading: boolean
 }
 
 /**
@@ -25,27 +22,6 @@ function formatMb(bytes: number): string {
   if (bytes === 0) return ''
   const mb = bytes / 1_048_576
   return mb.toFixed(2)
-}
-
-/**
- * Extract thread_id from execution state.
- */
-function extractThreadId(executionState: ExecutionState | null): string | null {
-  if (!executionState) return null
-  
-  // Try to get thread_id from stream events
-  if (executionState.streamEvents && Array.isArray(executionState.streamEvents)) {
-    for (const event of executionState.streamEvents) {
-      if (event && typeof event === 'object' && 'thread_id' in event) {
-        const threadId = (event as { thread_id: string }).thread_id
-        if (threadId) {
-          return threadId
-        }
-      }
-    }
-  }
-  
-  return null
 }
 
 interface TableRow {
@@ -86,10 +62,7 @@ function extractMetricsFromStreamEvents(streamEvents: StreamEvent[] | undefined)
 }
 
 export default function ObservabilityWindow({
-  apiUrl,
-  token,
   executionState,
-  isLoading,
 }: ObservabilityWindowProps) {
   // Extract metrics from stream events (no polling needed)
   const executionMetrics = useMemo(() => {

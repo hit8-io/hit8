@@ -174,10 +174,7 @@ function AppContent({ threadId }: { threadId: string }) {
                   </div>
                   <div className="flex-1 min-h-0">
                     <ObservabilityWindow
-                      apiUrl={API_URL}
-                      token={idToken}
                       executionState={executionState}
-                      isLoading={isChatActive}
                     />
                   </div>
                 </div>
