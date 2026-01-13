@@ -90,15 +90,18 @@ def get_langfuse_client() -> Langfuse | None:
     if _langfuse_client is None:
         with _langfuse_lock:
             if _langfuse_client is None:
+                # Langfuse client initialization
+                # Pass base_url explicitly to ensure OTEL exporter uses correct endpoint
+                import os
+                langfuse_base_url = os.getenv("LANGFUSE_BASE_URL")
                 _langfuse_client = Langfuse(
                     public_key=settings.LANGFUSE_PUBLIC_KEY,
                     secret_key=settings.LANGFUSE_SECRET_KEY,
-                    host=settings.LANGFUSE_BASE_URL,
+                    base_url=langfuse_base_url,
                 )
                 logger.info(
                     "langfuse_client_initialized",
                     env=settings.environment,
-                    base_url=settings.LANGFUSE_BASE_URL,
                 )
     return _langfuse_client
 
@@ -108,7 +111,8 @@ def get_langfuse_handler() -> CallbackHandler | None:
     if not settings.LANGFUSE_ENABLED:
         return None
     get_langfuse_client()  # Ensure client is initialized
-    return CallbackHandler()
+    handler = CallbackHandler()
+    return handler
 
 
 def get_agent_model(

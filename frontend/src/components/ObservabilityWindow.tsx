@@ -1,8 +1,8 @@
 import { useMemo } from 'react'
 import { Card, CardContent } from './ui/card'
 import { ScrollArea } from './ui/scroll-area'
-import { useObservabilityPolling } from '../hooks/useObservabilityPolling'
-import type { ExecutionState } from '../types/execution'
+import type { ExecutionState, StreamEvent } from '../types/execution'
+import type { ExecutionMetrics } from '../types/observability'
 
 interface ObservabilityWindowProps {
   apiUrl: string
@@ -58,24 +58,44 @@ interface TableRow {
   mb: number | null
 }
 
+/**
+ * Extract execution metrics from stream events.
+ * Looks for the latest llm_end or state_update event with execution_metrics.
+ */
+function extractMetricsFromStreamEvents(streamEvents: StreamEvent[] | undefined): ExecutionMetrics | null {
+  if (!streamEvents || !Array.isArray(streamEvents)) {
+    return null
+  }
+  
+  // Search backwards through events to find the latest metrics
+  for (let i = streamEvents.length - 1; i >= 0; i--) {
+    const event = streamEvents[i]
+    if (event && typeof event === 'object') {
+      // Check llm_end events
+      if (event.type === 'llm_end' && 'execution_metrics' in event) {
+        return (event as { execution_metrics: ExecutionMetrics }).execution_metrics
+      }
+      // Check state_update events
+      if (event.type === 'state_update' && 'execution_metrics' in event) {
+        return (event as { execution_metrics: ExecutionMetrics }).execution_metrics
+      }
+    }
+  }
+  
+  return null
+}
+
 export default function ObservabilityWindow({
   apiUrl,
   token,
   executionState,
   isLoading,
 }: ObservabilityWindowProps) {
-  // Extract thread_id from execution state
-  const threadId = useMemo(() => extractThreadId(executionState), [executionState])
-  
-  // Use polling hook - only fetch current execution metrics
-  const { executionMetrics, error, isRefreshing } = useObservabilityPolling({
-    apiUrl,
-    token,
-    threadId,
-    viewMode: 'current',
-    isLoading,
-    enabled: !!apiUrl && !!token,
-  })
+  // Extract metrics from stream events (no polling needed)
+  const executionMetrics = useMemo(() => {
+    const streamEvents = executionState?.streamEvents
+    return extractMetricsFromStreamEvents(streamEvents)
+  }, [executionState?.streamEvents])
 
   // Generate table rows from execution metrics
   const tableRows = useMemo(() => {
@@ -153,16 +173,6 @@ export default function ObservabilityWindow({
     <Card className="h-full flex flex-col overflow-hidden">
       <CardContent className="flex-1 min-h-0 p-3">
         <ScrollArea className="h-full">
-          {error && (
-            <div className="text-xs text-destructive mb-2 p-2 bg-destructive/10 rounded">
-              Error: {error}
-            </div>
-          )}
-          
-          {isRefreshing && (
-            <div className="text-xs text-muted-foreground mb-2">Refreshing...</div>
-          )}
-          
           <div className="overflow-x-auto">
             <table className="w-full text-xs border-collapse">
               <thead>

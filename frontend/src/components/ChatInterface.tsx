@@ -46,7 +46,10 @@ export default function ChatInterface({ token, threadId, onChatStateChange, onEx
   const fileInputRef = useRef<HTMLInputElement>(null)
   const timeoutRef = useRef<number | null>(null)
   const executionStateUpdateRef = useRef(onExecutionStateUpdate)
-  const prevStateRef = useRef<{ visitedNodes: string[], activeNode: string | null }>({ visitedNodes: [], activeNode: null })
+  const prevStateRef = useRef<{ visitedNodes: string[]; activeNode: string | null }>({
+    visitedNodes: [],
+    activeNode: null,
+  })
   const lastMessageCountRef = useRef<number>(0) // Track last message count to preserve in final state
   
   // Validate UUID format
@@ -82,6 +85,8 @@ export default function ChatInterface({ token, threadId, onChatStateChange, onEx
     setStreamEvents([])
     setVisitedNodes([])
     setActiveNode(null)
+    setInput('')  // Clear input field
+    setSelectedFiles([])  // Clear selected files
     
     // 2. Fetch history from backend
     // Note: getApiHeaders() automatically includes X-Org and X-Project from localStorage
@@ -92,7 +97,6 @@ export default function ChatInterface({ token, threadId, onChatStateChange, onEx
         if (!res.ok) {
           if (res.status === 404) {
             // Thread doesn't exist - start fresh
-            console.log('Thread not found, starting fresh')
             return null
           }
           throw new Error(`Failed to load thread: ${res.status}`)
@@ -104,7 +108,8 @@ export default function ChatInterface({ token, threadId, onChatStateChange, onEx
           // 3. Rehydrate the chat UI
           // Map LangGraph messages to UI format
           // Backend returns messages with type: "HumanMessage", "AIMessage", "ToolMessage", etc.
-          const uiMessages = state.values.messages
+          const rawMessages = state.values.messages
+          const uiMessages = rawMessages
             .filter((msg: any) => {
               // Filter out SystemMessage and ToolMessage, only show HumanMessage and AIMessage
               const msgType = msg.type || ''
@@ -125,7 +130,22 @@ export default function ChatInterface({ token, threadId, onChatStateChange, onEx
       })
   }, [threadId, token, isValidUUID, org, project])
 
-  // Sync execution state updates to parent (avoid calling during render) - must be called before any early returns
+  // Queue for deferred parent updates to avoid render-time updates
+  const pendingStateUpdateRef = useRef<ExecutionState | null>(null)
+  
+  // Process pending state updates in useEffect (outside render)
+  useEffect(() => {
+    if (pendingStateUpdateRef.current && executionStateUpdateRef.current) {
+      executionStateUpdateRef.current(pendingStateUpdateRef.current)
+      pendingStateUpdateRef.current = null
+    }
+  })
+  
+  // Helper to queue state update instead of calling directly
+  const queueStateUpdate = (state: ExecutionState) => {
+    pendingStateUpdateRef.current = state
+  }
+  
   // NOTE: visitedNodes updates are handled by handleStateUpdate, not this useEffect
   // This useEffect only syncs activeNode changes to avoid race conditions with async state updates
   useEffect(() => {
@@ -147,9 +167,9 @@ export default function ChatInterface({ token, threadId, onChatStateChange, onEx
       }
       
       prevStateRef.current = { visitedNodes: currentVisitedNodes, activeNode }
-      executionStateUpdateRef.current(newState)
+      queueStateUpdate(newState)
     }
-  }, [activeNode, onExecutionStateUpdate]) // Removed visitedNodes and streamEvents from dependencies
+  }, [activeNode, onExecutionStateUpdate, streamEvents]) // Removed visitedNodes from dependencies
 
   // Fail fast if API URL is missing (after hooks)
   if (!API_URL) {
@@ -203,8 +223,8 @@ export default function ChatInterface({ token, threadId, onChatStateChange, onEx
     // Add graph_start event to streamEvents immediately so thread_id is available for metrics polling
     setStreamEvents([graphStartEvent])
     
-    // Update execution state with graph_start event so ObservabilityWindow can extract thread_id
-    executionStateUpdateRef.current?.({
+    // Queue execution state update with graph_start event so ObservabilityWindow can extract thread_id
+    queueStateUpdate({
       next: [],
       values: {},
       history: [],
@@ -246,14 +266,14 @@ export default function ChatInterface({ token, threadId, onChatStateChange, onEx
       history: allVisitedNodes.map(node => ({ node })),
       streamEvents: streamEvents.length > 0 ? [...streamEvents, data] : [data],
     }
-    executionStateUpdateRef.current?.(stateUpdate)
+    queueStateUpdate(stateUpdate)
   }
 
   const handleLlmEvent = (data: StreamEvent & { type: 'llm_start' | 'llm_end' }): void => {
     setStreamEvents(prev => {
       const updatedEvents = [...prev, data]
-      // Update execution state with updated streamEvents so ObservabilityWindow can access thread_id
-      executionStateUpdateRef.current?.({
+      // Queue execution state update with updated streamEvents so ObservabilityWindow can access thread_id
+      queueStateUpdate({
         next: activeNode ? [activeNode] : [],
         values: { message_count: lastMessageCountRef.current },
         history: visitedNodes.map(node => ({ node })),
@@ -266,8 +286,8 @@ export default function ChatInterface({ token, threadId, onChatStateChange, onEx
   const handleToolEvent = (data: StreamEvent & { type: 'tool_start' | 'tool_end' }): void => {
     setStreamEvents(prev => {
       const updatedEvents = [...prev, data]
-      // Update execution state with updated streamEvents so ObservabilityWindow can access thread_id
-      executionStateUpdateRef.current?.({
+      // Queue execution state update with updated streamEvents so ObservabilityWindow can access thread_id
+      queueStateUpdate({
         next: activeNode ? [activeNode] : [],
         values: { message_count: lastMessageCountRef.current },
         history: visitedNodes.map(node => ({ node })),
@@ -290,12 +310,12 @@ export default function ChatInterface({ token, threadId, onChatStateChange, onEx
       
       setStreamEvents(prev => {
         const updatedEvents = [...prev, nodeStartEvent]
-        // Send state update with updated streamEvents
+        // Queue state update with updated streamEvents
         const updatedVisitedNodes = visitedNodes.includes(nodeName) 
           ? visitedNodes 
           : [...visitedNodes, nodeName]
         
-        executionStateUpdateRef.current?.({
+        queueStateUpdate({
           next: [nodeName],
           values: { message_count: lastMessageCountRef.current },
           history: updatedVisitedNodes.map(node => ({ node })),
@@ -339,15 +359,15 @@ export default function ChatInterface({ token, threadId, onChatStateChange, onEx
       
       setStreamEvents(prev => {
         const updatedEvents = [...prev, nodeEndEvent]
-        // Send state update with updated streamEvents
+        // Queue state update with updated streamEvents
         const updatedVisitedNodes = visitedNodes.includes(nodeName) 
           ? visitedNodes 
           : [...visitedNodes, nodeName]
         
-        executionStateUpdateRef.current?.({
+        queueStateUpdate({
           next: [],
           values: { message_count: lastMessageCountRef.current },
-          history: updatedVisitedNodes.map(node => ({ node })),
+          history: updatedVisitedNodes.map((node: string) => ({ node })),
           streamEvents: updatedEvents,
         })
         
@@ -393,13 +413,13 @@ export default function ChatInterface({ token, threadId, onChatStateChange, onEx
     // Add graph_end event to streamEvents before clearing
     setStreamEvents(prev => {
       const updatedEvents = [...prev, graphEndEvent]
-      // Send final state update immediately (don't wait for timeout) to preserve highlighting
+      // Queue final state update immediately (don't wait for timeout) to preserve highlighting
       // Preserve last message count to avoid StatusWindow showing "messages: X -> 0"
       // Include streamEvents so ObservabilityWindow can still access thread_id after execution completes
-      executionStateUpdateRef.current?.({
+      queueStateUpdate({
         next: [],
         values: { message_count: lastMessageCountRef.current },
-        history: finalVisitedNodes.map(node => ({ node })),
+        history: finalVisitedNodes.map((node: string) => ({ node })),
         streamEvents: updatedEvents,
       })
       return updatedEvents

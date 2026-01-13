@@ -118,7 +118,6 @@ class Settings(BaseSettings):
     LANGFUSE_ENABLED: bool
     LANGFUSE_PUBLIC_KEY: str | None = None
     LANGFUSE_SECRET_KEY: str | None = Field(default=None, exclude=True)
-    LANGFUSE_BASE_URL: str | None = None
     
     # API
     API_TOKEN: str = Field(exclude=True)

@@ -29,7 +29,9 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
   const [jobId, setJobId] = React.useState<string | null>(null);
   const [status, setStatus] = React.useState<ReportStatus | null>(null);
   const [loading, setLoading] = React.useState(false);
-  const [executionMode, setExecutionMode] = React.useState<'local' | 'cloud_run_service' | 'cloud_run_job'>('local');
+  const [executionMode, setExecutionMode] = React.useState<'local' | 'cloud_run_service' | 'cloud_run_job'>(
+    import.meta.env.DEV ? 'local' : 'cloud_run_service'
+  );
 
   const API_URL = import.meta.env.VITE_API_URL;
 

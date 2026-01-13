@@ -151,10 +151,24 @@ async def process_async_stream_events(
         raise
     
     # Send final state update
+    # Note: get_state() is sync but AsyncPostgresSaver doesn't allow sync calls from event loop
+    # We'll skip final state update if it fails - state updates are already sent during execution
     try:
-        final_state = graph.get_state(config)
+        import asyncio
+        # Run sync get_state in thread to avoid AsyncPostgresSaver error
+        final_state = await asyncio.to_thread(graph.get_state, config)
         state_data = _extract_final_state_data(final_state, visited_nodes)
         if state_data:
+            # Include current execution metrics in state_update event
+            # Metrics should exist since initialize_execution() is called in chat.py before execution
+            current_metrics = None
+            try:
+                from app.api.observability import get_execution_metrics
+                current_metrics = get_execution_metrics(thread_id)
+            except Exception:
+                # Don't fail if observability is not available
+                pass
+            
             final_state_event = {
                 "type": EVENT_STATE_UPDATE,
                 "next": state_data["next_nodes"],
@@ -162,6 +176,11 @@ async def process_async_stream_events(
                 "thread_id": thread_id,
                 "visited_nodes": state_data["visited_nodes"],
             }
+            # Include metrics if available
+            # model_dump() serializes Pydantic model to dict (as used in observability.py endpoint)
+            if current_metrics:
+                final_state_event["execution_metrics"] = current_metrics.model_dump(mode='json')
+            
             yield f"data: {json.dumps(final_state_event)}\n\n"
     except Exception as e:
         logger.debug(

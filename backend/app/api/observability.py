@@ -122,6 +122,10 @@ _run_id_to_call_id_lock = threading.Lock()
 _first_token_times: dict[str, dict[str, float]] = {}  # thread_id -> {call_id: first_token_time}
 _first_token_times_lock = threading.Lock()
 
+# Track last thread_id that had an execution to detect thread_id changes
+_last_execution_thread_id: str | None = None
+_last_execution_thread_id_lock = threading.Lock()
+
 
 def _get_logger():
     """Lazy import of logger to avoid circular dependencies."""
@@ -135,11 +139,21 @@ def _get_logger():
 def initialize_execution(thread_id: str) -> None:
     """Initialize metrics tracking for a new flow execution.
     
+    Metrics accumulate within the same thread_id across multiple messages.
+    Metrics are cleared when thread_id changes (new chat button creates new thread_id).
+    
     Args:
         thread_id: Unique identifier for the flow execution
     """
-    # Set context variable for this execution
+    global _last_execution_thread_id
     _current_thread_id.set(thread_id)
+    
+    # Check if thread_id has changed - if so, clear old thread_id's metrics
+    with _last_execution_thread_id_lock:
+        thread_id_changed = _last_execution_thread_id is not None and _last_execution_thread_id != thread_id
+        if thread_id_changed and _last_execution_thread_id:
+            clear_execution_metrics(_last_execution_thread_id)
+        _last_execution_thread_id = thread_id
     
     with _execution_metrics_lock:
         if thread_id not in _execution_metrics:

@@ -283,8 +283,9 @@ def extract_llm_end_event(event: dict[str, Any], thread_id: str) -> dict[str, An
             thinking_tokens = getattr(token_usage, "thinking_tokens", None)
     
     # Record LLM usage metrics
+    current_metrics = None
     try:
-        from app.api.observability import record_llm_usage
+        from app.api.observability import record_llm_usage, get_execution_metrics
         record_llm_usage(
             thread_id=thread_id,
             call_id=call_id,
@@ -294,7 +295,10 @@ def extract_llm_end_event(event: dict[str, Any], thread_id: str) -> dict[str, An
             thinking_tokens=thinking_tokens,
             config=config if config else None,
         )
-    except Exception:
+        # Get current metrics after recording to include in event
+        # Metrics should exist after record_llm_usage() since initialize_execution() is called in chat.py
+        current_metrics = get_execution_metrics(thread_id)
+    except Exception as e:
         # Don't fail if observability is not available
         pass
     
@@ -309,5 +313,10 @@ def extract_llm_end_event(event: dict[str, Any], thread_id: str) -> dict[str, An
     # Add token usage if available
     if token_usage:
         event_data["token_usage"] = token_usage
+    
+    # Include current execution metrics in the event (pushed through stream, no polling needed)
+    # model_dump() serializes Pydantic model to dict (as used in observability.py endpoint)
+    if current_metrics:
+        event_data["execution_metrics"] = current_metrics.model_dump(mode='json')
     
     return event_data

@@ -67,7 +67,8 @@ def serialize_message(msg: Any) -> dict[str, Any]:
     msg_dict: dict[str, Any] = {"type": type(msg).__name__}
     
     if hasattr(msg, "content"):
-        msg_dict["content"] = str(msg.content) if msg.content is not None else ""
+        # Use extract_message_content to handle list format (multimodal responses)
+        msg_dict["content"] = extract_message_content(msg.content) if msg.content is not None else ""
     
     if isinstance(msg, AIMessage) and hasattr(msg, "tool_calls") and msg.tool_calls:
         msg_dict["tool_calls"] = []
@@ -107,10 +108,26 @@ def serialize_message(msg: Any) -> dict[str, Any]:
 
 
 def serialize_messages(state: Any) -> list[dict[str, Any]]:
-    """Serialize messages from state to dictionary format."""
+    """Serialize messages from state to dictionary format.
+    
+    Handles TypedDict access pattern for LangGraph state.
+    Based on finalize.py pattern: check isinstance(state.values, dict) first.
+    """
     messages = []
-    if hasattr(state, "values") and "messages" in state.values:
-        for msg in state.values["messages"]:
-            messages.append(serialize_message(msg))
+    if not state:
+        return messages
+    
+    # Standard LangGraph pattern: state.values is a TypedDict with messages
+    if hasattr(state, "values") and state.values:
+        if isinstance(state.values, dict) and "messages" in state.values:
+            raw_messages = state.values.get("messages", [])
+            for msg in raw_messages:
+                messages.append(serialize_message(msg))
+        elif hasattr(state.values, "messages"):
+            # Handle case where state.values is a TypedDict object (not dict)
+            raw_messages = getattr(state.values, "messages", [])
+            for msg in raw_messages:
+                messages.append(serialize_message(msg))
+    
     return messages
 

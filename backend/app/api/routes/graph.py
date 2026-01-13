@@ -134,8 +134,10 @@ async def get_graph_state(
         config: dict[str, Any] = {"configurable": {"thread_id": thread_id}}
         
         # Get state with history to track visited nodes
+        # Use asyncio.to_thread to avoid AsyncPostgresSaver sync call error
         try:
-            state = get_graph(org, project).get_state(config)
+            import asyncio
+            state = await asyncio.to_thread(get_graph(org, project).get_state, config)
         except Exception as state_error:
             # If state retrieval fails, return empty state
             logger.debug(
