@@ -119,6 +119,19 @@ def procedures_vector_search(query: str) -> str:
         
         formatted_results = _format_vector_search_results(results)
         
+        # Truncate large content fields to prevent token limit issues
+        # Limit per result to keep total output manageable (40 results × 5k = 200k chars max)
+        MAX_CONTENT_LENGTH = 5_000  # Max characters per result content
+        for result in formatted_results:
+            content = result.get("content", "")
+            if len(content) > MAX_CONTENT_LENGTH:
+                truncated = content[:MAX_CONTENT_LENGTH]
+                # Try to cut at newline
+                last_newline = truncated.rfind('\n')
+                if last_newline > MAX_CONTENT_LENGTH * 0.9:
+                    truncated = content[:last_newline]
+                result["content"] = truncated + f"\n\n[Content truncated: showing first {len(truncated):,} of {len(content):,} characters]"
+        
         # #region agent log
         logger.debug(
             "debug_formatted_results_check",

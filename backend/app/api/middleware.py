@@ -11,6 +11,8 @@ from firebase_admin.exceptions import FirebaseError
 
 # Health check path (only used in this module)
 HEALTH_CHECK_PATH = "/health"
+# OpenAPI documentation paths (excluded from token validation)
+OPENAPI_PATHS = ["/docs", "/redoc", "/openapi.json", "/favicon.ico"]
 from app.api.utils import get_cors_headers
 from app.config import settings
 
@@ -61,13 +63,17 @@ def setup_api_token_middleware(app: FastAPI) -> None:
     
     @app.middleware("http")
     async def verify_api_token(request: Request, call_next):
-        """Validate X-Source-Token header for all requests except health check and OPTIONS."""
+        """Validate X-Source-Token header for all requests except health check, OpenAPI docs, and OPTIONS."""
         # Skip validation for preflight requests (let CORSMiddleware handle)
         if request.method == "OPTIONS":
             return await call_next(request)
         
         # Skip validation for health check endpoint
         if request.url.path == HEALTH_CHECK_PATH:
+            return await call_next(request)
+        
+        # Skip validation for OpenAPI documentation endpoints
+        if request.url.path in OPENAPI_PATHS or request.url.path.startswith("/docs/"):
             return await call_next(request)
         
         # Validate token for all other requests
@@ -77,6 +83,7 @@ def setup_api_token_middleware(app: FastAPI) -> None:
                 "api_token_invalid",
                 path=request.url.path,
                 method=request.method,
+                received_token=token,
             )
             return _create_error_response(
                 request,

@@ -10,6 +10,7 @@ import structlog
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
+from langgraph.types import Overwrite
 
 from app.api.checkpointer import get_checkpointer
 from app.flows.common import get_agent_model, get_langfuse_handler
@@ -39,6 +40,7 @@ from app.flows.opgroeien.poc.chat.tools import (
     regelgeving_vector_search,
 )
 from app.flows.opgroeien.poc.chat.tools.utils import create_tool_node
+from app.flows.opgroeien.poc.chat.message_window import window_messages
 from app.config import settings
 
 if TYPE_CHECKING:
@@ -65,16 +67,22 @@ def agent_node(state: AgentState, config: Optional[RunnableConfig] = None) -> Ag
     model_with_tools = model.bind_tools(tools)
     
     # Get messages from state
-    messages = state["messages"]
+    all_messages = state["messages"]
+    
+    # Apply message windowing to prevent token limit issues
+    # This keeps recent conversation pairs and truncates large tool results
+    messages = window_messages(all_messages)
     
     # Log all messages in state for debugging
-    logger.debug(
+    logger.info(
         "agent_node_state_messages",
-        message_count=len(messages),
+        original_count=len(all_messages),
+        windowed_count=len(messages),
         message_types=[type(m).__name__ for m in messages],
         has_human=any(isinstance(m, HumanMessage) for m in messages),
         has_ai=any(isinstance(m, AIMessage) for m in messages),
         has_tool=any(isinstance(m, ToolMessage) for m in messages),
+        windowing_applied=len(all_messages) != len(messages),
     )
     
     # Convert config to dict for metadata injection
@@ -127,9 +135,36 @@ def agent_node(state: AgentState, config: Optional[RunnableConfig] = None) -> Ag
         )
         raise
     
-    # Return state with new response appended
-    # LangGraph will automatically merge this with existing state when using Annotated[list[...], ...]
-    return {"messages": state["messages"] + [response]}
+    # Window the state before returning to prevent token accumulation in checkpoints
+    # This ensures only recent messages are saved, preventing unbounded growth
+    # Include the new response in the windowed messages
+    messages_with_response = all_messages + [response]
+    
+    try:
+        # Window again to ensure we keep only recent turns including the new response
+        windowed_messages = window_messages(messages_with_response)
+    except Exception as window_err:
+        logger.error(
+            "window_messages_failed",
+            error_type=type(window_err).__name__,
+            error_str=str(window_err),
+        )
+        raise
+    
+    # Log windowing if messages were reduced
+    if len(windowed_messages) < len(messages_with_response):
+        logger.info(
+            "agent_node_state_windowed_before_checkpoint",
+            original_count=len(messages_with_response),
+            windowed_count=len(windowed_messages),
+            removed_count=len(messages_with_response) - len(windowed_messages),
+        )
+    
+    # Use Overwrite to replace the entire messages list instead of appending
+    # This prevents accumulation of old messages in the checkpoint
+    result = {"messages": Overwrite(windowed_messages)}
+    
+    return result
 
 
 def _get_tool_node_name_map() -> dict[str, str]:

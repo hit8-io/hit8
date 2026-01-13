@@ -64,17 +64,6 @@ def _fetch_website_impl(url: str) -> str:
         elif isinstance(result, dict) and "cost" in result:
             cost = float(result["cost"])
         
-        # Record Bright Data usage metrics
-        try:
-            from app.api.observability import record_brightdata_usage
-            record_brightdata_usage(
-                duration_ms=duration_ms,
-                cost=cost,
-            )
-        except Exception:
-            # Don't fail if observability is not available
-            pass
-        
         if result is None:
             logger.warning(
                 "fetch_webpage_empty_response",
@@ -96,6 +85,30 @@ def _fetch_website_impl(url: str) -> str:
         # Extract HTML from result data
         # The data field contains the HTML content (may be string or dict)
         html_content = result.data
+        
+        # Calculate bytes transferred (size of HTML content)
+        bytes_transferred = 0
+        if html_content:
+            if isinstance(html_content, str):
+                bytes_transferred = len(html_content.encode('utf-8'))
+            elif isinstance(html_content, dict):
+                # If it's a dict, calculate bytes from string representation
+                bytes_transferred = len(str(html_content).encode('utf-8'))
+            else:
+                # For other types, convert to string first
+                bytes_transferred = len(str(html_content).encode('utf-8'))
+        
+        # Record Bright Data usage metrics
+        try:
+            from app.api.observability import record_brightdata_usage
+            record_brightdata_usage(
+                duration_ms=duration_ms,
+                cost=cost,
+                bytes=bytes_transferred,
+            )
+        except Exception:
+            # Don't fail if observability is not available
+            pass
         if isinstance(html_content, dict):
             # If data is a dict, try to get 'html' key
             html_content = html_content.get('html', '') or html_content.get('body', '') or str(html_content)

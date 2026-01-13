@@ -30,6 +30,31 @@ export default function LoginScreen({ firebaseApp }: LoginScreenProps) {
       if (err.code === 'auth/popup-closed-by-user') {
         // User closed the popup - don't show error
         setAuthError(null)
+      } else if (
+        err.code === 'auth/missing-or-invalid-nonce' ||
+        err.message?.includes('missing initial state') ||
+        err.message?.includes('Unable to process request')
+      ) {
+        // Handle redirect state errors - try clearing sessionStorage and suggest retry
+        try {
+          if (typeof window !== 'undefined' && window.sessionStorage) {
+            const keys = Object.keys(sessionStorage)
+            keys.forEach((key) => {
+              if (key.startsWith('firebase:authUser:') || key.startsWith('firebase:redirectUser:')) {
+                try {
+                  sessionStorage.removeItem(key)
+                } catch {
+                  // Ignore errors when clearing storage
+                }
+              }
+            })
+          }
+        } catch {
+          // Ignore errors when accessing sessionStorage
+        }
+        setAuthError(
+          'Authentication state was cleared. Please try signing in again. If the problem persists, try clearing your browser cache or using a different browser.'
+        )
       } else if (err.message) {
         setAuthError(err.message)
       } else {

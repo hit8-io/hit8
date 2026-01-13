@@ -38,17 +38,29 @@ def _extract_graph_history(state: Any, state_dict: dict[str, Any]) -> list[dict[
 
 @router.get("/structure")
 async def get_graph_structure(
+    flow: str | None = None,
     user_payload: dict = Depends(verify_google_token),
-    x_org: str = Header(..., alias="X-Org"),
-    x_project: str = Header(..., alias="X-Project"),
+    x_org: str | None = Header(None, alias="X-Org"),
+    x_project: str | None = Header(None, alias="X-Project"),
 ):
     """Get the LangGraph structure as JSON.
     
     Requires X-Org and X-Project headers to specify which org/project to use.
+    Optional 'flow' parameter to specify which graph to return.
+    Flow parameter may include a colon suffix (e.g., 'report:1') which will be stripped.
     """
     email = user_payload["email"]
-    org = x_org.strip()
-    project = x_project.strip()
+    org = (x_org or "").strip()
+    project = (x_project or "").strip()
+    
+    # Strip any colon suffix from flow parameter (e.g., "report:1" -> "report")
+    if flow:
+        flow = flow.split(":")[0].strip()
+    
+    if not org or not project:
+        # Return empty structure if org/project not selected yet
+        # This avoids 422 errors on initial load
+        return {"nodes": [], "edges": []}
     
     # Validate user has access to the requested org/project
     if not validate_user_access(email, org, project):
@@ -64,9 +76,16 @@ async def get_graph_structure(
         )
     
     try:
-        return get_graph(org, project).get_graph().to_json()
+        return get_graph(org, project, flow).get_graph().to_json()
     except Exception as e:
-        logger.exception("graph_structure_export_failed", error=str(e), error_type=type(e).__name__)
+        logger.exception(
+            "graph_structure_export_failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            org=org,
+            project=project,
+            flow=flow,
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to export graph structure: {str(e)}"
@@ -77,16 +96,25 @@ async def get_graph_structure(
 async def get_graph_state(
     thread_id: str,
     user_payload: dict = Depends(verify_google_token),
-    x_org: str = Header(..., alias="X-Org"),
-    x_project: str = Header(..., alias="X-Project"),
+    x_org: str | None = Header(None, alias="X-Org"),
+    x_project: str | None = Header(None, alias="X-Project"),
 ):
     """Get the current execution state for a thread.
     
     Requires X-Org and X-Project headers to specify which org/project to use.
     """
     email = user_payload["email"]
-    org = x_org.strip()
-    project = x_project.strip()
+    org = (x_org or "").strip()
+    project = (x_project or "").strip()
+    
+    if not org or not project:
+        # Return empty state if org/project not selected yet
+        # This avoids 422 errors on initial load
+        return {
+            "values": {},
+            "next": [],
+            "history": [],
+        }
     
     # Validate user has access to the requested org/project
     if not validate_user_access(email, org, project):

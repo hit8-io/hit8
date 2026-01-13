@@ -19,24 +19,12 @@ function formatNumber(num: number): string {
 }
 
 /**
- * Format duration in milliseconds to human-readable string.
+ * Format bytes to megabytes (X.XX format, no "MB" suffix).
  */
-function formatDuration(ms: number): string {
-  if (ms < 1000) {
-    return `${Math.round(ms)}ms`
-  }
-  return `${(ms / 1000).toFixed(2)}s`
-}
-
-/**
- * Format cost as currency.
- */
-function formatCost(cost: number | null): string {
-  if (cost === null) return 'N/A'
-  if (cost < 0.01) {
-    return `$${cost.toFixed(4)}`
-  }
-  return `$${cost.toFixed(2)}`
+function formatMb(bytes: number): string {
+  if (bytes === 0) return ''
+  const mb = bytes / 1_048_576
+  return mb.toFixed(2)
 }
 
 /**
@@ -60,6 +48,16 @@ function extractThreadId(executionState: ExecutionState | null): string | null {
   return null
 }
 
+interface TableRow {
+  type: 'llm' | 'embedding' | 'web'
+  model: string
+  tokensInput: number | null
+  tokensOutput: number | null
+  tokensThinking: number | null
+  calls: number | null
+  mb: number | null
+}
+
 export default function ObservabilityWindow({
   apiUrl,
   token,
@@ -69,60 +67,86 @@ export default function ObservabilityWindow({
   // Extract thread_id from execution state
   const threadId = useMemo(() => extractThreadId(executionState), [executionState])
   
-  // Use polling hook - always fetch both
-  const { executionMetrics, aggregatedMetrics, error, isRefreshing } = useObservabilityPolling({
+  // Use polling hook - only fetch current execution metrics
+  const { executionMetrics, error, isRefreshing } = useObservabilityPolling({
     apiUrl,
     token,
     threadId,
-    viewMode: 'both',
+    viewMode: 'current',
     isLoading,
     enabled: !!apiUrl && !!token,
   })
 
-  // Combine all unique models from current and aggregated for LLM
-  const allLLMModels = useMemo(() => {
-    const models = new Set<string>()
-    if (executionMetrics) {
-      executionMetrics.llm_calls.forEach(call => models.add(call.model))
-    }
-    if (aggregatedMetrics) {
-      Object.keys(aggregatedMetrics.llm.by_model).forEach(model => models.add(model))
-    }
-    return Array.from(models).sort()
-  }, [executionMetrics, aggregatedMetrics])
+  // Generate table rows from execution metrics
+  const tableRows = useMemo(() => {
+    if (!executionMetrics) return []
 
-  // Combine all unique models from current and aggregated for Embeddings
-  const allEmbeddingModels = useMemo(() => {
-    const models = new Set<string>()
-    if (executionMetrics) {
-      executionMetrics.embedding_calls.forEach(call => models.add(call.model))
-    }
-    if (aggregatedMetrics) {
-      Object.keys(aggregatedMetrics.embeddings.by_model).forEach(model => models.add(model))
-    }
-    return Array.from(models).sort()
-  }, [executionMetrics, aggregatedMetrics])
+    const rows: TableRow[] = []
 
-  // Calculate current execution totals for LLM
-  const currentLLMTotals = useMemo(() => {
-    if (!executionMetrics) return null
-    return {
-      calls: executionMetrics.llm_calls.length,
-      input: executionMetrics.llm_calls.reduce((sum, call) => sum + call.input_tokens, 0),
-      output: executionMetrics.llm_calls.reduce((sum, call) => sum + call.output_tokens, 0),
-      thinking: executionMetrics.llm_calls.reduce((sum, call) => sum + (call.thinking_tokens || 0), 0),
-      duration: executionMetrics.llm_calls.reduce((sum, call) => sum + call.duration_ms, 0),
-    }
-  }, [executionMetrics])
+    // Collect unique LLM models and aggregate per model
+    const llmModels = new Map<string, { input: number; output: number; thinking: number; calls: number }>()
+    executionMetrics.llm_calls.forEach(call => {
+      const existing = llmModels.get(call.model) || { input: 0, output: 0, thinking: 0, calls: 0 }
+      existing.input += call.input_tokens
+      existing.output += call.output_tokens
+      existing.thinking += call.thinking_tokens || 0
+      existing.calls += 1
+      llmModels.set(call.model, existing)
+    })
 
-  // Calculate current execution totals for Embeddings
-  const currentEmbeddingTotals = useMemo(() => {
-    if (!executionMetrics) return null
-    return {
-      calls: executionMetrics.embedding_calls.length,
-      input: executionMetrics.embedding_calls.reduce((sum, call) => sum + call.input_tokens, 0),
-      duration: executionMetrics.embedding_calls.reduce((sum, call) => sum + call.duration_ms, 0),
+    // Add LLM rows
+    Array.from(llmModels.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .forEach(([model, stats]) => {
+        rows.push({
+          type: 'llm',
+          model,
+          tokensInput: stats.input > 0 ? stats.input : null,
+          tokensOutput: stats.output > 0 ? stats.output : null,
+          tokensThinking: stats.thinking > 0 ? stats.thinking : null,
+          calls: stats.calls > 0 ? stats.calls : null,
+          mb: null,
+        })
+      })
+
+    // Collect unique embedding models and aggregate per model
+    const embeddingModels = new Map<string, { input: number; calls: number }>()
+    executionMetrics.embedding_calls.forEach(call => {
+      const existing = embeddingModels.get(call.model) || { input: 0, calls: 0 }
+      existing.input += call.input_tokens
+      existing.calls += 1
+      embeddingModels.set(call.model, existing)
+    })
+
+    // Add embedding rows
+    Array.from(embeddingModels.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .forEach(([model, stats]) => {
+        rows.push({
+          type: 'embedding',
+          model,
+          tokensInput: stats.input > 0 ? stats.input : null,
+          tokensOutput: null,
+          tokensThinking: null,
+          calls: stats.calls > 0 ? stats.calls : null,
+          mb: null,
+        })
+      })
+
+    // Add Bright Data row if there are any calls
+    if (executionMetrics.brightdata_calls && executionMetrics.brightdata_calls.call_count > 0) {
+      rows.push({
+        type: 'web',
+        model: 'Bright Data',
+        tokensInput: null,
+        tokensOutput: null,
+        tokensThinking: null,
+        calls: executionMetrics.brightdata_calls.call_count > 0 ? executionMetrics.brightdata_calls.call_count : null,
+        mb: executionMetrics.brightdata_calls.total_bytes > 0 ? executionMetrics.brightdata_calls.total_bytes : null,
+      })
     }
+
+    return rows
   }, [executionMetrics])
 
   return (
@@ -139,276 +163,51 @@ export default function ObservabilityWindow({
             <div className="text-xs text-muted-foreground mb-2">Refreshing...</div>
           )}
           
-          <div className="space-y-4">
-            {/* Combined LLM Table */}
-            <div className="mb-3">
-                <div className="text-xs font-semibold text-foreground mb-1">LLM</div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs border-collapse">
-                    <thead>
-                      <tr className="border-b border-border">
-                        <th className="text-left p-1 font-semibold" rowSpan={2}>Model</th>
-                        <th className="text-center p-1 font-semibold border-l border-border" colSpan={5}>
-                          Current Execution
-                        </th>
-                        <th className="text-center p-1 font-semibold border-l border-border" colSpan={5}>
-                          Aggregated
-                        </th>
-                      </tr>
-                      <tr className="border-b border-border">
-                        <th className="text-right p-1 font-semibold border-l border-border">Input</th>
-                        <th className="text-right p-1 font-semibold">Output</th>
-                        <th className="text-right p-1 font-semibold">Thinking</th>
-                        <th className="text-right p-1 font-semibold">TTFT</th>
-                        <th className="text-right p-1 font-semibold">Duration</th>
-                        <th className="text-right p-1 font-semibold border-l border-border">Calls</th>
-                        <th className="text-right p-1 font-semibold">Input</th>
-                        <th className="text-right p-1 font-semibold">Output</th>
-                        <th className="text-right p-1 font-semibold">Thinking</th>
-                        <th className="text-right p-1 font-semibold">Duration</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {/* Total row */}
-                      {(currentLLMTotals || aggregatedMetrics?.llm) && (
-                        <tr className="border-b border-border/50 bg-muted/30">
-                          <td className="p-1 font-medium">Total</td>
-                          <td className="p-1 text-right border-l border-border">
-                            {currentLLMTotals ? formatNumber(currentLLMTotals.input) : '-'}
-                          </td>
-                          <td className="p-1 text-right">
-                            {currentLLMTotals ? formatNumber(currentLLMTotals.output) : '-'}
-                          </td>
-                          <td className="p-1 text-right">
-                            {currentLLMTotals && currentLLMTotals.thinking > 0 ? formatNumber(currentLLMTotals.thinking) : '-'}
-                          </td>
-                          <td className="p-1 text-right">-</td>
-                          <td className="p-1 text-right">
-                            {currentLLMTotals ? formatDuration(currentLLMTotals.duration) : '-'}
-                          </td>
-                          <td className="p-1 text-right border-l border-border">
-                            {aggregatedMetrics?.llm ? formatNumber(aggregatedMetrics.llm.total_calls) : '-'}
-                          </td>
-                          <td className="p-1 text-right">
-                            {aggregatedMetrics?.llm ? formatNumber(aggregatedMetrics.llm.total_input_tokens) : '-'}
-                          </td>
-                          <td className="p-1 text-right">
-                            {aggregatedMetrics?.llm ? formatNumber(aggregatedMetrics.llm.total_output_tokens) : '-'}
-                          </td>
-                          <td className="p-1 text-right">
-                            {aggregatedMetrics?.llm && aggregatedMetrics.llm.total_thinking_tokens > 0
-                              ? formatNumber(aggregatedMetrics.llm.total_thinking_tokens)
-                              : '-'}
-                          </td>
-                          <td className="p-1 text-right">
-                            {aggregatedMetrics?.llm ? formatDuration(aggregatedMetrics.llm.total_duration_ms) : '-'}
-                          </td>
-                        </tr>
-                      )}
-                      
-                      {/* Model rows */}
-                      {allLLMModels.map((model) => {
-                        // Aggregate all calls for this model (not just the first one)
-                        const modelCalls = executionMetrics?.llm_calls.filter(call => call.model === model) || []
-                        const aggregatedStats = aggregatedMetrics?.llm.by_model[model]
-                        
-                        // Calculate aggregated metrics for current execution
-                        const currentModelStats = modelCalls.length > 0 ? {
-                          calls: modelCalls.length,
-                          input: modelCalls.reduce((sum, call) => sum + call.input_tokens, 0),
-                          output: modelCalls.reduce((sum, call) => sum + call.output_tokens, 0),
-                          thinking: modelCalls.reduce((sum, call) => sum + (call.thinking_tokens || 0), 0),
-                          duration: modelCalls.reduce((sum, call) => sum + call.duration_ms, 0),
-                          // Average TTFT across all calls (only if all have TTFT)
-                          avgTtft: (() => {
-                            const ttfts = modelCalls.filter(call => call.ttft_ms !== null).map(call => call.ttft_ms!)
-                            return ttfts.length > 0 ? ttfts.reduce((sum, ttft) => sum + ttft, 0) / ttfts.length : null
-                          })(),
-                        } : null
-                        
-                        return (
-                          <tr key={model} className="border-b border-border/50">
-                            <td className="p-1">{model}</td>
-                            <td className="p-1 text-right border-l border-border">
-                              {currentModelStats ? formatNumber(currentModelStats.input) : '-'}
-                            </td>
-                            <td className="p-1 text-right">
-                              {currentModelStats ? formatNumber(currentModelStats.output) : '-'}
-                            </td>
-                            <td className="p-1 text-right">
-                              {currentModelStats && currentModelStats.thinking > 0
-                                ? formatNumber(currentModelStats.thinking)
-                                : '-'}
-                            </td>
-                            <td className="p-1 text-right">
-                              {currentModelStats && currentModelStats.avgTtft !== null
-                                ? formatDuration(currentModelStats.avgTtft)
-                                : '-'}
-                            </td>
-                            <td className="p-1 text-right">
-                              {currentModelStats ? formatDuration(currentModelStats.duration) : '-'}
-                            </td>
-                            <td className="p-1 text-right border-l border-border">
-                              {aggregatedStats ? formatNumber(aggregatedStats.call_count) : '-'}
-                            </td>
-                            <td className="p-1 text-right">
-                              {aggregatedStats ? formatNumber(aggregatedStats.total_input_tokens) : '-'}
-                            </td>
-                            <td className="p-1 text-right">
-                              {aggregatedStats ? formatNumber(aggregatedStats.total_output_tokens) : '-'}
-                            </td>
-                            <td className="p-1 text-right">
-                              {aggregatedStats && aggregatedStats.total_thinking_tokens > 0
-                                ? formatNumber(aggregatedStats.total_thinking_tokens)
-                                : '-'}
-                            </td>
-                            <td className="p-1 text-right">
-                              {aggregatedStats ? formatDuration(aggregatedStats.total_duration_ms) : '-'}
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-            </div>
-            
-            {/* Combined Embeddings Table */}
-            <div className="mb-3">
-                <div className="text-xs font-semibold text-foreground mb-1">Embeddings</div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs border-collapse">
-                    <thead>
-                      <tr className="border-b border-border">
-                        <th className="text-left p-1 font-semibold" rowSpan={2}>Model</th>
-                        <th className="text-center p-1 font-semibold border-l border-border" colSpan={2}>
-                          Current Execution
-                        </th>
-                        <th className="text-center p-1 font-semibold border-l border-border" colSpan={3}>
-                          Aggregated
-                        </th>
-                      </tr>
-                      <tr className="border-b border-border">
-                        <th className="text-right p-1 font-semibold border-l border-border">Input</th>
-                        <th className="text-right p-1 font-semibold">Duration</th>
-                        <th className="text-right p-1 font-semibold border-l border-border">Calls</th>
-                        <th className="text-right p-1 font-semibold">Input</th>
-                        <th className="text-right p-1 font-semibold">Duration</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {/* Total row */}
-                      {(currentEmbeddingTotals || aggregatedMetrics?.embeddings) && (
-                        <tr className="border-b border-border/50 bg-muted/30">
-                          <td className="p-1 font-medium">Total</td>
-                          <td className="p-1 text-right border-l border-border">
-                            {currentEmbeddingTotals ? formatNumber(currentEmbeddingTotals.input) : '-'}
-                          </td>
-                          <td className="p-1 text-right">
-                            {currentEmbeddingTotals ? formatDuration(currentEmbeddingTotals.duration) : '-'}
-                          </td>
-                          <td className="p-1 text-right border-l border-border">
-                            {aggregatedMetrics?.embeddings ? formatNumber(aggregatedMetrics.embeddings.total_calls) : '-'}
-                          </td>
-                          <td className="p-1 text-right">
-                            {aggregatedMetrics?.embeddings ? formatNumber(aggregatedMetrics.embeddings.total_input_tokens) : '-'}
-                          </td>
-                          <td className="p-1 text-right">
-                            {aggregatedMetrics?.embeddings ? formatDuration(aggregatedMetrics.embeddings.total_duration_ms) : '-'}
-                          </td>
-                        </tr>
-                      )}
-                      
-                      {/* Model rows */}
-                      {allEmbeddingModels.map((model) => {
-                        const currentCall = executionMetrics?.embedding_calls.find(call => call.model === model)
-                        const aggregatedStats = aggregatedMetrics?.embeddings.by_model[model]
-                        
-                        return (
-                          <tr key={model} className="border-b border-border/50">
-                            <td className="p-1">{model}</td>
-                            <td className="p-1 text-right border-l border-border">
-                              {currentCall ? formatNumber(currentCall.input_tokens) : '-'}
-                            </td>
-                            <td className="p-1 text-right">
-                              {currentCall ? formatDuration(currentCall.duration_ms) : '-'}
-                            </td>
-                            <td className="p-1 text-right border-l border-border">
-                              {aggregatedStats ? formatNumber(aggregatedStats.call_count) : '-'}
-                            </td>
-                            <td className="p-1 text-right">
-                              {aggregatedStats ? formatNumber(aggregatedStats.total_input_tokens) : '-'}
-                            </td>
-                            <td className="p-1 text-right">
-                              {aggregatedStats ? formatDuration(aggregatedStats.total_duration_ms) : '-'}
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-            </div>
-            
-            {/* Combined Bright Data Table */}
-            <div className="mb-3">
-                <div className="text-xs font-semibold text-foreground mb-1">Bright Data</div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs border-collapse">
-                    <thead>
-                      <tr className="border-b border-border">
-                        <th className="text-left p-1 font-semibold">Metric</th>
-                        <th className="text-center p-1 font-semibold border-l border-border" colSpan={3}>
-                          Current Execution
-                        </th>
-                        <th className="text-center p-1 font-semibold border-l border-border" colSpan={3}>
-                          Aggregated
-                        </th>
-                      </tr>
-                      <tr className="border-b border-border">
-                        <th className="text-left p-1 font-semibold"></th>
-                        <th className="text-right p-1 font-semibold border-l border-border">Calls</th>
-                        <th className="text-right p-1 font-semibold">Duration</th>
-                        <th className="text-right p-1 font-semibold">Cost</th>
-                        <th className="text-right p-1 font-semibold border-l border-border">Calls</th>
-                        <th className="text-right p-1 font-semibold">Duration</th>
-                        <th className="text-right p-1 font-semibold">Cost</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr className="border-b border-border/50">
-                        <td className="p-1 font-medium">Total</td>
-                        <td className="p-1 text-right border-l border-border">
-                          {executionMetrics?.brightdata_calls ? formatNumber(executionMetrics.brightdata_calls.call_count) : '-'}
-                        </td>
-                        <td className="p-1 text-right">
-                          {executionMetrics?.brightdata_calls
-                            ? formatDuration(executionMetrics.brightdata_calls.total_duration_ms)
-                            : '-'}
-                        </td>
-                        <td className="p-1 text-right">
-                          {executionMetrics?.brightdata_calls
-                            ? formatCost(executionMetrics.brightdata_calls.total_cost)
-                            : '-'}
-                        </td>
-                        <td className="p-1 text-right border-l border-border">
-                          {aggregatedMetrics?.brightdata ? formatNumber(aggregatedMetrics.brightdata.total_calls) : '-'}
-                        </td>
-                        <td className="p-1 text-right">
-                          {aggregatedMetrics?.brightdata
-                            ? formatDuration(aggregatedMetrics.brightdata.total_duration_ms)
-                            : '-'}
-                        </td>
-                        <td className="p-1 text-right">
-                          {aggregatedMetrics?.brightdata
-                            ? formatCost(aggregatedMetrics.brightdata.total_cost)
-                            : '-'}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-            </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left p-1 font-semibold">Type</th>
+                  <th className="text-left p-1 font-semibold">Model</th>
+                  <th className="text-right p-1 font-semibold">Tokens Input</th>
+                  <th className="text-right p-1 font-semibold">Tokens Output</th>
+                  <th className="text-right p-1 font-semibold">Tokens Thinking</th>
+                  <th className="text-right p-1 font-semibold">Calls</th>
+                  <th className="text-right p-1 font-semibold">Mb</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tableRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="p-2 text-center text-muted-foreground">
+                      No metrics available
+                    </td>
+                  </tr>
+                ) : (
+                  tableRows.map((row, index) => (
+                    <tr key={`${row.type}-${row.model}-${index}`} className="border-b border-border/50">
+                      <td className="p-1">{row.type}</td>
+                      <td className="p-1">{row.model}</td>
+                      <td className="p-1 text-right">
+                        {row.tokensInput !== null ? formatNumber(row.tokensInput) : ''}
+                      </td>
+                      <td className="p-1 text-right">
+                        {row.tokensOutput !== null ? formatNumber(row.tokensOutput) : ''}
+                      </td>
+                      <td className="p-1 text-right">
+                        {row.tokensThinking !== null ? formatNumber(row.tokensThinking) : ''}
+                      </td>
+                      <td className="p-1 text-right">
+                        {row.calls !== null ? formatNumber(row.calls) : ''}
+                      </td>
+                      <td className="p-1 text-right">
+                        {row.mb !== null ? formatMb(row.mb) : ''}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </ScrollArea>
       </CardContent>

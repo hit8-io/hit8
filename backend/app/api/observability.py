@@ -9,7 +9,10 @@ import time
 from datetime import datetime
 from typing import Any
 
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+
+from app.auth import verify_google_token
 
 # Context variable to track current thread_id during execution
 _current_thread_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("current_thread_id", default=None)
@@ -43,6 +46,7 @@ class BrightDataUsage(BaseModel):
     call_count: int = 0
     total_duration_ms: float = 0.0
     total_cost: float | None = None
+    total_bytes: int = 0  # Total bytes transferred
 
 
 class ExecutionMetrics(BaseModel):
@@ -88,6 +92,7 @@ class BrightDataAggregatedMetrics(BaseModel):
     total_calls: int = 0
     total_duration_ms: float = 0.0
     total_cost: float | None = None
+    total_bytes: int = 0  # Total bytes transferred
 
 
 class AggregatedMetrics(BaseModel):
@@ -211,6 +216,61 @@ def record_first_token(thread_id: str, call_id: str | None = None, run_id: str |
         # Only record the first time
         if call_id not in _first_token_times[thread_id]:
             _first_token_times[thread_id][call_id] = first_token_time
+
+
+def extract_token_usage(response: Any) -> tuple[int, int, int | None]:
+    """Extract token usage from LLM response object.
+    
+    Handles various response formats:
+    - LangChain AIMessage with usage_metadata attribute
+    - Response with response_metadata containing token_usage or usage_metadata
+    - Dict or object with prompt_tokens/completion_tokens or input_tokens/output_tokens
+    
+    Args:
+        response: LLM response object (AIMessage, dict, or object with metadata)
+        
+    Returns:
+        Tuple of (input_tokens, output_tokens, thinking_tokens)
+    """
+    token_usage = None
+    
+    # Try usage_metadata attribute first
+    if hasattr(response, "usage_metadata"):
+        try:
+            token_usage = response.usage_metadata
+        except Exception:
+            pass
+    
+    # Try response_metadata if usage_metadata not found
+    if not token_usage and hasattr(response, "response_metadata"):
+        try:
+            rm = response.response_metadata
+            if rm:
+                if hasattr(rm, "get"):
+                    token_usage = rm.get("token_usage") or rm.get("usage_metadata")
+                elif hasattr(rm, "token_usage"):
+                    token_usage = rm.token_usage
+                elif hasattr(rm, "usage_metadata"):
+                    token_usage = rm.usage_metadata
+        except Exception:
+            pass
+    
+    # Extract token counts
+    input_tokens = 0
+    output_tokens = 0
+    thinking_tokens = None
+    
+    if token_usage:
+        if isinstance(token_usage, dict):
+            input_tokens = token_usage.get("prompt_tokens", token_usage.get("input_tokens", 0))
+            output_tokens = token_usage.get("completion_tokens", token_usage.get("output_tokens", 0))
+            thinking_tokens = token_usage.get("thinking_tokens", token_usage.get("cached_tokens"))
+        elif hasattr(token_usage, "prompt_tokens") or hasattr(token_usage, "input_tokens"):
+            input_tokens = getattr(token_usage, "prompt_tokens", 0) or getattr(token_usage, "input_tokens", 0)
+            output_tokens = getattr(token_usage, "completion_tokens", 0) or getattr(token_usage, "output_tokens", 0)
+            thinking_tokens = getattr(token_usage, "thinking_tokens", None)
+    
+    return (input_tokens, output_tokens, thinking_tokens)
 
 
 def record_llm_usage(
@@ -380,6 +440,7 @@ def record_brightdata_usage(
     thread_id: str | None = None,
     duration_ms: float = 0.0,
     cost: float | None = None,
+    bytes: int = 0,
 ) -> None:
     """Record Bright Data usage metrics.
     
@@ -387,6 +448,7 @@ def record_brightdata_usage(
         thread_id: Flow execution identifier (if None, uses current context)
         duration_ms: Call duration in milliseconds
         cost: Cost of the call (if available)
+        bytes: Number of bytes transferred (if available)
     """
     # Get thread_id from context if not provided
     if thread_id is None:
@@ -402,6 +464,7 @@ def record_brightdata_usage(
         metrics = _execution_metrics[thread_id]
         metrics.brightdata_calls.call_count += 1
         metrics.brightdata_calls.total_duration_ms += duration_ms
+        metrics.brightdata_calls.total_bytes += bytes
         if cost is not None:
             if metrics.brightdata_calls.total_cost is None:
                 metrics.brightdata_calls.total_cost = 0.0
@@ -411,6 +474,7 @@ def record_brightdata_usage(
     with _aggregated_metrics_lock:
         _aggregated_metrics.brightdata.total_calls += 1
         _aggregated_metrics.brightdata.total_duration_ms += duration_ms
+        _aggregated_metrics.brightdata.total_bytes += bytes
         if cost is not None:
             if _aggregated_metrics.brightdata.total_cost is None:
                 _aggregated_metrics.brightdata.total_cost = 0.0
@@ -475,3 +539,99 @@ def clear_execution_metrics(thread_id: str) -> None:
     with _run_id_to_call_id_lock:
         if thread_id in _run_id_to_call_id:
             del _run_id_to_call_id[thread_id]
+
+
+# Create router for observability endpoints
+router = APIRouter()
+
+
+@router.get("/execution/{thread_id}")
+async def get_execution_metrics_endpoint(
+    thread_id: str,
+    user_payload: dict = Depends(verify_google_token),
+):
+    """Get metrics for a specific flow execution.
+    
+    Args:
+        thread_id: Flow execution identifier
+        user_payload: Authenticated user payload
+        
+    Returns:
+        ExecutionMetrics for the specified thread_id
+        
+    Raises:
+        HTTPException: 404 if execution not found
+    """
+    metrics = get_execution_metrics(thread_id)
+    
+    if metrics is None:
+        _get_logger().warning(
+            "execution_metrics_not_found",
+            thread_id=thread_id,
+            user_id=user_payload.get("sub"),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Execution metrics not found for thread_id: {thread_id}",
+        )
+    
+    _get_logger().debug(
+        "execution_metrics_retrieved",
+        thread_id=thread_id,
+        llm_calls=len(metrics.llm_calls),
+        embedding_calls=len(metrics.embedding_calls),
+        brightdata_calls=metrics.brightdata_calls.call_count,
+    )
+    
+    return metrics.model_dump()
+
+
+@router.get("/aggregated")
+async def get_aggregated_metrics_endpoint(
+    user_payload: dict = Depends(verify_google_token),
+):
+    """Get aggregated metrics across all executions.
+    
+    Args:
+        user_payload: Authenticated user payload
+        
+    Returns:
+        AggregatedMetrics with totals
+    """
+    metrics = get_aggregated_metrics()
+    
+    _get_logger().debug(
+        "aggregated_metrics_retrieved",
+        total_executions=metrics.total_executions,
+        total_llm_calls=metrics.llm.total_calls,
+        total_embedding_calls=metrics.embeddings.total_calls,
+        total_brightdata_calls=metrics.brightdata.total_calls,
+    )
+    
+    return metrics.model_dump()
+
+
+@router.get("/executions")
+async def list_executions_endpoint(
+    user_payload: dict = Depends(verify_google_token),
+):
+    """List all tracked execution thread IDs.
+    
+    Args:
+        user_payload: Authenticated user payload
+        
+    Returns:
+        List of thread IDs
+    """
+    thread_ids = list_execution_thread_ids()
+    
+    _get_logger().debug(
+        "execution_thread_ids_listed",
+        count=len(thread_ids),
+        user_id=user_payload.get("sub"),
+    )
+    
+    return {
+        "thread_ids": thread_ids,
+        "count": len(thread_ids),
+    }

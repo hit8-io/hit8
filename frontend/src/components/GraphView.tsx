@@ -28,6 +28,7 @@ interface GraphViewProps {
   apiUrl: string
   token: string | null
   executionState?: ExecutionState | null // Execution state from stream events
+  flow?: string // Flow name (e.g. 'chat' or 'report')
 }
 
 interface GraphNode {
@@ -146,7 +147,7 @@ function handleApiError(
 }
 
 
-export default function GraphView({ apiUrl, token, executionState }: Readonly<GraphViewProps>) {
+export default function GraphView({ apiUrl, token, executionState, flow }: Readonly<GraphViewProps>) {
   const [graphStructure, setGraphStructure] = useState<GraphStructure | null>(null)
   
   // Use execution state from stream events (no polling)
@@ -218,7 +219,7 @@ export default function GraphView({ apiUrl, token, executionState }: Readonly<Gr
   // Fetch graph structure when org/project selection changes
   useEffect(() => {
     const fetchGraphStructure = async () => {
-      if (!apiUrl || !token) {
+      if (!apiUrl || !token || !flow) {
         setLoading(false)
         return
       }
@@ -237,7 +238,7 @@ export default function GraphView({ apiUrl, token, executionState }: Readonly<Gr
 
       try {
         setLoading(true)
-        const response = await axios.get(`${apiUrl}/graph/structure`, {
+        const response = await axios.get(`${apiUrl}/graph/structure${flow ? `?flow=${flow}` : ''}`, {
           headers: getApiHeaders(token),
         })
 
@@ -251,7 +252,7 @@ export default function GraphView({ apiUrl, token, executionState }: Readonly<Gr
     }
 
     void fetchGraphStructure()
-  }, [apiUrl, token, orgProjectKey])
+  }, [apiUrl, token, orgProjectKey, flow])
 
   // Convert graph structure to React Flow format and apply layout
   useEffect(() => {

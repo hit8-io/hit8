@@ -8,17 +8,26 @@ from typing import Any, Literal
 
 ENVIRONMENT: Literal["dev", "prd"] = os.getenv("ENVIRONMENT", "dev")
 
+# Message windowing constants
+# Maximum number of recent Human/AI message pairs to keep
+# Reduced to prevent token limit issues (1M token limit)
+MAX_RECENT_MESSAGE_PAIRS = 5
+
+# Maximum length for tool result content (characters)
+# Reduced to prevent token limit issues
+MAX_TOOL_RESULT_LENGTH = 15_000
+
 # Defaults
 CONSTANTS: dict[str, Any] = {
     "APP_NAME": "Hit8 Chat API",
     "APP_VERSION": "0.3.0",
-    "LLM_MODEL_NAME": "gemini-3-pro-preview",
+    "LLM_MODEL_NAME": "gemini-2.5-flash",
     "TOOL_LLM_MODEL": "gemini-2.5-flash",
     "LLM_THINKING_LEVEL": None,
     "TOOL_LLM_THINKING_LEVEL": None,
     "LLM_TEMPERATURE": None,
     "TOOL_LLM_TEMPERATURE": 0.1,
-    "VERTEX_AI_LOCATION": "global",
+    "VERTEX_AI_LOCATION": "europe-west1",
     "CORS_ALLOW_CREDENTIALS": True,
     "ACCOUNT": "hit8",
     "ORG": "opgroeien",

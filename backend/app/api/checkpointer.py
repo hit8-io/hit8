@@ -1,172 +1,78 @@
 """
 Checkpointer management for LangGraph with AsyncPostgresSaver.
 
-Provides a shared async connection pool and AsyncPostgresSaver instance
-for persistent checkpoint storage across all graph instances.
+Provides AsyncPostgresSaver instance for persistent checkpoint storage
+across all graph instances. Uses the shared connection pool from database module.
 
 Initialized once at application startup via FastAPI lifespan.
 """
 from __future__ import annotations
 
-import os
-import tempfile
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import structlog
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver  # type: ignore[import-untyped]
-from psycopg_pool import AsyncConnectionPool
 
-from app.config import settings
-from app import constants
+from app.api.database import get_pool, initialize_pool
 
 if TYPE_CHECKING:
     from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver as AsyncPostgresSaverType  # type: ignore[import-untyped]
 
 logger = structlog.get_logger(__name__)
 
-# Global variables to hold the shared pool and checkpointer
+# Global variable to hold the checkpointer
 # Initialized once at application startup via FastAPI lifespan
-pool: AsyncConnectionPool | None = None
 checkpointer: AsyncPostgresSaverType | None = None
-
-# Cache SSL certificate file path (written from certificate content)
-_ssl_cert_file_path: str | None = None
-
-
-def _get_ssl_cert_file_path() -> str:
-    """
-    Write SSL certificate content to a temporary file and return the path.
-    
-    The certificate content is cached in a file that persists for the lifetime
-    of the process. This is necessary because psycopg3 requires a file path
-    for SSL certificate verification.
-    
-    Returns:
-        str: Path to the certificate file
-        
-    Raises:
-        ValueError: If DATABASE_SSL_ROOT_CERT is required but not provided
-    """
-    global _ssl_cert_file_path
-    
-    if _ssl_cert_file_path is not None and os.path.exists(_ssl_cert_file_path):
-        return _ssl_cert_file_path
-    
-    # Production requires SSL with certificate verification
-    if constants.ENVIRONMENT == "prd":
-        if not settings.DATABASE_SSL_ROOT_CERT:
-            raise ValueError(
-                "DATABASE_SSL_ROOT_CERT is required in production but not provided"
-            )
-        
-        # Create certs directory if it doesn't exist (for Docker: /app/certs)
-        cert_dir = Path("/app/certs") if os.path.exists("/app/certs") else Path(tempfile.gettempdir()) / "hit8_certs"
-        cert_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Write certificate content to file
-        cert_file = cert_dir / "prod-ca-2021.crt"
-        cert_file.write_text(settings.DATABASE_SSL_ROOT_CERT, encoding="utf-8")
-        
-        # Set restrictive permissions (read-only for owner)
-        os.chmod(cert_file, 0o600)
-        
-        _ssl_cert_file_path = str(cert_file)
-        logger.info(
-            "ssl_cert_file_written",
-            cert_file=_ssl_cert_file_path,
-            environment=constants.ENVIRONMENT,
-        )
-        
-        return _ssl_cert_file_path
-    
-    # Dev: No SSL certificate needed
-    raise ValueError("SSL certificate file path requested in dev environment (should not happen)")
-
-
-def _build_connection_string() -> str:
-    """
-    Build connection string with SSL parameters for production.
-    
-    Returns:
-        str: Connection string with SSL parameters if in production
-    """
-    conninfo = settings.DATABASE_CONNECTION_STRING
-    
-    
-    # Production requires SSL with certificate verification
-    if constants.ENVIRONMENT == "prd":
-        cert_file_path = _get_ssl_cert_file_path()
-        # Append SSL parameters to connection string
-        separator = "&" if "?" in conninfo else "?"
-        conninfo = f"{conninfo}{separator}sslmode=verify-full&sslrootcert={cert_file_path}"
-    
-    return conninfo
 
 
 async def initialize_checkpointer() -> None:
     """
-    Initialize the async connection pool and checkpointer.
+    Initialize the checkpointer using the shared connection pool.
     
     This should be called once at application startup via FastAPI lifespan.
-    The pool and checkpointer are stored in module-level global variables.
+    The checkpointer is stored in a module-level global variable.
+    The connection pool must be initialized first via initialize_pool().
     
     Raises:
-        Exception: If pool or checkpointer initialization fails
+        Exception: If checkpointer initialization fails
     """
-    global pool, checkpointer
+    global checkpointer
     
     if checkpointer is not None:
         logger.warning("checkpointer_already_initialized")
         return
     
-    conninfo = _build_connection_string()
+    # Ensure pool is initialized first
+    pool = get_pool()
     
     logger.info(
         "initializing_checkpointer",
-        environment=constants.ENVIRONMENT,
-        has_ssl=constants.ENVIRONMENT == "prd",
     )
     
-    # Create async connection pool with Supabase-compatible settings
-    # Set open=False to prevent automatic opening (deprecated behavior)
-    pool = AsyncConnectionPool(
-        conninfo=conninfo,
-        max_size=20,
-        open=False,  # Explicitly control when pool opens
-        kwargs={
-            "autocommit": True,  # Recommended for Supabase
-            "prepare_threshold": None,  # CRITICAL: Disable prepared statements
-        },
-    )
-    
-    # Open the pool explicitly (required for newer psycopg_pool versions)
-    await pool.open()
-    
-    # Initialize checkpointer with the pool
+    # Initialize checkpointer with the shared pool
     checkpointer = AsyncPostgresSaver(pool)
     
     logger.info(
         "checkpointer_initialized",
         checkpointer_type="AsyncPostgresSaver",
-        environment=constants.ENVIRONMENT,
     )
 
 
 async def cleanup_checkpointer() -> None:
     """
-    Cleanup the connection pool on application shutdown.
+    Cleanup the checkpointer on application shutdown.
+    
+    Note: The connection pool cleanup is handled separately in database module.
+    This only cleans up the checkpointer reference.
     
     This should be called in the FastAPI lifespan shutdown phase.
     """
-    global pool, checkpointer
+    global checkpointer
     
-    if pool is not None:
-        logger.info("closing_checkpointer_pool")
-        await pool.close()
-        pool = None
+    if checkpointer is not None:
+        logger.info("cleaning_up_checkpointer")
         checkpointer = None
-        logger.info("checkpointer_pool_closed")
+        logger.info("checkpointer_cleaned_up")
 
 
 def get_checkpointer() -> AsyncPostgresSaverType:

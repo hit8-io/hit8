@@ -24,6 +24,7 @@ export interface ExecutionState {
   values?: {
     messages?: Message[]
     message_count?: number
+    logs?: string[]
   }
   history?: unknown[]
   streamEvents?: StreamEvent[]

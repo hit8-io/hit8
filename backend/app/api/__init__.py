@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 import structlog
 from fastapi import FastAPI
 
+from app.api.database import cleanup_pool, initialize_pool
 from app.api.checkpointer import cleanup_checkpointer, initialize_checkpointer
 from app.api.middleware import setup_cors, setup_exception_handlers, setup_api_token_middleware
 from app.api.routes import api_router
@@ -19,13 +20,14 @@ logger = structlog.get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """FastAPI lifespan context manager for startup and shutdown."""
-    # Startup: Initialize checkpointer
+    # Startup: Initialize connection pool and checkpointer
     try:
+        await initialize_pool()
         await initialize_checkpointer()
-        logger.info("checkpointer_startup_complete")
+        logger.info("database_startup_complete")
     except Exception as e:
         logger.error(
-            "checkpointer_startup_failed",
+            "database_startup_failed",
             error=str(e),
             error_type=type(e).__name__,
         )
@@ -36,13 +38,14 @@ async def lifespan(app: FastAPI):
     # Application runs here
     yield
     
-    # Shutdown: Cleanup checkpointer
+    # Shutdown: Cleanup checkpointer and connection pool
     try:
         await cleanup_checkpointer()
-        logger.info("checkpointer_shutdown_complete")
+        await cleanup_pool()
+        logger.info("database_shutdown_complete")
     except Exception as e:
         logger.error(
-            "checkpointer_shutdown_failed",
+            "database_shutdown_failed",
             error=str(e),
             error_type=type(e).__name__,
         )

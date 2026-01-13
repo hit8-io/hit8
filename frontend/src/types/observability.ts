@@ -25,6 +25,7 @@ export interface BrightDataUsage {
   call_count: number
   total_duration_ms: number
   total_cost: number | null
+  total_bytes: number
 }
 
 export interface ExecutionMetrics {
@@ -65,6 +66,7 @@ export interface BrightDataAggregatedMetrics {
   total_calls: number
   total_duration_ms: number
   total_cost: number | null
+  total_bytes: number
 }
 
 export interface AggregatedMetrics {

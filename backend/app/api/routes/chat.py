@@ -22,6 +22,7 @@ from app.api.file_processing import process_uploaded_files
 from app.api.streaming.async_events import process_async_stream_events
 from app.api.streaming.finalize import extract_final_response
 from app.api.graph_manager import get_graph
+from app.api.user_threads import upsert_thread, generate_thread_title, thread_exists
 from app.config import settings
 from app.auth import verify_google_token
 from app.prompts.loader import get_system_prompt
@@ -90,6 +91,7 @@ async def stream_chat_events(
         # This ensures checkpointer operations work correctly (no event loop issues)
         # Use mutable dict to track accumulated content
         accumulated_content_ref: dict[str, str] = {"content": ""}
+        
         async for event_str in process_async_stream_events(
             graph, initial_state, config, thread_id, org, project, accumulated_content_ref
         ):
@@ -186,6 +188,53 @@ async def chat(
     # Use provided thread_id or generate one for state tracking
     session_id = thread_id if thread_id else str(uuid.uuid4())
     
+    # Generate title for new threads (threads that don't exist in database yet)
+    # Also generate title for existing threads that don't have a title yet
+    thread_title: str | None = None
+    try:
+        thread_already_exists = await thread_exists(session_id)
+        if not thread_already_exists:
+            # New thread - generate title from first message
+            thread_title = generate_thread_title(message)
+            logger.info(
+                "thread_title_generated_for_new_thread",
+                thread_id=session_id,
+                has_title=thread_title is not None,
+                title_preview=thread_title[:50] if thread_title else None,
+            )
+        else:
+            # Thread exists - check if it needs a title
+            # We'll let upsert_thread handle setting title if current title is NULL
+            thread_title = generate_thread_title(message)
+            logger.debug(
+                "thread_title_generated_for_existing_thread",
+                thread_id=session_id,
+                has_title=thread_title is not None,
+            )
+    except Exception as e:
+        # Log error but don't fail the request if title generation/check fails
+        logger.warning(
+            "thread_title_generation_failed",
+            thread_id=session_id,
+            error=str(e),
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
+    
+    # Track thread in database (non-blocking - errors are logged but don't fail the request)
+    # Uses upsert to handle both new threads (create) and existing threads (update last_accessed_at)
+    try:
+        await upsert_thread(session_id, user_id, title=thread_title)
+    except Exception as e:
+        # Log error but don't fail the request if thread tracking fails
+        logger.warning(
+            "thread_tracking_failed",
+            thread_id=session_id,
+            user_id=user_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+    
     # Validate user has access to the requested org/project
     if not validate_user_access(email, org, project):
         logger.warning(
@@ -203,12 +252,29 @@ async def chat(
     # Process uploaded files and append converted content to message
     document_content = await process_uploaded_files(files or [], session_id)
     if document_content:
+        # Truncate document content to prevent token limit issues
+        MAX_DOCUMENT_CONTENT_LENGTH = 50_000  # Max characters for uploaded documents
+        if len(document_content) > MAX_DOCUMENT_CONTENT_LENGTH:
+            truncated = document_content[:MAX_DOCUMENT_CONTENT_LENGTH]
+            # Try to cut at a section boundary
+            last_section = truncated.rfind('\n\n---\n\n')
+            if last_section > MAX_DOCUMENT_CONTENT_LENGTH * 0.8:
+                truncated = document_content[:last_section]
+            else:
+                # Cut at newline if possible
+                last_newline = truncated.rfind('\n\n')
+                if last_newline > MAX_DOCUMENT_CONTENT_LENGTH * 0.9:
+                    truncated = document_content[:last_newline]
+            document_content = truncated + f"\n\n[Document content truncated: showing first {len(truncated):,} of {len(document_content):,} characters]"
         message = f"{message}\n\n---\n\nUploaded Documents:\n{document_content}"
     
     # Initialize system prompt for the configured agent type
     system_prompt_obj = get_system_prompt(settings.FLOW)
     system_prompt = system_prompt_obj.render()
     
+    # Always include SystemMessage in initial_state
+    # LangGraph will handle merging with checkpointed state if thread exists
+    # The windowing in agent_node will ensure only recent messages are kept
     initial_state: AgentState = {
         "messages": [
             SystemMessage(content=system_prompt),

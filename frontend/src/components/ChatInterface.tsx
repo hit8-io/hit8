@@ -19,6 +19,8 @@ interface ChatInterfaceProps {
   readonly onExecutionStateUpdate?: (state: ExecutionState | null) => void
   readonly isExpanded?: boolean
   readonly onToggleExpand?: () => void
+  readonly org?: string
+  readonly project?: string
 }
 
 interface ErrorWithStatusCode extends Error {
@@ -31,7 +33,7 @@ interface ErrorWithType extends Error {
 
 const API_URL = import.meta.env.VITE_API_URL
 
-export default function ChatInterface({ token, threadId, onChatStateChange, onExecutionStateUpdate, isExpanded = false, onToggleExpand }: ChatInterfaceProps) {
+export default function ChatInterface({ token, threadId, onChatStateChange, onExecutionStateUpdate, isExpanded = false, onToggleExpand, org, project }: ChatInterfaceProps) {
   const navigate = useNavigate()
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -70,9 +72,9 @@ export default function ChatInterface({ token, threadId, onChatStateChange, onEx
     }
   }, [threadId, isValidUUID, navigate])
 
-  // Mandatory: Restore conversation history when threadId changes
+  // Mandatory: Restore conversation history when threadId, org, or project changes
   useEffect(() => {
-    if (!threadId || !isValidUUID || !API_URL) return
+    if (!threadId || !isValidUUID || !API_URL || !org || !project) return
     
     // 1. Clear current UI messages immediately
     setMessages([])
@@ -121,7 +123,7 @@ export default function ChatInterface({ token, threadId, onChatStateChange, onEx
         console.error('Failed to load thread:', err)
         // Start with empty state on error
       })
-  }, [threadId, token, isValidUUID])
+  }, [threadId, token, isValidUUID, org, project])
 
   // Sync execution state updates to parent (avoid calling during render) - must be called before any early returns
   // NOTE: visitedNodes updates are handled by handleStateUpdate, not this useEffect
@@ -239,9 +241,34 @@ export default function ChatInterface({ token, threadId, onChatStateChange, onEx
     setStreamEvents(prev => [...prev, data])
   }
 
-  const handleNodeStart = (data: { node?: string }): void => {
+  const handleNodeStart = (data: { node?: string; thread_id?: string }): void => {
     const nodeName = typeof data.node === 'string' ? data.node : null
+    const eventThreadId = typeof data.thread_id === 'string' ? data.thread_id : (threadId || '')
     if (nodeName) {
+      // Create node_start event and add to streamEvents
+      const nodeStartEvent: StreamEvent = {
+        type: 'node_start',
+        node: nodeName,
+        thread_id: eventThreadId,
+      }
+      
+      setStreamEvents(prev => {
+        const updatedEvents = [...prev, nodeStartEvent]
+        // Send state update with updated streamEvents
+        const updatedVisitedNodes = visitedNodes.includes(nodeName) 
+          ? visitedNodes 
+          : [...visitedNodes, nodeName]
+        
+        executionStateUpdateRef.current?.({
+          next: [nodeName],
+          values: { message_count: lastMessageCountRef.current },
+          history: updatedVisitedNodes.map(node => ({ node })),
+          streamEvents: updatedEvents,
+        })
+        
+        return updatedEvents
+      })
+      
       setActiveNode(nodeName)
       // Track node in visitedNodes immediately so it's included in state updates
       if (!visitedNodes.includes(nodeName)) {
@@ -252,33 +279,59 @@ export default function ChatInterface({ token, threadId, onChatStateChange, onEx
           visitedNodes: updatedVisitedNodes, 
           activeNode: nodeName 
         }
-        // Send immediate state update with the new node
-        executionStateUpdateRef.current?.({
-          next: [nodeName],
-          values: { message_count: lastMessageCountRef.current },
-          history: updatedVisitedNodes.map(node => ({ node })),
-        })
+      } else {
+        prevStateRef.current = { 
+          visitedNodes, 
+          activeNode: nodeName 
+        }
       }
     }
   }
 
-  const handleNodeEnd = (data: { node?: string }): void => {
+  const handleNodeEnd = (data: { node?: string; thread_id?: string }): void => {
     const nodeName = typeof data.node === 'string' ? data.node : null
+    const eventThreadId = typeof data.thread_id === 'string' ? data.thread_id : (threadId || '')
     setActiveNode(null)
-    if (nodeName && !visitedNodes.includes(nodeName)) {
-      const updatedVisitedNodes = [...visitedNodes, nodeName]
-      setVisitedNodes(updatedVisitedNodes)
-      // Update prevStateRef to ensure state updates include this node
-      prevStateRef.current = { 
-        visitedNodes: updatedVisitedNodes, 
-        activeNode: null 
+    
+    // Create node_end event and add to streamEvents
+    if (nodeName) {
+      const nodeEndEvent: StreamEvent = {
+        type: 'node_end',
+        node: nodeName,
+        thread_id: eventThreadId,
       }
-      // Send immediate state update with the new node
-      executionStateUpdateRef.current?.({
-        next: [],
-        values: { message_count: lastMessageCountRef.current },
-        history: updatedVisitedNodes.map(node => ({ node })),
+      
+      setStreamEvents(prev => {
+        const updatedEvents = [...prev, nodeEndEvent]
+        // Send state update with updated streamEvents
+        const updatedVisitedNodes = visitedNodes.includes(nodeName) 
+          ? visitedNodes 
+          : [...visitedNodes, nodeName]
+        
+        executionStateUpdateRef.current?.({
+          next: [],
+          values: { message_count: lastMessageCountRef.current },
+          history: updatedVisitedNodes.map(node => ({ node })),
+          streamEvents: updatedEvents,
+        })
+        
+        return updatedEvents
       })
+      
+      if (!visitedNodes.includes(nodeName)) {
+        const updatedVisitedNodes = [...visitedNodes, nodeName]
+        setVisitedNodes(updatedVisitedNodes)
+        // Update prevStateRef to ensure state updates include this node
+        prevStateRef.current = { 
+          visitedNodes: updatedVisitedNodes, 
+          activeNode: null 
+        }
+      } else {
+        prevStateRef.current = { 
+          visitedNodes, 
+          activeNode: null 
+        }
+      }
     }
   }
 

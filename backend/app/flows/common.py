@@ -8,6 +8,7 @@ import threading
 from typing import Any
 
 import structlog
+from google.auth import credentials
 from google.oauth2 import service_account
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langfuse import Langfuse
@@ -18,21 +19,70 @@ from app.config import settings
 
 logger = structlog.get_logger(__name__)
 
-# Agent model configuration constants
-AGENT_MODEL_PROVIDER = "vertexai"
 OAUTH_SCOPE_CLOUD_PLATFORM = "https://www.googleapis.com/auth/cloud-platform"
 
-# Global Langfuse client (shared across flows)
+# Global singletons
 _langfuse_client: Langfuse | None = None
 _langfuse_lock = threading.Lock()
+_agent_model: ChatGoogleGenerativeAI | None = None
+_agent_model_lock = threading.Lock()
+_tool_model: ChatGoogleGenerativeAI | None = None
+_tool_model_lock = threading.Lock()
+_credentials: credentials.Credentials | None = None
+_project_id: str | None = None
+_credentials_lock = threading.Lock()
+
+
+def _get_vertex_credentials() -> tuple[credentials.Credentials, str]:
+    """Get or create Vertex AI credentials and project ID (cached)."""
+    global _credentials, _project_id
+    if _credentials is None or _project_id is None:
+        with _credentials_lock:
+            if _credentials is None or _project_id is None:
+                service_account_info = json.loads(settings.VERTEX_SERVICE_ACCOUNT)
+                _project_id = service_account_info["project_id"]
+                _credentials = service_account.Credentials.from_service_account_info(
+                    service_account_info,
+                    scopes=[OAUTH_SCOPE_CLOUD_PLATFORM],
+                )
+    return _credentials, _project_id
+
+
+def _create_model(
+    model_name: str,
+    thinking_level: str | None,
+    temperature: float | None,
+    log_name: str,
+) -> ChatGoogleGenerativeAI:
+    """Create a ChatGoogleGenerativeAI model instance."""
+    creds, project_id = _get_vertex_credentials()
+    
+    model_kwargs: dict[str, Any] = {"provider": "vertexai"}
+    if thinking_level is not None:
+        model_kwargs["thinking_level"] = thinking_level
+    elif temperature is not None:
+        model_kwargs["temperature"] = temperature
+    
+    model = ChatGoogleGenerativeAI(
+        model=model_name,
+        model_kwargs=model_kwargs,
+        project=project_id,
+        location=settings.VERTEX_AI_LOCATION,
+        credentials=creds,
+    )
+    
+    log_data = {"model": model_name}
+    if thinking_level is not None:
+        log_data["thinking_level"] = thinking_level
+    elif temperature is not None:
+        log_data["temperature"] = temperature
+    
+    logger.info(f"{log_name}_initialized", **log_data)
+    return model
 
 
 def get_langfuse_client() -> Langfuse | None:
-    """Get or create Langfuse client (lazy initialization, shared across flows).
-    
-    Returns:
-        Langfuse client instance or None if disabled
-    """
+    """Get or create Langfuse client (lazy initialization, shared across flows)."""
     global _langfuse_client
     if not settings.LANGFUSE_ENABLED:
         return None
@@ -50,31 +100,15 @@ def get_langfuse_client() -> Langfuse | None:
                     env=settings.environment,
                     base_url=settings.LANGFUSE_BASE_URL,
                 )
-    
     return _langfuse_client
 
 
 def get_langfuse_handler() -> CallbackHandler | None:
-    """Get Langfuse callback handler if enabled, None otherwise.
-    
-    Returns:
-        CallbackHandler instance or None if disabled
-    """
+    """Get Langfuse callback handler if enabled, None otherwise."""
     if not settings.LANGFUSE_ENABLED:
         return None
-    
-    # Ensure Langfuse client is initialized before creating handler
-    get_langfuse_client()
-    
-    # CallbackHandler uses the singleton client (now lazily initialized)
-    handler = CallbackHandler()
-    logger.debug("langfuse_callback_handler_created")
-    return handler
-
-
-# Cache agent model at module level (shared across flows)
-_agent_model: ChatGoogleGenerativeAI | None = None
-_agent_model_lock = threading.Lock()
+    get_langfuse_client()  # Ensure client is initialized
+    return CallbackHandler()
 
 
 def get_agent_model(
@@ -85,66 +119,23 @@ def get_agent_model(
     Get or create cached Vertex AI model for agent (shared across flows).
     
     Args:
-        thinking_level: Optional thinking level override. If None, uses LLM_THINKING_LEVEL from constants.
-            If set, thinking_level is used. Otherwise, temperature is used if set.
-        temperature: Optional temperature override. If None, uses LLM_TEMPERATURE from constants.
+        thinking_level: Optional override. If None, uses LLM_THINKING_LEVEL from constants.
+        temperature: Optional override. If None, uses LLM_TEMPERATURE from constants.
             Only used if thinking_level is not set.
-    
-    Returns:
-        ChatGoogleGenerativeAI model instance
     """
     global _agent_model
-    
     if _agent_model is None:
         with _agent_model_lock:
             if _agent_model is None:
-                service_account_info = json.loads(settings.VERTEX_SERVICE_ACCOUNT)
-                project_id = service_account_info["project_id"]
-                
-                creds = service_account.Credentials.from_service_account_info(
-                    service_account_info,
-                    scopes=[OAUTH_SCOPE_CLOUD_PLATFORM]
-                )
-                
-                model_kwargs: dict[str, Any] = {
-                    "provider": AGENT_MODEL_PROVIDER,
-                }
-                
-                model_name = settings.LLM_MODEL_NAME
-                
-                # Use thinking_level if set, otherwise use temperature if set
                 final_thinking_level = thinking_level or constants.CONSTANTS.get("LLM_THINKING_LEVEL")
                 final_temperature = temperature or constants.CONSTANTS.get("LLM_TEMPERATURE")
-                
-                if final_thinking_level is not None:
-                    model_kwargs["thinking_level"] = final_thinking_level
-                elif final_temperature is not None:
-                    model_kwargs["temperature"] = final_temperature
-                
-                _agent_model = ChatGoogleGenerativeAI(
-                    model=model_name,
-                    model_kwargs=model_kwargs,
-                    project=project_id,
-                    location=settings.VERTEX_AI_LOCATION,
-                    credentials=creds,
+                _agent_model = _create_model(
+                    model_name=settings.LLM_MODEL_NAME,
+                    thinking_level=final_thinking_level,
+                    temperature=final_temperature,
+                    log_name="agent_model",
                 )
-                
-                log_data = {
-                    "model": model_name,
-                }
-                if final_thinking_level is not None:
-                    log_data["thinking_level"] = final_thinking_level
-                elif final_temperature is not None:
-                    log_data["temperature"] = final_temperature
-                
-                logger.info("agent_model_initialized", **log_data)
-    
     return _agent_model
-
-
-# Cache tool model at module level
-_tool_model: ChatGoogleGenerativeAI | None = None
-_tool_model_lock = threading.Lock()
 
 
 def get_tool_model(
@@ -155,59 +146,22 @@ def get_tool_model(
     Get or create cached Vertex AI model for tool operations.
     
     Args:
-        thinking_level: Optional thinking level override. If None, uses TOOL_LLM_THINKING_LEVEL from constants.
-            If set, thinking_level is used. Otherwise, temperature is used if set.
-        temperature: Optional temperature override. If None, uses TOOL_LLM_TEMPERATURE from constants.
+        thinking_level: Optional override. If None, uses TOOL_LLM_THINKING_LEVEL from constants.
+        temperature: Optional override. If None, uses TOOL_LLM_TEMPERATURE from constants.
             Only used if thinking_level is not set.
-    
-    Returns:
-        ChatGoogleGenerativeAI model instance configured for tool operations
     """
     global _tool_model
-    
     if _tool_model is None:
         with _tool_model_lock:
             if _tool_model is None:
-                service_account_info = json.loads(settings.VERTEX_SERVICE_ACCOUNT)
-                project_id = service_account_info["project_id"]
-                
-                creds = service_account.Credentials.from_service_account_info(
-                    service_account_info,
-                    scopes=[OAUTH_SCOPE_CLOUD_PLATFORM]
-                )
-                
-                model_kwargs: dict[str, Any] = {
-                    "provider": AGENT_MODEL_PROVIDER,
-                }
-                
                 model_name = constants.CONSTANTS.get("TOOL_LLM_MODEL") or settings.LLM_MODEL_NAME
-                
-                # Use thinking_level if set, otherwise use temperature if set
                 final_thinking_level = thinking_level or constants.CONSTANTS.get("TOOL_LLM_THINKING_LEVEL")
                 final_temperature = temperature or constants.CONSTANTS.get("TOOL_LLM_TEMPERATURE")
-                
-                if final_thinking_level is not None:
-                    model_kwargs["thinking_level"] = final_thinking_level
-                elif final_temperature is not None:
-                    model_kwargs["temperature"] = final_temperature
-                
-                _tool_model = ChatGoogleGenerativeAI(
-                    model=model_name,
-                    model_kwargs=model_kwargs,
-                    project=project_id,
-                    location=settings.VERTEX_AI_LOCATION,
-                    credentials=creds,
+                _tool_model = _create_model(
+                    model_name=model_name,
+                    thinking_level=final_thinking_level,
+                    temperature=final_temperature,
+                    log_name="tool_model",
                 )
-                
-                log_data = {
-                    "model": model_name,
-                }
-                if final_thinking_level is not None:
-                    log_data["thinking_level"] = final_thinking_level
-                elif final_temperature is not None:
-                    log_data["temperature"] = final_temperature
-                
-                logger.info("tool_model_initialized", **log_data)
-    
     return _tool_model
 

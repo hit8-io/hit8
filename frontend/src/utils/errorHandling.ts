@@ -43,6 +43,41 @@ export function getUserFriendlyError(error: unknown): ApiError {
       }
     }
 
+    // Token limit errors
+    if (message.includes('exceeds the maximum number of tokens') || 
+        (message.includes('token count') && message.includes('exceeds'))) {
+      // Try to extract the inner error message if it's nested in JSON
+      // Pattern: "400 INVALID_ARGUMENT. {'error': {'code': 400, 'message': 'The input token count (1982743) exceeds...', 'status': 'INVALID_ARGUMENT'}}"
+      let innerMessage = message
+      
+      // Try to extract from JSON-like structure
+      const jsonMessageMatch = message.match(/'message':\s*'([^']+)'/)
+      if (jsonMessageMatch) {
+        innerMessage = jsonMessageMatch[1]
+      }
+      
+      // Try to extract the numbers for a more helpful message
+      // Pattern: "The input token count (1982743) exceeds the maximum number of tokens allowed (1048576)"
+      // More flexible regex that handles both "input token count" and just "token count"
+      const tokenMatch = innerMessage.match(/(?:input\s+)?token count \((\d+)\) exceeds.*?\((\d+)\)/) ||
+                        message.match(/(?:input\s+)?token count \((\d+)\) exceeds.*?\((\d+)\)/)
+      
+      if (tokenMatch) {
+        const inputTokens = parseInt(tokenMatch[1], 10)
+        const maxTokens = parseInt(tokenMatch[2], 10)
+        const inputTokensFormatted = inputTokens.toLocaleString()
+        const maxTokensFormatted = maxTokens.toLocaleString()
+        return {
+          message: `The conversation is too long (${inputTokensFormatted} tokens). The maximum allowed is ${maxTokensFormatted} tokens. Please start a new chat or reduce the amount of context.`,
+          isUserFriendly: true,
+        }
+      }
+      return {
+        message: 'The conversation is too long and exceeds the token limit. Please start a new chat or reduce the amount of context.',
+        isUserFriendly: true,
+      }
+    }
+
     // HTTP errors
     if (message.includes('HTTP error')) {
       const statusMatch = message.match(/status: (\d+)/)

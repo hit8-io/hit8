@@ -41,3 +41,6 @@ NODE_QUERY_KNOWLEDGE_GRAPH = "node_query_knowledge_graph"
 NODE_GET_PROCEDURE = "node_get_procedure"
 NODE_GET_REGELGEVING = "node_get_regelgeving"
 
+# Report generation batching
+MAX_PARALLEL_WORKERS = 5  # Maximum number of parallel analyst workers for report generation
+

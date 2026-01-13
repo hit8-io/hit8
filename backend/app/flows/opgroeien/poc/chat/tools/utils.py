@@ -8,15 +8,10 @@ __all__ = ["_vector_search_raw_sql", "_get_procedure_raw_sql", "_get_regelgeving
 
 import json
 import math
-import os
-import tempfile
-import threading
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
-import psycopg
-from psycopg import sql as psql
 import structlog
+from psycopg import sql as psql
 from google.oauth2 import service_account
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
@@ -35,16 +30,12 @@ from app.flows.opgroeien.poc.constants import (
     VECTOR_SEARCH_DEFAULT_K,
 )
 from app.config import settings
-from app import constants
+from app.api.database import get_sync_connection
 
 logger = structlog.get_logger(__name__)
 
 # Cache embedding model
 _embedding_model: GoogleGenerativeAIEmbeddings | None = None
-
-# Cache SSL certificate file path (written from certificate content)
-_ssl_cert_file_path: str | None = None
-_ssl_cert_lock = threading.Lock()
 
 
 def _normalize_vector(vector: list[float]) -> list[float]:
@@ -119,57 +110,11 @@ def _parse_metadata(metadata: str | dict[str, Any] | None) -> dict[str, Any]:
     return metadata
 
 
-def _get_ssl_cert_file_path() -> str:
-    """
-    Write SSL certificate content to a temporary file and return the path.
-    
-    The certificate content is cached in a file that persists for the lifetime
-    of the process. This is necessary because psycopg3 requires a file path
-    for SSL certificate verification.
-    
-    Returns:
-        str: Path to the certificate file
-    """
-    global _ssl_cert_file_path
-    
-    if _ssl_cert_file_path is not None and os.path.exists(_ssl_cert_file_path):
-        return _ssl_cert_file_path
-    
-    with _ssl_cert_lock:
-        # Double-check after acquiring lock
-        if _ssl_cert_file_path is not None and os.path.exists(_ssl_cert_file_path):
-            return _ssl_cert_file_path
-        
-        # Safety check: certificate content must be provided
-        if not settings.DATABASE_SSL_ROOT_CERT:
-            raise ValueError(
-                "DATABASE_SSL_ROOT_CERT is required in production but not provided"
-            )
-        
-        # Create certs directory if it doesn't exist (for Docker: /app/certs)
-        cert_dir = Path("/app/certs") if os.path.exists("/app/certs") else Path(tempfile.gettempdir()) / "hit8_certs"
-        cert_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Write certificate content to file
-        cert_file = cert_dir / "prod-ca-2021.crt"
-        cert_file.write_text(settings.DATABASE_SSL_ROOT_CERT, encoding="utf-8")
-        
-        # Set restrictive permissions (read-only for owner)
-        os.chmod(cert_file, 0o600)
-        
-        _ssl_cert_file_path = str(cert_file)
-        logger.info(
-            "ssl_cert_file_written",
-            cert_file=_ssl_cert_file_path,
-            environment=constants.ENVIRONMENT,
-        )
-        
-        return _ssl_cert_file_path
-
-
 def _get_db_connection():
     """
     Get database connection with SSL support for production Supabase.
+    
+    Uses the centralized database connection utility from app.api.database.
     
     - Dev: No SSL (plain connection)
     - Production: SSL with certificate verification (required)
@@ -177,27 +122,7 @@ def _get_db_connection():
     Returns:
         psycopg.Connection: Database connection
     """
-    conninfo = settings.DATABASE_CONNECTION_STRING
-    
-    # Production requires SSL with certificate verification
-    if constants.ENVIRONMENT == "prd":
-        if not settings.DATABASE_SSL_ROOT_CERT:
-            raise ValueError(
-                "DATABASE_SSL_ROOT_CERT is required in production but not provided"
-            )
-        
-        # Write certificate content to file and get path
-        cert_file_path = _get_ssl_cert_file_path()
-        
-        # Connect with SSL verification
-        return psycopg.connect(
-            conninfo,
-            sslmode="verify-full",
-            sslrootcert=cert_file_path,
-        )
-    
-    # Dev: No SSL (local database)
-    return psycopg.connect(conninfo)
+    return get_sync_connection()
 
 
 def _vector_search_raw_sql(  # noqa: PLR0911
@@ -476,6 +401,16 @@ def create_tool_node(tool_name: str, tool_func: Callable[..., Any]):
                     tool_name=tool_name,
                 )
             
+            # Extract callbacks from config for Langfuse logging
+            callbacks = None
+            if config:
+                # Try accessing as dict first
+                if isinstance(config, dict):
+                    callbacks = config.get("callbacks")
+                # Try accessing as object attribute
+                elif hasattr(config, "callbacks"):
+                    callbacks = config.callbacks
+            
             last_message = state["messages"][-1]
             
             # Find and execute tool calls for this specific tool
@@ -527,6 +462,10 @@ def create_tool_node(tool_name: str, tool_func: Callable[..., Any]):
                     # Add thread_id to tools that need it (e.g., generate_docx, generate_xlsx, extract_entities)
                     if tool_name in ["generate_docx", "generate_xlsx", "extract_entities"] and thread_id:
                         tool_args["thread_id"] = thread_id
+                    
+                    # Add callbacks to tools that make LLM calls (e.g., extract_entities)
+                    if tool_name == "extract_entities" and callbacks:
+                        tool_args["callbacks"] = callbacks
                     
                     # Execute the tool with the provided arguments
                     # Handle both callable functions and StructuredTool objects

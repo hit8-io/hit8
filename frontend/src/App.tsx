@@ -6,11 +6,13 @@ import GraphView from './components/GraphView'
 import StatusWindow from './components/StatusWindow'
 import ObservabilityWindow from './components/ObservabilityWindow'
 import StatusBar from './components/StatusBar'
+import ReportInterface from './components/ReportInterface'
 import { Sidebar } from './components/Sidebar'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { Card, CardDescription, CardHeader, CardTitle } from './components/ui/card'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import { useAuth } from './hooks/useAuth'
+import { useUserConfig } from './hooks/useUserConfig'
 import type { ExecutionState } from './types/execution'
 
 const API_URL = import.meta.env.VITE_API_URL
@@ -34,6 +36,11 @@ function AppContent({ threadId }: { threadId: string }) {
   const [isChatActive, setIsChatActive] = useState(false)
   const [executionState, setExecutionState] = useState<ExecutionState | null>(null)
   const [isChatExpanded, setIsChatExpanded] = useLocalStorage<boolean>('chatExpanded', false)
+  const [activeTab, setActiveTab] = useState<'chat' | 'reports'>('chat')
+  
+  const { selection } = useUserConfig(idToken)
+  const org = selection?.org
+  const project = selection?.project
 
   const handleChatStateChange = (active: boolean, _threadId?: string | null) => {
     setIsChatActive(active)
@@ -116,56 +123,66 @@ function AppContent({ threadId }: { threadId: string }) {
         <Sidebar 
           user={user} 
           onLogout={logout}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
         />
 
         {/* Main Content - Adjusted for sidebar (always minimal width) */}
         <div className="flex-1 min-h-0 ml-16 flex flex-col overflow-hidden">
           {/* Grid Layout */}
-          <div className="flex-1 min-h-0 grid grid-cols-12 grid-rows-[1fr_1fr_1fr] gap-4 p-4 overflow-hidden transition-all duration-300 ease-in-out">
-            {/* Chat Interface - Left Column */}
-            <div className={`${isChatExpanded ? 'col-span-12' : 'col-span-12 lg:col-span-7'} row-span-3 flex flex-col min-h-0 overflow-hidden transition-all duration-300 ease-in-out`}>
-            <ChatInterface 
-              token={idToken}
-              threadId={threadId}
-              onChatStateChange={handleChatStateChange}
-              onExecutionStateUpdate={handleExecutionStateUpdate}
-              isExpanded={isChatExpanded}
-              onToggleExpand={toggleChatExpanded}
-            />
+          <div className="flex-1 min-h-0 p-4 overflow-hidden transition-all duration-300 ease-in-out">
+            <div className="h-full grid grid-cols-12 gap-4">
+              {/* Interface - Left Column */}
+              <div className={`${isChatExpanded ? 'col-span-12' : 'col-span-12 lg:col-span-7'} h-full flex flex-col min-h-0 overflow-hidden transition-all duration-300 ease-in-out`}>
+                {activeTab === 'chat' ? (
+                  <ChatInterface 
+                    token={idToken}
+                    threadId={threadId}
+                    org={org}
+                    project={project}
+                    onChatStateChange={handleChatStateChange}
+                    onExecutionStateUpdate={handleExecutionStateUpdate}
+                    isExpanded={isChatExpanded}
+                    onToggleExpand={toggleChatExpanded}
+                  />
+                ) : (
+                  <ReportInterface 
+                    token={idToken} 
+                    org={org}
+                    project={project}
+                    onExecutionStateUpdate={handleExecutionStateUpdate}
+                  />
+                )}
+              </div>
+
+              {/* Graph/Status/Observability - Right Column */}
+              {!isChatExpanded && (
+                <div className="col-span-12 lg:col-span-5 flex flex-col min-h-0 space-y-4 overflow-hidden transition-all duration-300 ease-in-out">
+                  <div className="flex-1 min-h-0">
+                    <GraphView
+                      apiUrl={API_URL}
+                      token={idToken}
+                      executionState={executionState}
+                      flow={activeTab === 'chat' ? 'chat' : 'report'}
+                    />
+                  </div>
+                  <div className="flex-1 min-h-0">
+                    <StatusWindow
+                      executionState={executionState}
+                      isLoading={isChatActive}
+                    />
+                  </div>
+                  <div className="flex-1 min-h-0">
+                    <ObservabilityWindow
+                      apiUrl={API_URL}
+                      token={idToken}
+                      executionState={executionState}
+                      isLoading={isChatActive}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
-
-            {/* Graph View - Top Right */}
-            {!isChatExpanded && (
-              <div className="col-span-12 lg:col-span-5 row-span-1 flex flex-col min-h-0 overflow-hidden transition-all duration-300 ease-in-out">
-                <GraphView
-                  apiUrl={API_URL}
-                  token={idToken}
-                  executionState={executionState}
-                />
-              </div>
-            )}
-
-            {/* Status Window - Middle Right */}
-            {!isChatExpanded && (
-              <div className="col-span-12 lg:col-span-5 row-span-1 flex flex-col min-h-0 overflow-hidden transition-all duration-300 ease-in-out">
-                <StatusWindow
-                  executionState={executionState}
-                  isLoading={isChatActive}
-                />
-              </div>
-            )}
-
-            {/* Observability Window - Bottom Right */}
-            {!isChatExpanded && (
-              <div className="col-span-12 lg:col-span-5 row-span-1 flex flex-col min-h-0 overflow-hidden transition-all duration-300 ease-in-out">
-                <ObservabilityWindow
-                  apiUrl={API_URL}
-                  token={idToken}
-                  executionState={executionState}
-                  isLoading={isChatActive}
-                />
-              </div>
-            )}
           </div>
 
           {/* Status Bar - Bottom Full Width */}

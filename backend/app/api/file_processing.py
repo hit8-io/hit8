@@ -3,18 +3,52 @@ File processing utilities for document uploads.
 """
 from __future__ import annotations
 
+import io
 import structlog
 from fastapi import UploadFile, HTTPException, status
 from pathlib import Path
 
-from app.api.document_utils import convert_to_markdown
+from markitdown import MarkItDown
+
 from app.api.storage import upload_to_gcs
 
 logger = structlog.get_logger(__name__)
 
+# Initialize MarkItDown instance
+md = MarkItDown()
+
 # Allowed file extensions
 ALLOWED_EXTENSIONS = {'.docx', '.xlsx', '.pptx', '.pdf', '.html', '.txt', '.csv', '.json', '.xml', '.epub'}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+
+
+def convert_to_markdown(file_content: bytes, file_name: str | None = None) -> str:
+    """Convert file content to markdown using MarkItDown.
+    
+    Args:
+        file_content: File content as bytes
+        file_name: Optional filename for MarkItDown
+        
+    Returns:
+        Markdown string content
+        
+    Raises:
+        Exception: If conversion fails
+    """
+    try:
+        # MarkItDown expects BinaryIO (file-like object), not raw bytes
+        # Wrap bytes in BytesIO to create a file-like object
+        file_like = io.BytesIO(file_content)
+        result = md.convert(file_like, file_name=file_name)
+        return result.text_content  # Returns markdown string
+    except Exception as e:
+        logger.error(
+            "document_conversion_failed",
+            file_name=file_name,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
 
 
 def validate_file(file: UploadFile) -> None:

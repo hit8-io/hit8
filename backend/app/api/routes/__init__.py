@@ -5,7 +5,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.routes import chat, config, graph, health, metadata, usage, version
+from app.api.routes import chat, config, graph, health, history, metadata, version, report
+from app.api import observability
 
 # Create main API router
 api_router = APIRouter()
@@ -19,5 +20,7 @@ api_router.include_router(config.router, prefix="/config", tags=["config"])
 api_router.include_router(metadata.router, tags=["metadata"])
 api_router.include_router(graph.router, prefix="/graph", tags=["graph"])
 api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
-api_router.include_router(usage.router, prefix="/usage", tags=["usage"])
+api_router.include_router(history.router, prefix="/history", tags=["history"])
+api_router.include_router(observability.router, prefix="/usage", tags=["usage"])
+api_router.include_router(report.router) # Prefix handling is done in report.py (or we can move it here)
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app'
-import { getAuth, User as FirebaseUser, signOut, onAuthStateChanged } from 'firebase/auth'
+import { getAuth, User as FirebaseUser, signOut, onAuthStateChanged, getRedirectResult } from 'firebase/auth'
 import { logError } from '../utils/errorHandling'
 import { setSentryUser } from '../utils/sentry'
 import type { User } from '../types'
@@ -34,11 +34,69 @@ export function useAuth(): UseAuthResult {
       return
     }
 
+    // Clear any stale Firebase auth state from sessionStorage BEFORE initializing Firebase
+    // This prevents "missing initial state" errors from stale redirect attempts
+    try {
+      if (typeof window !== 'undefined' && window.sessionStorage) {
+        const keys = Object.keys(sessionStorage)
+        keys.forEach((key) => {
+          if (
+            key.startsWith('firebase:authUser:') ||
+            key.startsWith('firebase:redirectUser:') ||
+            key.includes('firebase:authState')
+          ) {
+            try {
+              sessionStorage.removeItem(key)
+            } catch {
+              // Ignore errors when clearing storage
+            }
+          }
+        })
+      }
+    } catch {
+      // Ignore errors when accessing sessionStorage
+      // This can happen in storage-partitioned environments
+    }
+
     const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0]
     setFirebaseApp(app)
 
     const auth = getAuth(app)
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: FirebaseUser | null) => {
+    
+    // Handle any pending redirect results on initialization
+    // This prevents "missing initial state" errors from stale redirect attempts
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result) {
+          // Redirect result handled successfully - auth state will update via onAuthStateChanged
+          // No need to do anything here as the state change handler will process it
+        }
+      })
+      .catch((error: unknown) => {
+        const err = error as { code?: string; message?: string }
+        // Handle specific error codes related to redirect state
+        if (
+          err.code === 'auth/missing-or-invalid-nonce' ||
+          err.code === 'auth/argument-error' ||
+          err.message?.includes('missing initial state') ||
+          err.message?.includes('Unable to process request')
+        ) {
+          // This is expected when there's no redirect result or stale state
+          // Log the error for debugging but don't treat it as fatal
+          logError('useAuth: Redirect result error (non-fatal)', {
+            code: err.code,
+            message: err.message,
+          })
+        } else {
+          // Other errors should be logged
+          logError('useAuth: Error getting redirect result', error)
+        }
+      })
+    
+    // Wrap onAuthStateChanged in error handling to catch and suppress Firebase internal errors
+    const unsubscribe = onAuthStateChanged(
+      auth,
+      async (firebaseUser: FirebaseUser | null) => {
       try {
         if (firebaseUser) {
           if (!firebaseUser.email) {
@@ -90,7 +148,31 @@ export function useAuth(): UseAuthResult {
       } finally {
         setLoading(false)
       }
-    })
+      },
+      (error: unknown) => {
+        // Error callback for onAuthStateChanged
+        // This catches Firebase internal errors like "missing initial state"
+        const err = error as { code?: string; message?: string }
+        if (
+          err.code === 'auth/missing-or-invalid-nonce' ||
+          err.code === 'auth/argument-error' ||
+          err.message?.includes('missing initial state') ||
+          err.message?.includes('Unable to process request')
+        ) {
+          // Suppress this error - it's non-fatal and happens when redirect state is missing
+          // The auth state will still be properly initialized
+          logError('useAuth: Auth state change error (non-fatal, suppressed)', {
+            code: err.code,
+            message: err.message,
+          })
+        } else {
+          // Log other auth errors
+          logError('useAuth: Auth state change error', error)
+        }
+        // Don't set loading to false here - let the main handler do it
+        // This ensures the app doesn't get stuck in loading state
+      }
+    )
 
     return unsubscribe
   }, [firebaseConfig, isConfigValid])
