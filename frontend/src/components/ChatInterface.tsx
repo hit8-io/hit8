@@ -188,12 +188,28 @@ export default function ChatInterface({ token, threadId, onChatStateChange, onEx
     }
   }
 
-  const handleGraphStart = (): void => {
+  const handleGraphStart = (data: { thread_id?: string }): void => {
     setStreamEvents([])
     setVisitedNodes([])
     setActiveNode(null)
-    // Reset execution state when new execution starts
-    executionStateUpdateRef.current?.(null)
+    
+    // Create graph_start event with thread_id
+    const eventThreadId = typeof data.thread_id === 'string' ? data.thread_id : (threadId || '')
+    const graphStartEvent: StreamEvent = {
+      type: 'graph_start',
+      thread_id: eventThreadId,
+    }
+    
+    // Add graph_start event to streamEvents immediately so thread_id is available for metrics polling
+    setStreamEvents([graphStartEvent])
+    
+    // Update execution state with graph_start event so ObservabilityWindow can extract thread_id
+    executionStateUpdateRef.current?.({
+      next: [],
+      values: {},
+      history: [],
+      streamEvents: [graphStartEvent],
+    })
   }
 
   const handleContentChunk = (data: { content?: string }, accumulatedContent: string): string => {
@@ -234,11 +250,31 @@ export default function ChatInterface({ token, threadId, onChatStateChange, onEx
   }
 
   const handleLlmEvent = (data: StreamEvent & { type: 'llm_start' | 'llm_end' }): void => {
-    setStreamEvents(prev => [...prev, data])
+    setStreamEvents(prev => {
+      const updatedEvents = [...prev, data]
+      // Update execution state with updated streamEvents so ObservabilityWindow can access thread_id
+      executionStateUpdateRef.current?.({
+        next: activeNode ? [activeNode] : [],
+        values: { message_count: lastMessageCountRef.current },
+        history: visitedNodes.map(node => ({ node })),
+        streamEvents: updatedEvents,
+      })
+      return updatedEvents
+    })
   }
 
   const handleToolEvent = (data: StreamEvent & { type: 'tool_start' | 'tool_end' }): void => {
-    setStreamEvents(prev => [...prev, data])
+    setStreamEvents(prev => {
+      const updatedEvents = [...prev, data]
+      // Update execution state with updated streamEvents so ObservabilityWindow can access thread_id
+      executionStateUpdateRef.current?.({
+        next: activeNode ? [activeNode] : [],
+        values: { message_count: lastMessageCountRef.current },
+        history: visitedNodes.map(node => ({ node })),
+        streamEvents: updatedEvents,
+      })
+      return updatedEvents
+    })
   }
 
   const handleNodeStart = (data: { node?: string; thread_id?: string }): void => {
@@ -335,7 +371,7 @@ export default function ChatInterface({ token, threadId, onChatStateChange, onEx
     }
   }
 
-  const handleGraphEnd = (data: { response?: string }, accumulatedContent: string): string => {
+  const handleGraphEnd = (data: { response?: string; thread_id?: string }, accumulatedContent: string): string => {
     const newFinalResponse = (typeof data.response === 'string' ? data.response : '') || accumulatedContent || ''
     // Use prevStateRef to get the most up-to-date visited nodes (not stale state)
     const currentVisitedNodes = prevStateRef.current.visitedNodes
@@ -346,12 +382,27 @@ export default function ChatInterface({ token, threadId, onChatStateChange, onEx
     setActiveNode(null)
     setStreamingContent('')
     
-    // Send final state update immediately (don't wait for timeout) to preserve highlighting
-    // Preserve last message count to avoid StatusWindow showing "messages: X -> 0"
-    executionStateUpdateRef.current?.({
-      next: [],
-      values: { message_count: lastMessageCountRef.current },
-      history: finalVisitedNodes.map(node => ({ node })),
+    // Create graph_end event with thread_id
+    const eventThreadId = typeof data.thread_id === 'string' ? data.thread_id : (threadId || '')
+    const graphEndEvent: StreamEvent = {
+      type: 'graph_end',
+      thread_id: eventThreadId,
+      response: newFinalResponse,
+    }
+    
+    // Add graph_end event to streamEvents before clearing
+    setStreamEvents(prev => {
+      const updatedEvents = [...prev, graphEndEvent]
+      // Send final state update immediately (don't wait for timeout) to preserve highlighting
+      // Preserve last message count to avoid StatusWindow showing "messages: X -> 0"
+      // Include streamEvents so ObservabilityWindow can still access thread_id after execution completes
+      executionStateUpdateRef.current?.({
+        next: [],
+        values: { message_count: lastMessageCountRef.current },
+        history: finalVisitedNodes.map(node => ({ node })),
+        streamEvents: updatedEvents,
+      })
+      return updatedEvents
     })
     
     setTimeout(() => {
@@ -396,7 +447,7 @@ export default function ChatInterface({ token, threadId, onChatStateChange, onEx
   ): { accumulatedContent: string; finalResponse: string; graphEndReceived: boolean; hasError: boolean } => {
     switch (data.type) {
       case 'graph_start':
-        handleGraphStart()
+        handleGraphStart(data)
         return { accumulatedContent, finalResponse, graphEndReceived, hasError }
       case 'content_chunk':
         return { accumulatedContent: handleContentChunk(data, accumulatedContent), finalResponse, graphEndReceived, hasError }
