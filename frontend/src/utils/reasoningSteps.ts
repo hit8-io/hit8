@@ -1,5 +1,5 @@
-import type { ExecutionState, StreamEvent, Message, ToolCall } from '../types/execution'
-import { extractToolCalls, extractToolResults, extractTokenCount } from './formatStatus'
+import type { ExecutionState, StreamEvent, Message } from '../types/execution'
+import { extractToolCalls, extractTokenCount } from './formatStatus'
 
 export type StepStatus = 'thinking' | 'completed' | 'error'
 export type StepType = 'thinking' | 'tool_call' | 'llm_call' | 'node_execution' | 'state_change'
