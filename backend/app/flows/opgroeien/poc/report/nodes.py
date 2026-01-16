@@ -5,6 +5,7 @@ import json
 from datetime import datetime
 from typing import List, Dict, TypedDict
 
+import structlog
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain.agents import create_agent
 from langgraph.types import Send
@@ -13,9 +14,14 @@ from app.flows.opgroeien.poc.report.state import ReportState
 from app.flows.opgroeien.poc.report.tools.chat import consult_general_knowledge
 from app.flows.opgroeien.poc.chat.tools.get_procedure import get_procedure
 from app.flows.opgroeien.poc.chat.tools.get_regelgeving import get_regelgeving
+
+logger = structlog.get_logger(__name__)
 from app.flows.common import get_agent_model
 from app.prompts.loader import load_prompt
 from app.flows.opgroeien.poc.constants import MAX_PARALLEL_WORKERS
+from app import constants
+from app.api.utils import extract_message_content
+from app.config import settings
 
 # --- Input Schema for Worker Node ---
 class ClusterInput(TypedDict):
@@ -146,9 +152,30 @@ def splitter_node(state: ReportState):
     first_batch = cluster_list[:MAX_PARALLEL_WORKERS]
     remaining_clusters = cluster_list[MAX_PARALLEL_WORKERS:]
     
+    # Initialize cluster_status for all clusters (all start as pending)
+    from datetime import datetime
+    cluster_status: Dict[str, Dict[str, Any]] = {}
+    for cluster in cluster_list:
+        file_id = cluster.get("file_id")
+        if file_id:
+            cluster_status[file_id] = {
+                "status": "pending",
+            }
+    
+    # Mark first batch as active
+    for cluster in first_batch:
+        file_id = cluster.get("file_id")
+        if file_id and file_id in cluster_status:
+            cluster_status[file_id]["status"] = "active"
+            cluster_status[file_id]["started_at"] = datetime.utcnow().isoformat() + "Z"
+    
     # Store remaining clusters and log in state
+    # Initialize batch_count to 1 (first batch is being processed)
     state_update = {
+        "clusters_all": cluster_list,  # Store full list for UI
+        "cluster_status": cluster_status,  # Initialize status tracking
         "pending_clusters": remaining_clusters,
+        "batch_count": 1,
         "logs": [f"Splitter: Processing {len(first_batch)} clusters in first batch, {len(remaining_clusters)} remaining"]
     }
     
@@ -199,6 +226,15 @@ async def analyst_node(input_data: ClusterInput):
     # Pass procedures directly as human message
     human_message_content = json.dumps(procs, ensure_ascii=False)
     
+    # Validate content before creating message
+    if not human_message_content or not human_message_content.strip():
+        logger.error(
+            "analyst_node_empty_content",
+            procs=procs,
+            procs_count=len(procs),
+        )
+        raise ValueError("Cannot create HumanMessage with empty content in analyst_node")
+    
     # Create the ReAct agent for this specific slice
     # We use a simple prebuilt agent here
     agent_executor = create_agent(llm, tools, system_prompt=system_prompt)
@@ -208,14 +244,41 @@ async def analyst_node(input_data: ClusterInput):
         "messages": [HumanMessage(content=human_message_content)]
     })
     
-    chapter_text = result["messages"][-1].content
+    # Extract content using utility function to handle structured formats (e.g., Gemini signatures)
+    raw_content = result["messages"][-1].content
+    chapter_text = extract_message_content(raw_content)
     
     # Append to state.chapters via operator.add
     # Also append a log entry
     log_entry = f"Analyst finished chapter: {topic} (Department: {department}, File ID: {file_id})"
     
+    # Update cluster_status to mark this cluster as completed
+    # This ensures checkpoint state is authoritative
+    from datetime import datetime
+    
+    cluster_status_update = {
+        file_id: {
+            "status": "completed",
+            "ended_at": datetime.utcnow().isoformat() + "Z",
+        }
+    }
+    
+    # Also update chapters_by_file_id if that field exists
+    chapters_by_file_id_update = {file_id: chapter_text} if file_id else {}
+    
+    logger.info(
+        "analyst_node_completed",
+        file_id=file_id,
+        topic=topic,
+        department=department,
+        chapter_length=len(chapter_text),
+        update_keys=list(chapters_by_file_id_update.keys()),
+    )
+    
     return {
-        "chapters": [chapter_text], 
+        "chapters": [chapter_text],
+        "chapters_by_file_id": chapters_by_file_id_update,
+        "cluster_status": cluster_status_update,
         "logs": [log_entry]
     }
 
@@ -226,21 +289,128 @@ def batch_processor_node(state: ReportState):
     Returns Send objects for the next batch, or routes to editor if done.
     """
     pending = state.get("pending_clusters", [])
+    current_batch_count = state.get("batch_count", 0)
     
     if not pending:
-        # No more clusters, route to editor
+        # Validate all chapters are present before routing to editor
+        cluster_status = state.get("cluster_status", {})
+        if not isinstance(cluster_status, dict):
+            cluster_status = {}
+        
+        chapters_by_file_id = state.get("chapters_by_file_id", {})
+        if not isinstance(chapters_by_file_id, dict):
+            chapters_by_file_id = {}
+        
+        # Count completed clusters
+        completed_file_ids = {
+            file_id for file_id, status in cluster_status.items()
+            if isinstance(status, dict) and status.get("status") == "completed"
+        }
+        
+        # Verify all completed clusters have chapters
+        missing_chapters = [
+            file_id for file_id in completed_file_ids
+            if file_id not in chapters_by_file_id
+        ]
+        
+        if missing_chapters:
+            logger.warning(
+                "batch_processor_missing_chapters",
+                missing_file_ids=missing_chapters,
+                completed_count=len(completed_file_ids),
+                chapters_count=len(chapters_by_file_id),
+                completed_file_ids=list(completed_file_ids),
+                chapter_file_ids=list(chapters_by_file_id.keys()),
+            )
+            # Don't route to editor yet - wait for more state updates
+            return {
+                "logs": [f"Batch processor: Waiting for {len(missing_chapters)} chapters to complete (missing: {', '.join(missing_chapters)})"]
+            }
+        
+        logger.info(
+            "batch_processor_all_chapters_ready",
+            completed_clusters=len(completed_file_ids),
+            chapters_count=len(chapters_by_file_id),
+            file_ids=list(chapters_by_file_id.keys()),
+        )
+        
+        # All chapters present, route to editor
         return {
             "logs": ["Batch processor: All clusters processed, routing to editor"]
+        }
+    
+    # Check MAX_BATCHES limit (dev environment only)
+    MAX_BATCHES = constants.CONSTANTS.get("MAX_BATCHES")
+    if MAX_BATCHES is not None and current_batch_count >= MAX_BATCHES:
+        # Even with MAX_BATCHES limit, validate chapters are present
+        cluster_status = state.get("cluster_status", {})
+        if not isinstance(cluster_status, dict):
+            cluster_status = {}
+        
+        chapters_by_file_id = state.get("chapters_by_file_id", {})
+        if not isinstance(chapters_by_file_id, dict):
+            chapters_by_file_id = {}
+        
+        completed_file_ids = {
+            file_id for file_id, status in cluster_status.items()
+            if isinstance(status, dict) and status.get("status") == "completed"
+        }
+        
+        missing_chapters = [
+            file_id for file_id in completed_file_ids
+            if file_id not in chapters_by_file_id
+        ]
+        
+        if missing_chapters:
+            logger.warning(
+                "batch_processor_max_batches_missing_chapters",
+                current_batch_count=current_batch_count,
+                max_batches=MAX_BATCHES,
+                remaining_clusters=len(pending),
+                missing_file_ids=missing_chapters,
+                completed_count=len(completed_file_ids),
+                chapters_count=len(chapters_by_file_id),
+            )
+            return {
+                "logs": [f"Batch processor: MAX_BATCHES limit reached ({MAX_BATCHES}), but waiting for {len(missing_chapters)} chapters to complete"]
+            }
+        
+        logger.info(
+            "batch_processor_max_batches_reached",
+            current_batch_count=current_batch_count,
+            max_batches=MAX_BATCHES,
+            remaining_clusters=len(pending),
+            chapters_count=len(chapters_by_file_id),
+        )
+        return {
+            "logs": [f"Batch processor: MAX_BATCHES limit reached ({MAX_BATCHES}), routing to editor with {len(pending)} clusters remaining"]
         }
     
     # Process next batch
     next_batch = pending[:MAX_PARALLEL_WORKERS]
     remaining = pending[MAX_PARALLEL_WORKERS:]
     
+    # Increment batch count
+    new_batch_count = current_batch_count + 1
+    
+    # Update cluster_status: mark next batch as active
+    cluster_status = state.get("cluster_status", {})
+    if not isinstance(cluster_status, dict):
+        cluster_status = {}
+    
+    for cluster in next_batch:
+        file_id = cluster.get("file_id")
+        if file_id and file_id in cluster_status:
+            cluster_status[file_id]["status"] = "active"
+            if "started_at" not in cluster_status[file_id]:
+                cluster_status[file_id]["started_at"] = datetime.utcnow().isoformat() + "Z"
+    
     # Update state with remaining clusters
     state_update = {
+        "cluster_status": cluster_status,
         "pending_clusters": remaining,
-        "logs": [f"Batch processor: Processing {len(next_batch)} clusters, {len(remaining)} remaining"]
+        "batch_count": new_batch_count,
+        "logs": [f"Batch processor: Processing batch {new_batch_count} ({len(next_batch)} clusters), {len(remaining)} remaining"]
     }
     
     # Return Send objects for next batch
@@ -258,23 +428,92 @@ def batch_processor_node(state: ReportState):
 async def editor_node(state: ReportState):
     """
     Aggregates all chapters into the final report.
+    Uses chapters_by_file_id as the single source of truth for all chapters.
     """
-    llm = get_agent_model()
+    # Use chapters_by_file_id as the single source of truth
+    chapters_by_file_id = state.get("chapters_by_file_id", {})
+    if not isinstance(chapters_by_file_id, dict):
+        chapters_by_file_id = {}
     
-    chapters = state.get("chapters", [])
-    full_text = "\n\n---\n\n".join(chapters)
+    # Validate chapters match completed clusters
+    cluster_status = state.get("cluster_status", {})
+    if not isinstance(cluster_status, dict):
+        cluster_status = {}
+    
+    clusters_all = state.get("clusters_all", [])
+    
+    completed_file_ids = {
+        file_id for file_id, status in cluster_status.items()
+        if isinstance(status, dict) and status.get("status") == "completed"
+    }
+    
+    chapter_file_ids = set(chapters_by_file_id.keys())
+    
+    # Log validation results
+    if completed_file_ids != chapter_file_ids:
+        missing = completed_file_ids - chapter_file_ids
+        extra = chapter_file_ids - completed_file_ids
+        logger.warning(
+            "editor_node_chapter_mismatch",
+            completed_clusters=len(completed_file_ids),
+            chapters_present=len(chapter_file_ids),
+            missing_file_ids=list(missing),
+            extra_file_ids=list(extra),
+            completed_file_ids=list(completed_file_ids),
+            chapter_file_ids=list(chapter_file_ids),
+        )
+    else:
+        logger.info(
+            "editor_node_chapters_validated",
+            completed_clusters=len(completed_file_ids),
+            chapters_count=len(chapter_file_ids),
+            file_ids=list(chapter_file_ids),
+        )
+    
+    # Extract all chapter texts from the dict (values are chapter texts)
+    chapters_list = list(chapters_by_file_id.values())
+    full_text = "\n\n---\n\n".join(chapters_list)
+    
+    # Handle empty chapters case - return early with a default message
+    if not full_text or not full_text.strip():
+        logger.warning(
+            "editor_node_no_chapters",
+            chapters_by_file_id_count=len(chapters_by_file_id),
+        )
+        return {
+            "final_report": "No procedures were provided to generate a report. Please select procedures before starting report generation.",
+            "logs": ["Editor finished: No chapters to process."]
+        }
+    
+    logger.info(
+        "editor_node_processing_chapters",
+        chapters_count=len(chapters_list),
+        file_ids=list(chapters_by_file_id.keys()),
+        full_text_length=len(full_text),
+    )
+    
+    # Use model with high output token limit for long reports
+    # Editor node needs higher limits to generate complete reports
+    from app import constants
+    if settings.LLM_PROVIDER == "ollama":
+        max_output_tokens = constants.CONSTANTS.get("EDITOR_NODE_MAX_OUTPUT_TOKENS_OLLAMA", 16384)
+    else:
+        max_output_tokens = 8192
+    llm = get_agent_model(max_output_tokens=max_output_tokens)
     
     # Format date
     formatted_date = datetime.now().strftime("%d %B %Y")
     
     # Load system prompt from YAML file
+    # NOTE: We do NOT include full_report_body in the system prompt to avoid confusion
+    # The full text is only in the human message
     prompt_obj = load_prompt("opgroeien/poc/editor_system_prompt")
     system_prompt = prompt_obj.render(
         date=formatted_date,
-        full_report_body=full_text,
     )
     
-    # Human message contains the full report body
+    # Human message contains the full report body with all chapters
+    # Format: Each chapter is separated by "\n\n---\n\n"
     human_message = full_text
     
     response = await llm.ainvoke([
@@ -282,7 +521,27 @@ async def editor_node(state: ReportState):
         HumanMessage(content=human_message)
     ])
     
+    # Extract content using utility function to handle structured formats (e.g., Gemini signatures)
+    final_report_text = extract_message_content(response.content)
+    
+    # Log final report length to detect truncation issues
+    logger.info(
+        "editor_node_final_report_generated",
+        final_report_length=len(final_report_text),
+        chapters_count=len(chapters_list),
+        max_output_tokens=max_output_tokens,
+    )
+    
+    # Warn if report seems truncated (less than 1000 chars for multiple chapters)
+    if len(chapters_list) > 1 and len(final_report_text) < 1000:
+        logger.warning(
+            "editor_node_report_may_be_truncated",
+            final_report_length=len(final_report_text),
+            chapters_count=len(chapters_list),
+            max_output_tokens=max_output_tokens,
+        )
+    
     return {
-        "final_report": response.content,
-        "logs": ["Editor finished final report."]
+        "final_report": final_report_text,
+        "logs": [f"Editor finished final report with {len(chapters_list)} chapters."]
     }

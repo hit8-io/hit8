@@ -19,6 +19,76 @@ router = APIRouter()
 from app.api.utils import serialize_messages
 
 
+def _enhance_graph_structure(graph_structure: dict[str, Any], flow: str | None = None) -> dict[str, Any]:
+    """Enhance graph structure by adding missing edges from conditional routes.
+    
+    LangGraph's to_json() doesn't include edges for conditional routes that use
+    Send objects (dynamic routing). This function adds representative edges
+    to ensure all nodes are properly connected in the visualization.
+    
+    Args:
+        graph_structure: The graph structure dict from LangGraph's to_json()
+        flow: Optional flow name to apply flow-specific enhancements
+        
+    Returns:
+        Enhanced graph structure with additional edges for conditional routes
+    """
+    if not isinstance(graph_structure, dict):
+        return graph_structure
+    
+    nodes = graph_structure.get("nodes", [])
+    edges = graph_structure.get("edges", [])
+    
+    if not isinstance(nodes, list) or not isinstance(edges, list):
+        return graph_structure
+    
+    # Create sets for quick lookup
+    node_ids = {node.get("id") for node in nodes if isinstance(node, dict) and "id" in node}
+    existing_edges = {
+        (edge.get("source"), edge.get("target"))
+        for edge in edges
+        if isinstance(edge, dict) and "source" in edge and "target" in edge
+    }
+    
+    # Flow-specific enhancements
+    if flow == "report":
+        # Report graph conditional edges:
+        # 1. splitter_node → analyst_node (via Send objects, dynamic routing)
+        # 2. batch_processor_node → analyst_node OR editor_node (conditional)
+        
+        if "splitter_node" in node_ids and "analyst_node" in node_ids:
+            if ("splitter_node", "analyst_node") not in existing_edges:
+                edges.append({
+                    "source": "splitter_node",
+                    "target": "analyst_node",
+                })
+                existing_edges.add(("splitter_node", "analyst_node"))
+        
+        if "batch_processor_node" in node_ids:
+            # Add edge to analyst_node (for when more batches exist)
+            if "analyst_node" in node_ids:
+                if ("batch_processor_node", "analyst_node") not in existing_edges:
+                    edges.append({
+                        "source": "batch_processor_node",
+                        "target": "analyst_node",
+                    })
+                    existing_edges.add(("batch_processor_node", "analyst_node"))
+            
+            # Add edge to editor_node (for when all batches are done)
+            if "editor_node" in node_ids:
+                if ("batch_processor_node", "editor_node") not in existing_edges:
+                    edges.append({
+                        "source": "batch_processor_node",
+                        "target": "editor_node",
+                    })
+                    existing_edges.add(("batch_processor_node", "editor_node"))
+    
+    return {
+        **graph_structure,
+        "edges": edges,
+    }
+
+
 def _extract_graph_history(state: Any, state_dict: dict[str, Any]) -> list[dict[str, Any]]:
     """Extract graph execution history from state."""
     history: list[dict[str, Any]] = []
@@ -76,7 +146,10 @@ async def get_graph_structure(
         )
     
     try:
-        return get_graph(org, project, flow).get_graph().to_json()
+        graph_json = get_graph(org, project, flow).get_graph().to_json()
+        # Enhance structure with missing conditional edges
+        enhanced_structure = _enhance_graph_structure(graph_json, flow=flow)
+        return enhanced_structure
     except Exception as e:
         logger.exception(
             "graph_structure_export_failed",

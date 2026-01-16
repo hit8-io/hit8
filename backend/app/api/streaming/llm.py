@@ -320,3 +320,116 @@ def extract_llm_end_event(event: dict[str, Any], thread_id: str) -> dict[str, An
         event_data["execution_metrics"] = current_metrics.model_dump(mode='json')
     
     return event_data
+
+
+def extract_chunk_content(chunk: Any) -> str | None:
+    """
+    Extract content string from a chunk object.
+    
+    Handles various chunk formats from different LLM providers:
+    - Dict with "content" or "text" keys
+    - Objects with .content or .text attributes
+    - Dict with "delta" containing content
+    - Objects with .delta attribute containing content
+    
+    Args:
+        chunk: Chunk object (dict, object, or other)
+        
+    Returns:
+        Content string or None if no valid content found
+    """
+    from app.api.utils import extract_message_content
+    
+    # Handle dict chunks
+    if isinstance(chunk, dict):
+        # Skip tool call chunks (has tool_call_chunks but no content)
+        if "tool_call_chunks" in chunk and not chunk.get("content"):
+            return None
+        
+        # Try "content" key
+        if "content" in chunk:
+            chunk_content = chunk.get("content", "")
+            if not chunk_content:
+                return None
+            if isinstance(chunk_content, str):
+                return chunk_content
+            elif isinstance(chunk_content, list):
+                # Concatenate list of content blocks
+                result = ""
+                for block in chunk_content:
+                    if isinstance(block, dict) and "text" in block:
+                        result += block.get("text", "")
+                    elif isinstance(block, str):
+                        result += block
+                return result if result else None
+        
+        # Try "text" key
+        if "text" in chunk:
+            text_content = chunk.get("text", "")
+            return str(text_content) if text_content else None
+        
+        # Try "delta" key
+        if "delta" in chunk:
+            delta = chunk.get("delta", {})
+            if isinstance(delta, dict) and "content" in delta:
+                delta_content = delta.get("content", "")
+                return str(delta_content) if delta_content else None
+    
+    # Handle object chunks with attributes
+    if hasattr(chunk, "content"):
+        chunk_content = chunk.content
+        if not chunk_content:
+            return None
+        if isinstance(chunk_content, str):
+            return chunk_content
+        return extract_message_content(chunk_content)
+    
+    if hasattr(chunk, "text"):
+        text_content = chunk.text
+        return str(text_content) if text_content else None
+    
+    if hasattr(chunk, "delta"):
+        delta = chunk.delta
+        if hasattr(delta, "content"):
+            delta_content = delta.content
+            return extract_message_content(delta_content) if delta_content else None
+        elif isinstance(delta, dict):
+            delta_content = delta.get("content", "")
+            return str(delta_content) if delta_content else None
+    
+    # Fallback: convert to string
+    chunk_str = str(chunk)
+    return chunk_str if chunk_str else None
+
+
+def process_chat_model_stream_event(
+    event: dict[str, Any],
+    thread_id: str,
+    accumulated_content: str,
+) -> tuple[str, str] | None:
+    """
+    Process on_chat_model_stream event to extract incremental content chunks.
+    
+    Args:
+        event: LangGraph stream event dictionary
+        thread_id: Thread identifier (unused but kept for consistency)
+        accumulated_content: Previously accumulated content
+        
+    Returns:
+        Tuple of (incremental_chunk, new_accumulated) or None if no valid content
+    """
+    data = event.get("data", {})
+    if not isinstance(data, dict):
+        return None
+    
+    chunk = data.get("chunk")
+    if not chunk:
+        return None
+    
+    # Extract content from chunk
+    incremental_chunk = extract_chunk_content(chunk)
+    if not incremental_chunk:
+        return None
+    
+    new_accumulated = accumulated_content + incremental_chunk
+    return incremental_chunk, new_accumulated

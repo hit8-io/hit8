@@ -93,7 +93,7 @@ async def stream_chat_events(
         accumulated_content_ref: dict[str, str] = {"content": ""}
         
         async for event_str in process_async_stream_events(
-            graph, initial_state, config, thread_id, org, project, accumulated_content_ref
+            graph, initial_state, config, thread_id, org, project, accumulated_content_ref, flow="chat"
         ):
             yield event_str
         
@@ -139,6 +139,14 @@ async def stream_chat_events(
         error_str = str(e) if str(e) else ""
         error_message = error_str if error_str else f"{error_type}: An error occurred during streaming"
         
+        # Check if this is a connection error (Ollama, database, etc.)
+        is_connection_error = (
+            "Connection refused" in error_str or
+            "Errno 111" in error_str or
+            "ConnectError" in error_type or
+            "ConnectionError" in error_type
+        )
+        
         # Log full exception details for debugging
         logger.exception(
             "streaming_error",
@@ -146,6 +154,9 @@ async def stream_chat_events(
             error_type=error_type,
             error_repr=repr(e),
             thread_id=thread_id,
+            is_connection_error=is_connection_error,
+            org=org,
+            project=project,
             exc_info=True,
         )
         
@@ -221,16 +232,20 @@ async def chat(
             exc_info=True,
         )
     
+    # Derive flow identifier: "{org}.{project}.chat"
+    flow_identifier = f"{org}.{project}.chat"
+    
     # Track thread in database (non-blocking - errors are logged but don't fail the request)
     # Uses upsert to handle both new threads (create) and existing threads (update last_accessed_at)
     try:
-        await upsert_thread(session_id, user_id, title=thread_title)
+        await upsert_thread(session_id, user_id, title=thread_title, flow=flow_identifier)
     except Exception as e:
         # Log error but don't fail the request if thread tracking fails
         logger.warning(
             "thread_tracking_failed",
             thread_id=session_id,
             user_id=user_id,
+            flow=flow_identifier,
             error=str(e),
             error_type=type(e).__name__,
         )
@@ -295,7 +310,7 @@ async def chat(
         logger.debug(
             "langfuse_callback_handler_added",
             handler_type=type(langfuse_handler).__name__,
-            thread_id=thread_id,
+            thread_id=session_id,
         )
     
     # Build metadata: environment and account from settings, org/project from headers
@@ -312,7 +327,7 @@ async def chat(
         account=centralized_metadata["account"],
         org=org,
         project=project,
-        thread_id=thread_id,
+        thread_id=session_id,
     )
     
     config["metadata"] = metadata

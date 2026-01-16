@@ -13,7 +13,7 @@ from app.flows.opgroeien.poc.constants import (
     COLLECTION_REGELGEVING,
     VECTOR_SEARCH_DEFAULT_K,
 )
-from app.flows.opgroeien.poc.chat.tools.utils import (
+from app.flows.opgroeien.poc.db import (
     _vector_search_raw_sql,
 )
 

@@ -1,24 +1,27 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { flushSync } from 'react-dom'
-import ReactFlow, { Node, Edge, Background, Controls, useNodesState, useEdgesState, useReactFlow } from 'reactflow'
+import ReactFlow, { Node, Edge, Background, Controls, useNodesState, useEdgesState, useReactFlow, NodeMouseHandler } from 'reactflow'
 import 'reactflow/dist/style.css'
 import axios from 'axios'
 import { Card, CardContent } from './ui/card'
 import { getApiHeaders } from '../utils/api'
 import { getLayoutedElements } from '../utils/graphLayout'
 import { GRAPH_VIEW_FIT_DELAY } from '../constants'
-import type { ExecutionState } from '../types/execution'
+import type { ExecutionState, StreamEvent } from '../types/execution'
+import { NodeInspectionModal } from './NodeInspectionModal'
 
-// Suppress React Flow's false positive warning about nodeTypes/edgeTypes in React Strict Mode
-// This is a known issue: https://github.com/xyflow/xyflow/issues/3923
-// The warning appears even when nodeTypes/edgeTypes are properly defined outside the component
+// Suppress React Flow's false positive warnings in React Strict Mode
+// These are known issues with React Flow and React Strict Mode double-rendering
 if (import.meta.env.DEV) {
   const originalWarn = console.warn
   console.warn = (...args: unknown[]) => {
     const message = typeof args[0] === 'string' ? args[0] : String(args[0])
-    // Suppress only the specific React Flow nodeTypes/edgeTypes warning
-    if (message.includes('[React Flow]: It looks like you\'ve created a new nodeTypes or edgeTypes object')) {
-      return // Suppress this specific warning
+    // Suppress React Flow warnings that appear during initial render before dimensions are available
+    if (
+      message.includes('[React Flow]: It looks like you\'ve created a new nodeTypes or edgeTypes object') ||
+      message.includes('[React Flow]: The React Flow parent container needs a width and a height to render the graph')
+    ) {
+      return // Suppress these specific warnings
     }
     originalWarn.apply(console, args)
   }
@@ -158,6 +161,42 @@ export default function GraphView({ apiUrl, token, executionState, flow }: Reado
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const nodeUpdateVersionRef = useRef(0) // Track update version to force React Flow re-render
+  const dynamicallyAddedNodesRef = useRef<Set<string>>(new Set()) // Track dynamically added nodes
+
+  // Inspection modal state
+  const [inspectionNode, setInspectionNode] = useState<string | null>(null)
+  const [taskHistory, setTaskHistory] = useState<Array<{
+    task_key?: string
+    node_name: string
+    run_id: string
+    started_at: number
+    ended_at?: number
+    input_preview?: string
+    output_preview?: string
+    metadata?: Record<string, any>
+  }>>([])
+
+  // Extract task_history from state_snapshot events
+  useEffect(() => {
+    if (currentExecutionState?.streamEvents) {
+      const snapshots = currentExecutionState.streamEvents.filter(
+        (e): e is StreamEvent & { type: 'state_snapshot'; task_history?: any[] } =>
+          e.type === 'state_snapshot'
+      )
+      if (snapshots.length > 0) {
+        const latestSnapshot = snapshots[snapshots.length - 1]
+        if (latestSnapshot.task_history && Array.isArray(latestSnapshot.task_history)) {
+          setTaskHistory(latestSnapshot.task_history)
+        }
+      }
+    }
+  }, [currentExecutionState?.streamEvents])
+
+  // Handle node click for inspection
+  const onNodeClick: NodeMouseHandler = (_event, node) => {
+    setInspectionNode(node.id)
+  }
+  
 
   // React Flow's useNodeOrEdgeTypes hook warns when it detects "new" objects
   // React Strict Mode can cause false positives for this warning
@@ -238,7 +277,8 @@ export default function GraphView({ apiUrl, token, executionState, flow }: Reado
 
       try {
         setLoading(true)
-        const response = await axios.get(`${apiUrl}/graph/structure${flow ? `?flow=${flow}` : ''}`, {
+        const flowParam = flow ? `?flow=${flow}` : ''
+        const response = await axios.get(`${apiUrl}/graph/structure${flowParam}`, {
           headers: getApiHeaders(token),
         })
 
@@ -260,142 +300,35 @@ export default function GraphView({ apiUrl, token, executionState, flow }: Reado
 
     try {
       // Extract nodes and edges from LangGraph JSON structure
-      // LangGraph JSON structure may vary, so we need to handle different formats
-      let graphNodes: Node[] = []
-      let graphEdges: Edge[] = []
+      // LangGraph returns standard format: { nodes: [...], edges: [...] }
+      if (!graphStructure.nodes || !Array.isArray(graphStructure.nodes)) {
+        setError('Invalid graph structure: nodes must be an array')
+        return
+      }
 
-      // Try to extract from common LangGraph JSON formats
-      if (graphStructure.nodes && Array.isArray(graphStructure.nodes)) {
-        graphNodes = graphStructure.nodes.map((node: { id: string; name?: string; [key: string]: unknown }) => ({
+      if (!graphStructure.edges || !Array.isArray(graphStructure.edges)) {
+        setError('Invalid graph structure: edges must be an array')
+        return
+      }
+
+      // Convert nodes to React Flow format
+      const graphNodes: Node[] = graphStructure.nodes.map(
+        (node: { id: string; name?: string; [key: string]: unknown }) => ({
           id: node.id,
           data: { label: node.name || node.id },
           position: { x: 0, y: 0 }, // Temporary position, will be updated by dagre
-        }))
-      } else if (graphStructure.channels) {
-        // Alternative format: channels-based
-        const channelNodes = Object.keys(graphStructure.channels)
-        graphNodes = channelNodes.map((id) => ({
-          id,
-          data: { label: id },
-          position: { x: 0, y: 0 }, // Temporary position, will be updated by dagre
-        }))
-      } else {
-        // Try to find nodes in other possible formats
-        // Check if there's a 'nodes' key that's an object
-        if (graphStructure.nodes && typeof graphStructure.nodes === 'object' && !Array.isArray(graphStructure.nodes)) {
-          const nodeKeys = Object.keys(graphStructure.nodes)
-          graphNodes = nodeKeys.map((id) => ({
-            id,
-            data: { label: id },
-            position: { x: 0, y: 0 },
-          }))
-        }
-      }
+        })
+      )
 
-      if (graphStructure.edges && Array.isArray(graphStructure.edges)) {
-        graphEdges = graphStructure.edges.map((edge: { source: string; target: string }) => ({
+      // Convert edges to React Flow format
+      const graphEdges: Edge[] = graphStructure.edges.map(
+        (edge: { source: string; target: string }) => ({
           id: `${edge.source}-${edge.target}`,
           source: edge.source,
           target: edge.target,
           animated: false,
-        }))
-      } else if (graphStructure.channels) {
-        // Build edges from channels
-        const channelEdges: Edge[] = []
-        Object.entries(graphStructure.channels).forEach(([target, channel]: [string, unknown]) => {
-          if (channel && typeof channel === 'object' && 'sources' in channel) {
-            const sources = (channel as { sources: string[] }).sources
-            sources.forEach((source: string) => {
-              channelEdges.push({
-                id: `${source}-${target}`,
-                source,
-                target,
-                animated: false,
-              })
-            })
-          }
         })
-        graphEdges = channelEdges
-      }
-
-      // Add all possible tool nodes from the start (we know what tools are available)
-      const allToolNodeNames = [
-        'node_procedures_vector_search',
-        'node_regelgeving_vector_search',
-        'node_fetch_website',
-        // Future tools (commented out until enabled):
-        // 'node_generate_docx',
-        // 'node_generate_xlsx',
-        // 'node_extract_entities',
-        // 'node_query_knowledge_graph',
-        // 'node_get_procedure',
-        // 'node_get_regelgeving',
-      ]
-      
-      const existingNodeIds = new Set(graphNodes.map((n) => n.id))
-      
-      // Add tool nodes that aren't already in the graph
-      allToolNodeNames.forEach((toolNodeId) => {
-        if (!existingNodeIds.has(toolNodeId)) {
-          const label = toolNodeId
-            .replace(/^node_/, '')
-            .replace(/_/g, ' ')
-            .replace(/\b\w/g, (l) => l.toUpperCase())
-          graphNodes.push({
-            id: toolNodeId,
-            data: { label },
-            position: { x: 0, y: 0 },
-          })
-        }
-      })
-      
-      // Add edges for tool nodes: agent -> tool -> agent
-      // Hide the generic "tools" node by not creating edges to/from it
-      const agentNodeExists = existingNodeIds.has('agent')
-      if (agentNodeExists) {
-        allToolNodeNames.forEach((toolNodeId) => {
-          // Edge from agent to tool node
-          const agentToToolId = `agent-${toolNodeId}`
-          const edgeExists = graphEdges.some((e) => e.id === agentToToolId)
-          if (!edgeExists) {
-            graphEdges.push({
-              id: agentToToolId,
-              source: 'agent',
-              target: toolNodeId,
-              animated: false,
-            })
-          }
-          
-          // Edge from tool node back to agent
-          const toolToAgentId = `${toolNodeId}-agent`
-          const edgeExists2 = graphEdges.some((e) => e.id === toolToAgentId)
-          if (!edgeExists2) {
-            graphEdges.push({
-              id: toolToAgentId,
-              source: toolNodeId,
-              target: 'agent',
-              animated: false,
-            })
-          }
-        })
-        
-        // Remove edges to/from the generic "tools" node since we have individual tool nodes
-        graphEdges = graphEdges.filter(
-          (edge) => edge.source !== 'tools' && edge.target !== 'tools'
-        )
-      }
-      
-      // Hide the generic "tools" node if individual tool nodes exist
-      graphNodes = graphNodes.map((node) => {
-        if (node.id === 'tools' && allToolNodeNames.length > 0) {
-          return {
-            ...node,
-            hidden: true,
-            style: { ...node.style, opacity: 0, height: 0, width: 0 },
-          }
-        }
-        return node
-      })
+      )
 
       // Apply layout
       const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(graphNodes, graphEdges)
@@ -407,6 +340,93 @@ export default function GraphView({ apiUrl, token, executionState, flow }: Reado
   }, [graphStructure, setNodes, setEdges])
 
   // No polling needed - rely entirely on stream events for updates
+
+  // Add dynamic nodes from execution state (nodes that appear in events but not in graph structure)
+  useEffect(() => {
+    if (!currentExecutionState || !graphStructure) return
+
+    // Helper function to create node label (moved inside to avoid dependency issues)
+    const createNodeLabel = (nodeId: string): string => {
+      return nodeId
+        .replace(/^node_/, '')
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, (l) => l.toUpperCase())
+    }
+
+    // Extract all node names from execution state
+    const nodeNamesFromState = new Set<string>()
+    
+    // Extract from history
+    if (currentExecutionState.history && Array.isArray(currentExecutionState.history)) {
+      currentExecutionState.history.forEach((entry: unknown) => {
+        if (entry && typeof entry === 'object') {
+          if ('tasks' in entry && Array.isArray((entry as { tasks: unknown[] }).tasks)) {
+            const tasks = (entry as { tasks: unknown[] }).tasks
+            tasks.forEach((task: unknown) => {
+              if (task && typeof task === 'object' && 'name' in task) {
+                const nodeName = (task as { name: string }).name
+                if (nodeName) {
+                  nodeNamesFromState.add(nodeName)
+                }
+              }
+            })
+          }
+          if ('node' in entry && typeof (entry as { node: unknown }).node === 'string') {
+            const nodeName = (entry as { node: string }).node
+            if (nodeName) {
+              nodeNamesFromState.add(nodeName)
+            }
+          }
+        }
+      })
+    }
+
+    // Extract from streamEvents (node_start events)
+    if (currentExecutionState.streamEvents) {
+      currentExecutionState.streamEvents.forEach((event) => {
+        if (event.type === 'node_start' && 'node' in event) {
+          const nodeName = (event as { node: string }).node
+          if (nodeName) {
+            nodeNamesFromState.add(nodeName)
+          }
+        }
+      })
+    }
+
+    // Add active nodes
+    const activeNodes = currentExecutionState.next || []
+    activeNodes.forEach((nodeName) => {
+      if (nodeName) {
+        nodeNamesFromState.add(nodeName)
+      }
+    })
+
+    // Find nodes that need to be added (not in graph structure and not already added dynamically)
+    setNodes((currentNodes) => {
+      const existingNodeIds = new Set(currentNodes.map((n) => n.id))
+      const nodesToAdd: Node[] = []
+
+      nodeNamesFromState.forEach((nodeId) => {
+        if (!existingNodeIds.has(nodeId) && !dynamicallyAddedNodesRef.current.has(nodeId)) {
+          nodesToAdd.push({
+            id: nodeId,
+            data: { label: createNodeLabel(nodeId) },
+            position: { x: 0, y: 0 },
+          })
+          dynamicallyAddedNodesRef.current.add(nodeId)
+        }
+      })
+
+      // If we have nodes to add, re-apply layout
+      if (nodesToAdd.length > 0) {
+        const newNodes = [...currentNodes, ...nodesToAdd]
+        const { nodes: layoutedNodes } = getLayoutedElements(newNodes, edges)
+        return layoutedNodes
+      }
+
+      return currentNodes
+    })
+  }, [currentExecutionState, graphStructure, setNodes, edges])
 
   // Update node styles based on execution state and add dynamic nodes
   useEffect(() => {
@@ -428,10 +448,43 @@ export default function GraphView({ apiUrl, token, executionState, flow }: Reado
       return
     }
 
-    const activeNodes = currentExecutionState.next || []
+    // Determine active nodes from next array, but also check streamEvents for node_start without node_end
+    let activeNodes = currentExecutionState.next || []
     
+    // Also check streamEvents to find nodes that started but haven't ended yet
+    // This handles cases where next array might be temporarily empty
+    if (currentExecutionState.streamEvents && currentExecutionState.streamEvents.length > 0) {
+      const startedNodes = new Set<string>()
+      const endedNodes = new Set<string>()
+      
+      // Process events in order to track which nodes are currently active
+      currentExecutionState.streamEvents.forEach((event) => {
+        if (event.type === 'node_start' && 'node' in event) {
+          const nodeName = (event as { node: string }).node
+          if (nodeName) {
+            startedNodes.add(nodeName)
+          }
+        } else if (event.type === 'node_end' && 'node' in event) {
+          const nodeName = (event as { node: string }).node
+          if (nodeName) {
+            endedNodes.add(nodeName)
+          }
+        }
+      })
+      
+      // Nodes that started but haven't ended are active
+      const activeFromEvents = Array.from(startedNodes).filter(node => !endedNodes.has(node))
+      
+      // Merge with next array, preferring next array if it has values
+      if (activeNodes.length === 0 && activeFromEvents.length > 0) {
+        activeNodes = activeFromEvents
+      } else if (activeNodes.length > 0 && activeFromEvents.length > 0) {
+        // Combine both, removing duplicates
+        activeNodes = Array.from(new Set([...activeNodes, ...activeFromEvents]))
+      }
+    }
     
-    // Extract visited nodes from history
+    // Extract visited nodes from history and streamEvents
     // LangGraph history structure: array of state snapshots, each with tasks array
     const visitedNodes: string[] = []
     if (currentExecutionState.history && Array.isArray(currentExecutionState.history)) {
@@ -460,38 +513,24 @@ export default function GraphView({ apiUrl, token, executionState, flow }: Reado
       })
     }
     
+    // Also extract visited nodes from streamEvents (node_end events indicate visited nodes)
+    if (currentExecutionState.streamEvents && currentExecutionState.streamEvents.length > 0) {
+      currentExecutionState.streamEvents.forEach((event) => {
+        if (event.type === 'node_end' && 'node' in event) {
+          const nodeName = (event as { node: string }).node
+          if (nodeName && !visitedNodes.includes(nodeName)) {
+            visitedNodes.push(nodeName)
+          }
+        }
+      })
+    }
+    
     // Also include active nodes in visited nodes to ensure they're highlighted
     // This ensures that nodes in the 'next' array are always highlighted
     activeNodes.forEach((nodeName) => {
       if (nodeName && !visitedNodes.includes(nodeName)) {
         visitedNodes.push(nodeName)
       }
-    })
-    
-    
-
-    // Tool nodes are now created from the start, so we don't need to add them dynamically
-    // We only need to ensure the "tools" node stays hidden if tool nodes are visited
-    setNodes((nds) => {
-      // Hide "tools" node if any individual tool nodes are in visitedNodes
-      const hasToolNodes = visitedNodes.some(
-        (nodeId) => nodeId.startsWith('node_') && nodeId !== 'node_agent' && nodeId !== 'node_tools'
-      )
-      
-      if (hasToolNodes) {
-        return nds.map((node) => {
-          if (node.id === 'tools' || node.id === 'node_tools') {
-            return {
-              ...node,
-              hidden: true,
-              style: { ...node.style, opacity: 0, height: 0, width: 0 },
-            }
-          }
-          return node
-        })
-      }
-      
-      return nds
     })
 
     // Update node and edge styles based on execution state
@@ -610,6 +649,7 @@ export default function GraphView({ apiUrl, token, executionState, flow }: Reado
     }, updateDelay)
   }, [currentExecutionState, setNodes, setEdges])
 
+
   if (loading) {
     return (
       <Card className="h-full flex items-center justify-center">
@@ -632,15 +672,30 @@ export default function GraphView({ apiUrl, token, executionState, flow }: Reado
 
   return (
     <Card className="h-full flex flex-col overflow-hidden">
-      <CardContent className="flex-1 min-h-0 p-0 overflow-hidden">
-        <div className="w-full h-full min-h-[400px]">
-          <ReactFlow {...reactFlowProps}>
+      <CardContent className="flex-1 min-h-0 p-0 overflow-hidden flex flex-col">
+        <div 
+          className="w-full flex-1 min-h-[400px]"
+          style={{ 
+            width: '100%', 
+            height: '100%', 
+            minHeight: '400px',
+            position: 'relative'
+          }}
+        >
+          <ReactFlow {...reactFlowProps} onNodeClick={onNodeClick}>
             <Background />
             <Controls />
             <FitViewOnLoad nodeCount={nodes.length} />
           </ReactFlow>
         </div>
       </CardContent>
+      <NodeInspectionModal
+        open={inspectionNode !== null}
+        onOpenChange={(open) => !open && setInspectionNode(null)}
+        nodeName={inspectionNode}
+        streamEvents={currentExecutionState?.streamEvents || []}
+        taskHistory={taskHistory}
+      />
     </Card>
   )
 }

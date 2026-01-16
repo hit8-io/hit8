@@ -26,6 +26,7 @@ export interface ChatThread {
   thread_id: string
   user_id: string
   title: string | null
+  flow?: string | null
   created_at: string
   last_accessed_at: string
 }

@@ -23,8 +23,21 @@ const NewChatRedirect = () => {
   return <Navigate to={`/chat/${newId}`} replace />
 }
 
+// Helper to generate new report ID
+const NewReportRedirect = () => {
+  const newId = crypto.randomUUID()
+  return <Navigate to={`/report/${newId}`} replace />
+}
+
 // ChatPage component that reads threadId from URL and renders the main app
 function ChatPage() {
+  const { threadId } = useParams<{ threadId: string }>()
+  
+  return <AppContent threadId={threadId!} />
+}
+
+// ReportPage component that reads threadId from URL and renders the main app
+function ReportPage() {
   const { threadId } = useParams<{ threadId: string }>()
   
   return <AppContent threadId={threadId!} />
@@ -133,7 +146,7 @@ function AppContent({ threadId }: { threadId: string }) {
           <div className="flex-1 min-h-0 p-4 overflow-hidden transition-all duration-300 ease-in-out">
             <div className="h-full grid grid-cols-12 gap-4">
               {/* Interface - Left Column */}
-              <div className={`${isChatExpanded ? 'col-span-12' : 'col-span-12 lg:col-span-7'} h-full flex flex-col min-h-0 overflow-hidden transition-all duration-300 ease-in-out`}>
+              <div className={`${isChatExpanded || activeTab === 'reports' ? 'col-span-12' : 'col-span-12 lg:col-span-7'} h-full flex flex-col min-h-0 overflow-hidden transition-all duration-300 ease-in-out`}>
                 {activeTab === 'chat' ? (
                   <ChatInterface 
                     token={idToken}
@@ -147,7 +160,8 @@ function AppContent({ threadId }: { threadId: string }) {
                   />
                 ) : (
                   <ReportInterface 
-                    token={idToken} 
+                    token={idToken}
+                    threadId={threadId}
                     org={org}
                     project={project}
                     onExecutionStateUpdate={handleExecutionStateUpdate}
@@ -155,15 +169,15 @@ function AppContent({ threadId }: { threadId: string }) {
                 )}
               </div>
 
-              {/* Graph/Status/Observability - Right Column */}
-              {!isChatExpanded && (
+              {/* Graph/Status/Observability - Right Column (only for chat) */}
+              {!isChatExpanded && activeTab === 'chat' && (
                 <div className="col-span-12 lg:col-span-5 flex flex-col min-h-0 space-y-4 overflow-hidden transition-all duration-300 ease-in-out">
                   <div className="flex-1 min-h-0">
                     <GraphView
                       apiUrl={API_URL}
                       token={idToken}
                       executionState={executionState}
-                      flow={activeTab === 'chat' ? 'chat' : 'report'}
+                      flow="chat"
                     />
                   </div>
                   <div className="flex-1 min-h-0">
@@ -201,6 +215,7 @@ function App() {
     >
       <Routes>
         <Route path="/chat/:threadId" element={<ChatPage />} />
+        <Route path="/report/:threadId" element={<ReportPage />} />
         <Route path="/" element={<NewChatRedirect />} />
         <Route path="*" element={<NewChatRedirect />} />
       </Routes>

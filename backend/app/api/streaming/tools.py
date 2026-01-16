@@ -191,11 +191,22 @@ def extract_tool_event_data(event: dict[str, Any], event_type: str) -> dict[str,
     result_preview = ""
     if event_type == "on_tool_end":
         output_data = data.get("output", {})
-        if isinstance(output_data, dict):
-            result_preview = truncate_preview(json.dumps(output_data), 500)
-        elif output_data:
-            result_str = json.dumps(output_data) if not isinstance(output_data, str) else str(output_data)
-            result_preview = truncate_preview(result_str, 500)
+        try:
+            if isinstance(output_data, dict):
+                result_preview = truncate_preview(json.dumps(output_data), 500)
+            elif output_data:
+                # Check if output_data is a ToolMessage or other non-serializable object
+                from langchain_core.messages import ToolMessage
+                if isinstance(output_data, ToolMessage):
+                    # Extract content from ToolMessage
+                    content = getattr(output_data, "content", "")
+                    result_preview = truncate_preview(str(content), 500)
+                else:
+                    result_str = json.dumps(output_data) if not isinstance(output_data, str) else str(output_data)
+                    result_preview = truncate_preview(result_str, 500)
+        except (TypeError, ValueError) as e:
+            # If serialization fails (e.g., contains ToolMessage), convert to string
+            result_preview = truncate_preview(str(output_data), 500)
     
     return {
         "tool_name": tool_name,

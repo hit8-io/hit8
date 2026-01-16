@@ -19,6 +19,20 @@ export function getUserFriendlyError(error: unknown): ApiError {
   if (error instanceof Error) {
     const message = error.message
 
+    // Ollama connection errors (LLM service unavailable)
+    if (
+      message.includes('Connection refused') ||
+      message.includes('Errno 111') ||
+      message.includes('All connection attempts failed') ||
+      message.includes('ConnectError') ||
+      (message.includes('connection') && message.includes('refused'))
+    ) {
+      return {
+        message: 'The AI service is currently unavailable. Please try again in a few moments.',
+        isUserFriendly: true,
+      }
+    }
+
     // Network errors
     if (message.includes('Failed to fetch') || message.includes('NetworkError')) {
       return {

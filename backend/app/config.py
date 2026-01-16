@@ -91,6 +91,10 @@ class Settings(BaseSettings):
     
     # Vertex AI
     LLM_MODEL_NAME: str
+    LLM_PROVIDER: str
+    OLLAMA_BASE_URL: str
+    OLLAMA_NUM_CTX: int | None = None
+    OLLAMA_KEEP_ALIVE: str = "0"  # Ollama keep_alive setting ("0" = unload immediately, "5m" = keep for 5 minutes)
     VERTEX_AI_LOCATION: str
     GCP_PROJECT: str
     VERTEX_SERVICE_ACCOUNT: str = Field(exclude=True)

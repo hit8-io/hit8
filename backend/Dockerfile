@@ -19,9 +19,9 @@ WORKDIR /app
 # Dependencies only need to be reinstalled if pyproject.toml changes
 COPY pyproject.toml uv.lock* ./
 
-# Install dependencies
+# Install dependencies including dev group
 RUN uv pip install --system . && \
-    uv pip install --system debugpy>=1.8.0
+    uv pip install --system --group dev .
 
 # Remove build tools after package installation to reduce image size
 RUN apt-get purge -y build-essential gcc libffi-dev libssl-dev && \

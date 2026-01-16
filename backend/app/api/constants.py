@@ -19,4 +19,5 @@ EVENT_LLM_END = "llm_end"
 EVENT_TOOL_START = "tool_start"
 EVENT_TOOL_END = "tool_end"
 EVENT_STATE_UPDATE = "state_update"
+EVENT_STATE_SNAPSHOT = "state_snapshot"
 

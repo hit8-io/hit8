@@ -11,7 +11,14 @@ prompt: |
   **Taalgebruik**: Formeel Nederlands (Vlaams), professioneel, objectief en to-the-point. Vermijd "ik"-vormen; gebruik "men", "de organisatie" of passieve constructies waar gepast.
 
   ## Input Data
-  U ontvangt de volledige tekst van de audit in de variabele `full_report_body`. Deze bevat gedetailleerde analyses per departement.
+  U ontvangt de volledige tekst van de audit in het volgende bericht (Human Message). Deze bevat meerdere gedetailleerde analyses per departement/topic, elk gescheiden door de scheidingslijn `\n\n---\n\n`. 
+  
+  **KRITIEK BELANGRIJK**: 
+  - De input bevat MEERDERE hoofdstukken (meestal 10-15 hoofdstukken)
+  - Elke sectie tussen `\n\n---\n\n` is een apart hoofdstuk over een specifiek departement/topic
+  - U MOET ALLE hoofdstukken verwerken en consolideren, NIET slechts één
+  - Begin met het tellen van het aantal `---` scheidingen om te bevestigen hoeveel hoofdstukken er zijn
+  - Verwerk systematisch elk hoofdstuk en integreer de bevindingen in het eindrapport
 
   ## Output Structuur (Markdown)
 
@@ -23,10 +30,10 @@ prompt: |
   **Status:** Definitief
 
   ## 1. Management Samenvatting (Executive Summary)
-  *(Schrijf hier een strategische synthese van 30-50 zinnen. Focus op de 'Big Picture'. Integreer de bevindingen uit de hoofdstukken tot een overkoepelend verhaal.)*
+  *(Schrijf hier een strategische synthese van 30-50 zinnen. Focus op het geheel. Integreer de bevindingen uit ALLE hoofdstukken tot een overkoepelend verhaal. Verwijs naar patronen en trends die zich voordoen over alle departementen heen.)*
 
   *   **Algemeen Kwaliteitsbeeld**: Schets de huidige maturiteit van het procedurebeheer. Is er een kloof tussen beleid en uitvoering?
-  *   **Risico-Analyse**: Identificeer de departementen of domeinen met de hoogste juridische kwetsbaarheid. Verwijs naar patronen (bv. verouderde regelgeving, onduidelijke aansprakelijkheid).
+  *   **Risico-Analyse**: Identificeer de departementen of domeinen met de hoogste juridische kwetsbaarheid. Verwijs naar patronen (bv. verouderde regelgeving, onduidelijke aansprakelijkheid) die zich voordoen over meerdere departementen.
   *   **Top 3 Prioriteiten**: Formuleer drie concrete, strategische actiepunten voor de korte termijn. (Bv. "Sanering van verouderde Covid-procedures", "Harmonisatie van financiële terminologie", "Herziening van procedures rond aansprakelijkheid").
 
   ## 2. Methodologische Verantwoording
@@ -43,8 +50,9 @@ prompt: |
   ---
 
   ## 3. Departementale Analyse
+  *(Consolideer hier ALLE hoofdstukken uit de input. Elke sectie gescheiden door `---` in de input vertegenwoordigt een apart hoofdstuk. Behandel elk hoofdstuk systematisch en integreer de bevindingen in een coherente analyse. Begin elk hoofdstuk met een duidelijke titel die het departement/topic identificeert.)*
 
-  {{ full_report_body }}
+  [Hier plaats u de geconsolideerde departementale analyses uit de input]
 
   ---
 

@@ -9,7 +9,7 @@ import structlog
 from langchain_core.tools import tool
 from psycopg import sql as psql
 
-from app.flows.opgroeien.poc.chat.tools.utils import _get_db_connection
+from app.flows.opgroeien.poc.db import _get_db_connection
 
 logger = structlog.get_logger(__name__)
 

@@ -744,16 +744,11 @@ dependencies = [
     { name = "uvicorn", extra = ["standard"] },
 ]
 
-[package.optional-dependencies]
+[package.dev-dependencies]
 dev = [
     { name = "debugpy" },
     { name = "httpx" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-]
-
-[package.dev-dependencies]
-dev = [
+    { name = "langchain-ollama" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
 ]
@@ -763,12 +758,10 @@ requires-dist = [
     { name = "beautifulsoup4", specifier = ">=4.12.0" },
     { name = "brightdata-sdk", specifier = ">=2.0.0" },
     { name = "cryptography", specifier = ">=46.0.3" },
-    { name = "debugpy", marker = "extra == 'dev'", specifier = ">=1.8.0" },
     { name = "fastapi", specifier = ">=0.127.0" },
     { name = "firebase-admin", specifier = ">=7.1.0" },
     { name = "google-auth", specifier = ">=2.45.0" },
     { name = "google-cloud-run", specifier = ">=0.10.0" },
-    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27.0" },
     { name = "jinja2", specifier = ">=3.1.0" },
     { name = "langchain", specifier = ">=1.2.0" },
     { name = "langchain-community", specifier = ">=0.3.0" },
@@ -787,8 +780,6 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "pydantic-settings", specifier = ">=2.12.0" },
     { name = "pypandoc", specifier = ">=1.13.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23.0" },
     { name = "python-docx", specifier = ">=1.1.0" },
     { name = "python-multipart", specifier = ">=0.0.6" },
     { name = "pyyaml", specifier = ">=6.0.3" },
@@ -798,10 +789,12 @@ requires-dist = [
     { name = "types-pyyaml", specifier = ">=6.0.12" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.40.0" },
 ]
-provides-extras = ["dev"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "debugpy", specifier = ">=1.8.0" },
+    { name = "httpx", specifier = ">=0.27.0" },
+    { name = "langchain-ollama", specifier = ">=1.0.1" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest-asyncio", specifier = ">=1.3.0" },
 ]
@@ -1068,6 +1061,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/2e/04/c8d2840d96f05485abeb5288bd88ec8c5fb7a24065968201fa54969a47d8/langchain_google_genai-4.1.2.tar.gz", hash = "sha256:aa0dd7807a9a15651d10cd228c574f23fe46e2ce62921bf21d73a63869ecd814", size = 276143, upload-time = "2025-12-19T04:10:57.799Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f6/2f/a63dde25c9d11340d0f5f538a9fea77571b4b4e73294ad58fa6ea84079a0/langchain_google_genai-4.1.2-py3-none-any.whl", hash = "sha256:89790f2e3ca113f7e45883f541a834120d279e21f235fffc491c81cd1af11fdd", size = 65640, upload-time = "2025-12-19T04:10:56.386Z" },
+]
+
+[[package]]
+name = "langchain-ollama"
+version = "1.0.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "langchain-core" },
+    { name = "ollama" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/73/51/72cd04d74278f3575f921084f34280e2f837211dc008c9671c268c578afe/langchain_ollama-1.0.1.tar.gz", hash = "sha256:e37880c2f41cdb0895e863b1cfd0c2c840a117868b3f32e44fef42569e367443", size = 153850, upload-time = "2025-12-12T21:48:28.68Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e3/46/f2907da16dc5a5a6c679f83b7de21176178afad8d2ca635a581429580ef6/langchain_ollama-1.0.1-py3-none-any.whl", hash = "sha256:37eb939a4718a0255fe31e19fbb0def044746c717b01b97d397606ebc3e9b440", size = 29207, upload-time = "2025-12-12T21:48:27.832Z" },
 ]
 
 [[package]]
@@ -1398,6 +1404,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/63/09/3d8aeb809c0332c3f642da812ac2e3d74fc9252b3021f8c30c82e99e3f3d/numpy-2.4.0-pp311-pypy311_pp73-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:32ed06d0fe9cae27d8fb5f400c63ccee72370599c75e683a6358dd3a4fb50aaf", size = 14535119, upload-time = "2025-12-20T16:18:12.105Z" },
     { url = "https://files.pythonhosted.org/packages/fd/7f/68f0fc43a2cbdc6bb239160c754d87c922f60fbaa0fa3cd3d312b8a7f5ee/numpy-2.4.0-pp311-pypy311_pp73-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:57c540ed8fb1f05cb997c6761cd56db72395b0d6985e90571ff660452ade4f98", size = 16475815, upload-time = "2025-12-20T16:18:14.433Z" },
     { url = "https://files.pythonhosted.org/packages/11/73/edeacba3167b1ca66d51b1a5a14697c2c40098b5ffa01811c67b1785a5ab/numpy-2.4.0-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:a39fb973a726e63223287adc6dafe444ce75af952d711e400f3bf2b36ef55a7b", size = 12489376, upload-time = "2025-12-20T16:18:16.524Z" },
+]
+
+[[package]]
+name = "ollama"
+version = "0.6.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9d/5a/652dac4b7affc2b37b95386f8ae78f22808af09d720689e3d7a86b6ed98e/ollama-0.6.1.tar.gz", hash = "sha256:478c67546836430034b415ed64fa890fd3d1ff91781a9d548b3325274e69d7c6", size = 51620, upload-time = "2025-11-13T23:02:17.416Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/47/4f/4a617ee93d8208d2bcf26b2d8b9402ceaed03e3853c754940e2290fed063/ollama-0.6.1-py3-none-any.whl", hash = "sha256:fc4c984b345735c5486faeee67d8a265214a31cbb828167782dc642ce0a2bf8c", size = 14354, upload-time = "2025-11-13T23:02:16.292Z" },
 ]
 
 [[package]]

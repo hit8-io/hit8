@@ -132,7 +132,7 @@ async def update_last_accessed(thread_id: str) -> None:
         raise
 
 
-async def upsert_thread(thread_id: str, user_id: str, title: str | None = None) -> None:
+async def upsert_thread(thread_id: str, user_id: str, title: str | None = None, flow: str | None = None) -> None:
     """
     Upsert a thread record - create if it doesn't exist, update last_accessed_at if it does.
     
@@ -144,6 +144,7 @@ async def upsert_thread(thread_id: str, user_id: str, title: str | None = None) 
         thread_id: Thread UUID as string
         user_id: User identifier
         title: Optional thread title (defaults to None, only set on insert)
+        flow: Optional flow identifier (format: "{org}.{project}.{flow}", e.g., "opgroeien.poc.chat")
         
     Raises:
         RuntimeError: If pool is not initialized
@@ -158,24 +159,27 @@ async def upsert_thread(thread_id: str, user_id: str, title: str | None = None) 
                 if title is not None:
                     await cur.execute(
                         """
-                        INSERT INTO public.user_threads (thread_id, user_id, title, created_at, last_accessed_at)
-                        VALUES (%s::uuid, %s, %s, NOW(), NOW())
+                        INSERT INTO public.user_threads (thread_id, user_id, title, flow, created_at, last_accessed_at)
+                        VALUES (%s::uuid, %s, %s, %s, NOW(), NOW())
                         ON CONFLICT (thread_id) 
                         DO UPDATE SET 
                             last_accessed_at = NOW(),
-                            title = COALESCE(user_threads.title, EXCLUDED.title)
+                            title = COALESCE(user_threads.title, EXCLUDED.title),
+                            flow = COALESCE(user_threads.flow, EXCLUDED.flow)
                         """,
-                        (thread_id, user_id, title),
+                        (thread_id, user_id, title, flow),
                     )
                 else:
                     await cur.execute(
                         """
-                        INSERT INTO public.user_threads (thread_id, user_id, title, created_at, last_accessed_at)
-                        VALUES (%s::uuid, %s, %s, NOW(), NOW())
+                        INSERT INTO public.user_threads (thread_id, user_id, title, flow, created_at, last_accessed_at)
+                        VALUES (%s::uuid, %s, %s, %s, NOW(), NOW())
                         ON CONFLICT (thread_id) 
-                        DO UPDATE SET last_accessed_at = NOW()
+                        DO UPDATE SET 
+                            last_accessed_at = NOW(),
+                            flow = COALESCE(user_threads.flow, EXCLUDED.flow)
                         """,
-                        (thread_id, user_id, title),
+                        (thread_id, user_id, title, flow),
                     )
                 
         logger.debug(
@@ -184,6 +188,7 @@ async def upsert_thread(thread_id: str, user_id: str, title: str | None = None) 
             user_id=user_id,
             has_title=title is not None,
             title_provided=title,
+            flow=flow,
         )
     except Exception as e:
         logger.error(
@@ -196,18 +201,20 @@ async def upsert_thread(thread_id: str, user_id: str, title: str | None = None) 
         raise
 
 
-async def get_user_threads(user_id: str) -> list[dict[str, Any]]:
+async def get_user_threads(user_id: str, flow: str | None = None) -> list[dict[str, Any]]:
     """
     Get all threads for a user, ordered by last_accessed_at descending.
     
     Args:
         user_id: User identifier
+        flow: Optional flow identifier to filter by (format: "{org}.{project}.{flow}")
         
     Returns:
         List of thread dictionaries with keys:
         - thread_id (str)
         - user_id (str)
         - title (str | None)
+        - flow (str | None)
         - created_at (str, ISO format)
         - last_accessed_at (str, ISO format)
         
@@ -220,25 +227,37 @@ async def get_user_threads(user_id: str) -> list[dict[str, Any]]:
     try:
         async with pool.connection() as conn:
             async with conn.cursor() as cur:
-                await cur.execute(
-                    """
-                    SELECT thread_id, user_id, title, created_at, last_accessed_at
-                    FROM public.user_threads
-                    WHERE user_id = %s
-                    ORDER BY last_accessed_at DESC
-                    """,
-                    (user_id,),
-                )
+                if flow is not None:
+                    await cur.execute(
+                        """
+                        SELECT thread_id, user_id, title, flow, created_at, last_accessed_at
+                        FROM public.user_threads
+                        WHERE user_id = %s AND flow = %s
+                        ORDER BY last_accessed_at DESC
+                        """,
+                        (user_id, flow),
+                    )
+                else:
+                    await cur.execute(
+                        """
+                        SELECT thread_id, user_id, title, flow, created_at, last_accessed_at
+                        FROM public.user_threads
+                        WHERE user_id = %s
+                        ORDER BY last_accessed_at DESC
+                        """,
+                        (user_id,),
+                    )
                 
                 rows = await cur.fetchall()
                 
                 threads = []
                 for row in rows:
-                    thread_id, user_id_val, title, created_at, last_accessed_at = row
+                    thread_id, user_id_val, title, flow_val, created_at, last_accessed_at = row
                     threads.append({
                         "thread_id": str(thread_id),
                         "user_id": user_id_val,
                         "title": title,
+                        "flow": flow_val,
                         "created_at": created_at.isoformat() if created_at else None,
                         "last_accessed_at": last_accessed_at.isoformat() if last_accessed_at else None,
                     })
@@ -247,6 +266,7 @@ async def get_user_threads(user_id: str) -> list[dict[str, Any]]:
             "user_threads_retrieved",
             user_id=user_id,
             thread_count=len(threads),
+            flow=flow,
         )
         
         return threads
@@ -254,6 +274,7 @@ async def get_user_threads(user_id: str) -> list[dict[str, Any]]:
         logger.error(
             "user_threads_retrieval_failed",
             user_id=user_id,
+            flow=flow,
             error=str(e),
             error_type=type(e).__name__,
         )

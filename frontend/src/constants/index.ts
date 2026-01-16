@@ -1,6 +1,6 @@
 // Timeouts and delays (in milliseconds)
-export const STREAM_TIMEOUT = 60000 // 60 seconds
-export const STREAM_INACTIVITY_TIMEOUT = 30000 // 30 seconds
+export const STREAM_TIMEOUT = 600000 // 600 seconds (10 minutes) for long-running reports
+export const STREAM_INACTIVITY_TIMEOUT = 60000 // 60 seconds (increased for report generation)
 export const CHAT_CLEANUP_DELAY = 1000 // 1 second
 export const POPOVER_CLOSE_DELAY = 100 // 100ms
 export const ERROR_AUTO_DISMISS_DELAY = 10000 // 10 seconds

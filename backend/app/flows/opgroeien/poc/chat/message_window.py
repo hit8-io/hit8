@@ -9,22 +9,24 @@ from __future__ import annotations
 import structlog
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 
-from app.constants import MAX_RECENT_MESSAGE_PAIRS, MAX_TOOL_RESULT_LENGTH
+from app import constants
 
 logger = structlog.get_logger(__name__)
 
 
-def truncate_tool_result(content: str, max_length: int = MAX_TOOL_RESULT_LENGTH) -> str:
+def truncate_tool_result(content: str, max_length: int | None = None) -> str:
     """
     Truncate tool result content if it exceeds max_length.
     
     Args:
         content: Tool result content to truncate
-        max_length: Maximum allowed length
+        max_length: Maximum allowed length (defaults to CONSTANTS["MAX_TOOL_RESULT_LENGTH"])
         
     Returns:
         Truncated content with truncation notice if needed
     """
+    if max_length is None:
+        max_length = constants.CONSTANTS["MAX_TOOL_RESULT_LENGTH"]
     if len(content) <= max_length:
         return content
     
@@ -48,8 +50,8 @@ def truncate_tool_result(content: str, max_length: int = MAX_TOOL_RESULT_LENGTH)
 
 def window_messages(
     messages: list[BaseMessage],
-    max_pairs: int = MAX_RECENT_MESSAGE_PAIRS,
-    max_tool_result_length: int = MAX_TOOL_RESULT_LENGTH,
+    max_pairs: int | None = None,
+    max_tool_result_length: int | None = None,
 ) -> list[BaseMessage]:
     """
     Apply sliding window to messages to prevent token limit issues.
@@ -62,12 +64,17 @@ def window_messages(
     
     Args:
         messages: Full list of messages from state
-        max_pairs: Maximum number of recent Human/AI pairs to keep
-        max_tool_result_length: Maximum length for tool result content
+        max_pairs: Maximum number of recent Human/AI pairs to keep (defaults to CONSTANTS["MAX_RECENT_MESSAGE_PAIRS"])
+        max_tool_result_length: Maximum length for tool result content (defaults to CONSTANTS["MAX_TOOL_RESULT_LENGTH"])
         
     Returns:
         Windowed list of messages
     """
+    if max_pairs is None:
+        max_pairs = constants.CONSTANTS["MAX_RECENT_MESSAGE_PAIRS"]
+    if max_tool_result_length is None:
+        max_tool_result_length = constants.CONSTANTS["MAX_TOOL_RESULT_LENGTH"]
+    
     if len(messages) == 0:
         return messages
     

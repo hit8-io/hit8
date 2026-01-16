@@ -51,14 +51,19 @@ async def get_history(
             detail=f"User does not have access to org '{org}' / project '{project}'",
         )
     
+    # Derive flow identifier: "{org}.{project}.chat"
+    # This ensures chat menu only shows chat threads
+    flow_identifier = f"{org}.{project}.chat"
+    
     try:
-        threads = await get_user_threads(user_id)
+        threads = await get_user_threads(user_id, flow=flow_identifier)
         logger.debug(
             "history_retrieved",
             user_id=user_id,
             thread_count=len(threads),
             org=org,
             project=project,
+            flow=flow_identifier,
         )
         return threads
     except Exception as e:

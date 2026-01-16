@@ -8,7 +8,7 @@ import json
 import structlog
 from langchain_core.tools import tool
 
-from app.flows.opgroeien.poc.chat.tools.utils import (
+from app.flows.opgroeien.poc.db import (
     _get_procedure_raw_sql,
 )
 

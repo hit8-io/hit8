@@ -81,14 +81,63 @@ def _get_ssl_cert_file_path() -> str:
     raise ValueError("SSL certificate file path requested in dev environment (should not happen)")
 
 
+def _is_running_in_docker() -> bool:
+    """
+    Detect if we're running inside a Docker container.
+    
+    Returns:
+        bool: True if running in Docker, False otherwise
+    """
+    # Check for /.dockerenv file (Docker creates this)
+    if os.path.exists("/.dockerenv"):
+        return True
+    
+    # Check /proc/1/cgroup for Docker indicators
+    if os.path.exists("/proc/1/cgroup"):
+        try:
+            with open("/proc/1/cgroup", encoding="utf-8") as f:
+                content = f.read()
+                if "docker" in content or "containerd" in content:
+                    return True
+        except Exception:
+            pass
+    
+    return False
+
+
 def _build_connection_string() -> str:
     """
     Build connection string with SSL parameters for production.
+    
+    In development, automatically handles hostname conversion:
+    - If running in Docker and connection string uses localhost, converts to host.docker.internal
+    - If running on host and connection string uses host.docker.internal, converts to localhost
     
     Returns:
         str: Connection string with SSL parameters if in production
     """
     conninfo = settings.DATABASE_CONNECTION_STRING
+    
+    # In dev, handle hostname conversion for Docker compatibility
+    if constants.ENVIRONMENT == "dev":
+        is_in_docker = _is_running_in_docker()
+        
+        if is_in_docker and "localhost" in conninfo:
+            # Running in Docker, convert localhost to host.docker.internal
+            conninfo = conninfo.replace("localhost", "host.docker.internal")
+            logger.debug(
+                "connection_string_updated_for_docker",
+                original_host="localhost",
+                new_host="host.docker.internal",
+            )
+        elif not is_in_docker and "host.docker.internal" in conninfo:
+            # Running on host, convert host.docker.internal to localhost
+            conninfo = conninfo.replace("host.docker.internal", "localhost")
+            logger.debug(
+                "connection_string_updated_for_host",
+                original_host="host.docker.internal",
+                new_host="localhost",
+            )
     
     # Production requires SSL with certificate verification
     if constants.ENVIRONMENT == "prd":
@@ -192,7 +241,10 @@ def get_sync_connection() -> psycopg.Connection:
     This is used for sync operations (e.g., in tools) that cannot use the async pool.
     Creates a new connection each time - consider using the async pool when possible.
     
-    - Dev: No SSL (plain connection)
+    Uses the same connection string building logic as async pool to ensure
+    consistent hostname handling (localhost <-> host.docker.internal conversion).
+    
+    - Dev: No SSL (plain connection), automatically handles hostname conversion
     - Production: SSL with certificate verification (required)
     
     Returns:
@@ -201,7 +253,9 @@ def get_sync_connection() -> psycopg.Connection:
     Raises:
         ValueError: If DATABASE_SSL_ROOT_CERT is required but not provided
     """
-    conninfo = settings.DATABASE_CONNECTION_STRING
+    # Use the same connection string building logic as async pool
+    # This ensures consistent hostname handling
+    conninfo = _build_connection_string()
     
     # Production requires SSL with certificate verification
     if constants.ENVIRONMENT == "prd":
@@ -210,15 +264,21 @@ def get_sync_connection() -> psycopg.Connection:
                 "DATABASE_SSL_ROOT_CERT is required in production but not provided"
             )
         
-        # Write certificate content to file and get path
-        cert_file_path = _get_ssl_cert_file_path()
-        
-        # Connect with SSL verification
-        return psycopg.connect(
-            conninfo,
-            sslmode="verify-full",
-            sslrootcert=cert_file_path,
-        )
+        # Extract SSL parameters from connection string if present
+        # Otherwise use certificate file path
+        if "sslmode=" in conninfo and "sslrootcert=" in conninfo:
+            # SSL params already in connection string, use as-is
+            return psycopg.connect(conninfo)
+        else:
+            # Write certificate content to file and get path
+            cert_file_path = _get_ssl_cert_file_path()
+            
+            # Connect with SSL verification
+            return psycopg.connect(
+                conninfo,
+                sslmode="verify-full",
+                sslrootcert=cert_file_path,
+            )
     
     # Dev: No SSL (local database)
     return psycopg.connect(conninfo)
