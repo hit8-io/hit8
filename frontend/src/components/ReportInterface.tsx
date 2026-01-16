@@ -28,7 +28,9 @@ interface ReportStatus {
   state?: {
     raw_procedures: Array<Record<string, any>>;
     pending_clusters: Array<Record<string, any>>;
+    clusters_all?: Array<Record<string, any>>;
     chapters: string[];
+    chapters_by_file_id?: Record<string, string>;
     final_report?: string | null;
   };
   result?: string;

@@ -1,5 +1,5 @@
-import type { StreamEvent, StreamEventEnvelope } from '../types'
-import { STREAM_TIMEOUT, STREAM_INACTIVITY_TIMEOUT, CHAT_CLEANUP_DELAY } from '../constants'
+import type { StreamEvent, StreamEventEnvelope } from '../types/execution'
+import { STREAM_TIMEOUT, STREAM_INACTIVITY_TIMEOUT } from '../constants'
 import { logError, isBenignConnectionError } from './errorHandling'
 import type { EventHandlerContext } from './eventHandlers'
 import {

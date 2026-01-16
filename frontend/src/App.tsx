@@ -23,11 +23,6 @@ const NewChatRedirect = () => {
   return <Navigate to={`/chat/${newId}`} replace />
 }
 
-// Helper to generate new report ID
-const NewReportRedirect = () => {
-  const newId = crypto.randomUUID()
-  return <Navigate to={`/report/${newId}`} replace />
-}
 
 // ChatPage component that reads threadId from URL and renders the main app
 function ChatPage() {
@@ -161,7 +156,6 @@ function AppContent({ threadId }: { threadId: string }) {
                 ) : (
                   <ReportInterface 
                     token={idToken}
-                    threadId={threadId}
                     org={org}
                     project={project}
                     onExecutionStateUpdate={handleExecutionStateUpdate}

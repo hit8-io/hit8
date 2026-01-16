@@ -1,4 +1,4 @@
-import { FileText, Layers, BookOpen, FileCheck, Loader2, Download } from "lucide-react"
+import { FileText, BookOpen, FileCheck, Loader2, Download } from "lucide-react"
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card"
 import { ScrollArea } from "./ui/scroll-area"
 import { Progress } from "./ui/progress"
@@ -103,7 +103,7 @@ export default function StateView({ state, executionState, token, threadId }: St
   const API_URL = import.meta.env.VITE_API_URL
 
   const handleDownloadFinalReport = async () => {
-    if (!token || !threadId || !state.final_report) {
+    if (!token || !threadId || !state?.final_report) {
       alert("Cannot download final report: missing token, thread ID, or final report")
       return
     }
@@ -318,7 +318,7 @@ export default function StateView({ state, executionState, token, threadId }: St
   } else {
     // Fallback: if clusters_all is not available, use the old logic
     // Add completed clusters from completedClusterIds
-    completedClusterIds.forEach((fileId) => {
+    completedClusterIds.forEach(() => {
       allClusters.push({
         cluster: null,
         status: 'completed',
