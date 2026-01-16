@@ -47,7 +47,7 @@ CONSTANTS: dict[str, Any] = {
     "LLM_THINKING_LEVEL": None,
     "TOOL_LLM_THINKING_LEVEL": None,
     "LLM_TEMPERATURE": None,
-    "TOOL_LLM_TEMPERATURE": 0.1,
+    "TOOL_LLM_TEMPERATURE": None,
     "LLM_PROVIDER": "vertex",
     "CORS_ALLOW_CREDENTIALS": True,
     "ACCOUNT": "hit8",
