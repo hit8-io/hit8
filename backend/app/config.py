@@ -9,7 +9,7 @@ import threading
 from typing import Any
 
 import structlog
-from pydantic import Field, computed_field, field_validator
+from pydantic import Field, computed_field, field_validator, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 from app import constants
@@ -92,12 +92,19 @@ class Settings(BaseSettings):
     # Vertex AI
     LLM_MODEL_NAME: str
     LLM_PROVIDER: str
-    OLLAMA_BASE_URL: str
+    OLLAMA_BASE_URL: str | None = None  # Only required when LLM_PROVIDER == "ollama"
     OLLAMA_NUM_CTX: int | None = None
     OLLAMA_KEEP_ALIVE: str = "0"  # Ollama keep_alive setting ("0" = unload immediately, "5m" = keep for 5 minutes)
     VERTEX_AI_LOCATION: str
     GCP_PROJECT: str
     VERTEX_SERVICE_ACCOUNT: str = Field(exclude=True)
+    
+    @model_validator(mode='after')
+    def validate_ollama_base_url_required_when_using_ollama(self) -> 'Settings':
+        """Validate that OLLAMA_BASE_URL is provided when using Ollama provider."""
+        if self.LLM_PROVIDER == "ollama" and not self.OLLAMA_BASE_URL:
+            raise ValueError("OLLAMA_BASE_URL is required when LLM_PROVIDER is 'ollama'")
+        return self
     
     # Database
     DATABASE_CONNECTION_STRING: str = Field(exclude=True)

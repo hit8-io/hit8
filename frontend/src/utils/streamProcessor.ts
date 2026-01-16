@@ -144,10 +144,6 @@ export function processStreamEvent(
       return { accumulatedContent, finalResponse, graphEndReceived, hasError }
     case 'graph_end':
       return { accumulatedContent, finalResponse: handleGraphEnd(data, accumulatedContent, context), graphEndReceived: true, hasError }
-    case 'state_snapshot':
-      // Handle checkpoint-authoritative state snapshot
-      handleStateSnapshot(data as StreamEvent & { type: 'state_snapshot' }, context)
-      return { accumulatedContent, finalResponse, graphEndReceived, hasError }
     case 'keepalive':
       // Keepalive event - just update activity time, no state changes needed
       return { accumulatedContent, finalResponse, graphEndReceived, hasError }

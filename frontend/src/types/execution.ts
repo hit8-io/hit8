@@ -32,9 +32,25 @@ export interface ExecutionState {
 
 import type { ExecutionMetrics } from './observability'
 
+// Stream event type union
+export type StreamEventType =
+  | 'graph_start'
+  | 'graph_end'
+  | 'node_start'
+  | 'node_end'
+  | 'llm_start'
+  | 'llm_end'
+  | 'tool_start'
+  | 'tool_end'
+  | 'state_update'
+  | 'state_snapshot'
+  | 'content_chunk'
+  | 'error'
+  | 'keepalive'
+
 // Event envelope structure
 export interface StreamEventEnvelope {
-  type: string
+  type: StreamEventType
   thread_id: string
   ts: number
   seq: number

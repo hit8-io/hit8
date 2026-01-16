@@ -79,6 +79,8 @@ def _create_model(
                 "langchain-ollama is required for Ollama provider. "
                 "Install it with: uv add --dev langchain-ollama"
             )
+        if not settings.OLLAMA_BASE_URL:
+            raise ValueError("OLLAMA_BASE_URL is required when LLM_PROVIDER is 'ollama'")
         # Note: Ollama (Llama 3.1) does not support 'thinking_level', so we ignore it.
         # We use the temperature passed in (which comes from existing constants).
         
