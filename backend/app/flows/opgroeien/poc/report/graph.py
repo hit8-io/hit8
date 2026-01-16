@@ -14,7 +14,7 @@ from app.flows.opgroeien.poc.report.nodes import (
     batch_processor_node,
     editor_node,
 )
-from app.api.checkpointer import checkpointer
+from app.api.checkpointer import get_checkpointer
 
 if TYPE_CHECKING:
     from langgraph.graph import CompiledGraph
@@ -22,6 +22,9 @@ if TYPE_CHECKING:
 
 def create_graph() -> CompiledGraph:
     """Create and compile the LangGraph report generation graph."""
+    # Get checkpointer (initialized at application startup via FastAPI lifespan)
+    checkpointer = get_checkpointer()
+    
     # Create the graph
     workflow = StateGraph(ReportState)
 

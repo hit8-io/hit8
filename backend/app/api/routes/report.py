@@ -15,7 +15,6 @@ import pypandoc
 
 from app.auth import verify_google_token
 from app.user_config import validate_user_access
-from app.api.checkpointer import checkpointer
 from app.api.graph_manager import get_graph
 from app.api.streaming.async_events import process_async_stream_events
 from app.api.constants import EVENT_GRAPH_END, EVENT_ERROR
@@ -276,8 +275,7 @@ async def start_report(
     initial_state = {"raw_procedures": procedures}
     config = {
         "configurable": {
-            "thread_id": thread_id, 
-            "checkpointer": checkpointer
+            "thread_id": thread_id
         }
     }
     
@@ -453,7 +451,7 @@ async def list_snapshots(
     
     # Get the report graph instance
     report_graph = get_graph(org, project, "report")
-    config = {"configurable": {"thread_id": thread_id, "checkpointer": checkpointer}}
+    config = {"configurable": {"thread_id": thread_id}}
     
     try:
         # Get current state to extract snapshot info
@@ -576,8 +574,7 @@ async def restore_report(
     config = {
         "configurable": {
             "thread_id": thread_id,
-            "checkpoint_id": checkpoint_id,
-            "checkpointer": checkpointer
+            "checkpoint_id": checkpoint_id
         }
     }
     
@@ -672,7 +669,7 @@ async def get_status(
             error_type=type(e).__name__,
         )
     
-    config = {"configurable": {"thread_id": thread_id, "checkpointer": checkpointer}}
+    config = {"configurable": {"thread_id": thread_id}}
     
     # Get the report graph instance
     report_graph = get_graph(org, project, "report")
@@ -781,7 +778,7 @@ async def load_report_checkpoint(
             error_type=type(e).__name__,
         )
     
-    config = {"configurable": {"thread_id": thread_id, "checkpointer": checkpointer}}
+    config = {"configurable": {"thread_id": thread_id}}
     
     # Get the report graph instance
     report_graph = get_graph(org, project, "report")
@@ -876,7 +873,7 @@ async def download_chapters(
             detail=f"User does not have access to org '{org}' / project '{project}'",
         )
     
-    config = {"configurable": {"thread_id": thread_id, "checkpointer": checkpointer}}
+    config = {"configurable": {"thread_id": thread_id}}
     
     # Get the report graph instance
     report_graph = get_graph(org, project, "report")
@@ -1040,7 +1037,7 @@ async def download_final_report(
             detail=f"User does not have access to org '{org}' / project '{project}'",
         )
     
-    config = {"configurable": {"thread_id": thread_id, "checkpointer": checkpointer}}
+    config = {"configurable": {"thread_id": thread_id}}
     
     # Get the report graph instance
     report_graph = get_graph(org, project, "report")
@@ -1228,7 +1225,7 @@ async def resume_report(
             error_type=type(e).__name__,
         )
     
-    config = {"configurable": {"thread_id": thread_id, "checkpointer": checkpointer}}
+    config = {"configurable": {"thread_id": thread_id}}
     
     # Get the report graph instance
     report_graph = get_graph(org, project, "report")
@@ -1309,8 +1306,7 @@ async def execute_report_job(
     initial_state = {"raw_procedures": procedures}
     config = {
         "configurable": {
-            "thread_id": thread_id,
-            "checkpointer": checkpointer
+            "thread_id": thread_id
         }
     }
     
