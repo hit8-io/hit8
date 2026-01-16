@@ -1,6 +1,5 @@
 import type { StreamEvent, StreamEventEnvelope } from '../types/execution'
 import { STREAM_TIMEOUT, STREAM_INACTIVITY_TIMEOUT } from '../constants'
-import { logError, isBenignConnectionError } from './errorHandling'
 import type { EventHandlerContext } from './eventHandlers'
 import {
   handleGraphStart,
@@ -18,36 +17,21 @@ interface ErrorWithType extends Error {
 }
 
 /**
- * Handles stream error events - logs and throws appropriate errors.
+ * Handles stream error events - throws appropriate errors.
+ * Error logging is handled by the catch block in state.ts to avoid duplicate logs.
  * 
  * @param data - Error event data
- * @param accumulatedContent - Accumulated content before error
- * @param finalResponse - Final response if any
- * @param graphEndReceived - Whether graph_end was received
  * @throws Error with appropriate type
  */
 function handleStreamError(
-  data: { error?: string; error_type?: string; thread_id?: string },
-  accumulatedContent: string,
-  finalResponse: string,
-  graphEndReceived: boolean
+  data: { error?: string; error_type?: string; thread_id?: string }
 ): never {
   const errorMessage = data.error && typeof data.error === 'string' && data.error.trim() ? data.error : 'Unknown error occurred'
   const errorType = data.error_type || 'Error'
   const error: ErrorWithType = Object.assign(new Error(errorMessage), { type: errorType })
   
-  const hasCompleted = accumulatedContent.length > 0 || finalResponse.length > 0 || graphEndReceived
-  const isBenign = isBenignConnectionError(error, hasCompleted)
-  
-  if (!isBenign) {
-    logError('ChatInterface: Stream error', {
-      error: errorMessage,
-      errorType,
-      threadId: data.thread_id,
-      data,
-    })
-    throw error
-  }
+  // Always throw the error - let the catch block in state.ts handle logging
+  // This avoids duplicate logging and ensures consistent error handling
   throw error
 }
 
@@ -148,7 +132,7 @@ export function processStreamEvent(
       // Keepalive event - just update activity time, no state changes needed
       return { accumulatedContent, finalResponse, graphEndReceived, hasError }
     case 'error':
-      handleStreamError(data, accumulatedContent, finalResponse, graphEndReceived)
+      handleStreamError(data)
       return { accumulatedContent, finalResponse, graphEndReceived, hasError: true }
     default:
       return { accumulatedContent, finalResponse, graphEndReceived, hasError }
