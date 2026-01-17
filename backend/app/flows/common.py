@@ -15,6 +15,7 @@ from google.auth import credentials
 from google.oauth2 import service_account
 
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_google_genai.chat_models import ChatGoogleGenerativeAIError
 from langchain_core.language_models import BaseChatModel
 from langchain_core.runnables.retry import RunnableRetry
 from langfuse import Langfuse
@@ -71,11 +72,18 @@ def is_retryable_vertex_error(exception: Exception) -> bool:
     try:
         if isinstance(exception, ClientError):
             return True
-    except (NameError, AttributeError):
+    except (NameError, AttributeError, TypeError):
         # ClientError might not be defined
         pass
     
-    # Check error message for 429/Resource exhausted indicators
+    # Check for ChatGoogleGenerativeAIError (LangChain wrapper)
+    # This wraps ClientError, so we need to check the message
+    if isinstance(exception, ChatGoogleGenerativeAIError):
+        msg = str(exception)
+        if "429" in msg or "Resource exhausted" in msg or "Too Many Requests" in msg:
+            return True
+    
+    # Check error message for 429/Resource exhausted indicators (fallback)
     msg = str(exception)
     return (
         "429" in msg or
@@ -143,13 +151,17 @@ def _wrap_with_retry(runnable: Any) -> Any:
         )
     elif settings.LLM_PROVIDER == "vertex":
         # Vertex AI: retry on 429 errors that slip through internal retries
-        # Use ClientError imported at module level (from google.genai.errors)
+        # LangChain wraps ClientError into ChatGoogleGenerativeAIError, so we need to catch both
         # Build exception types list with all known Vertex AI error types
         exception_types = [
             ResourceExhausted,
             ServiceUnavailable,
-            ClientError,
+            ChatGoogleGenerativeAIError,  # LangChain wrapper that contains 429 errors
         ]
+        
+        # Add ClientError if available (the underlying error type)
+        if ClientError is not None:
+            exception_types.append(ClientError)
         
         # Manually construct RunnableRetry with exception types
         # The custom filter function is_retryable_vertex_error() is available
