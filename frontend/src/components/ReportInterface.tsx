@@ -494,7 +494,8 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
       return
     }
     
-    if (executionMode === 'local' && streamEvents.length > 0) {
+    // Process stream events for both local and cloud_run_service modes (both use streaming)
+    if ((executionMode === 'local' || executionMode === 'cloud_run_service') && streamEvents.length > 0) {
       // Build logs by processing events in order and replacing start with end events
       const logs: string[] = []
       const nodeLogIndices = new Map<string, number>() // Track log index for each node/entity
