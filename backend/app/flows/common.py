@@ -17,8 +17,9 @@ from google.oauth2 import service_account
 try:
     from google.genai.errors import ClientError
 except ImportError:
-    # Fallback if google.genai.errors is not available
-    ClientError = None  # type: ignore
+    # Dummy if not found, but it likely will be
+    class ClientError(Exception):
+        pass
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.language_models import BaseChatModel
 from langfuse import Langfuse
@@ -64,41 +65,6 @@ def _get_vertex_credentials() -> tuple[credentials.Credentials, str]:
     return _credentials, _project_id
 
 
-def _is_quota_error(exception: Exception) -> bool:
-    """Check if the error is a 429 Resource Exhausted error.
-    
-    Args:
-        exception: The exception to check
-        
-    Returns:
-        True if this is a 429/quota error that should be retried
-    """
-    # Check for newer ClientError with 429 status code
-    if ClientError is not None and isinstance(exception, ClientError):
-        # Check status code if available
-        if hasattr(exception, "status_code") and exception.status_code == 429:
-            return True
-        # Also check error message for "Resource exhausted" or "429"
-        error_str = str(exception)
-        if "Resource exhausted" in error_str or "429" in error_str or "Too Many Requests" in error_str:
-            return True
-    
-    # Check for legacy ResourceExhausted exception
-    if isinstance(exception, ResourceExhausted):
-        return True
-    
-    # Check for ServiceUnavailable
-    if isinstance(exception, ServiceUnavailable):
-        return True
-    
-    # Check error message for 429 indicators (fallback)
-    error_str = str(exception)
-    if "429" in error_str and ("Too Many Requests" in error_str or "Resource exhausted" in error_str):
-        return True
-    
-    return False
-
-
 def _wrap_with_retry(runnable: Any) -> Any:
     """Wrap a runnable (model or agent) with retry logic based on provider.
     
@@ -121,28 +87,20 @@ def _wrap_with_retry(runnable: Any) -> Any:
             ),
             wait_exponential_jitter=True,
             stop_after_attempt=constants.CONSTANTS.get("LLM_RETRY_STOP_AFTER_ATTEMPT", 10),
-            exponential_jitter_params={
-                "initial": constants.CONSTANTS.get("LLM_RETRY_INITIAL_INTERVAL", 1.0),
-                "max": constants.CONSTANTS.get("LLM_RETRY_MAX_INTERVAL", 60),
-            },
+            initial_interval=constants.CONSTANTS.get("LLM_RETRY_INITIAL_INTERVAL", 1.0),
+            max_interval=constants.CONSTANTS.get("LLM_RETRY_MAX_INTERVAL", 60),
         )
     elif settings.LLM_PROVIDER == "vertex":
         # Vertex AI: retry on 429 errors that slip through internal retries
         # Catch both legacy ResourceExhausted and newer ClientError
-        # Note: ClientError is a generic wrapper, but we catch it and let retry handle it
-        # The internal max_retries should handle most cases, this catches ones that slip through
-        exception_types = [ResourceExhausted, ServiceUnavailable]
-        if ClientError is not None:
-            exception_types.append(ClientError)
+        exception_types = [ResourceExhausted, ServiceUnavailable, ClientError]
         
         return runnable.with_retry(
             retry_if_exception_type=tuple(exception_types),
             wait_exponential_jitter=True,
             stop_after_attempt=constants.CONSTANTS.get("LLM_RETRY_STOP_AFTER_ATTEMPT", 10),
-            exponential_jitter_params={
-                "initial": constants.CONSTANTS.get("LLM_RETRY_INITIAL_INTERVAL", 1.0),
-                "max": constants.CONSTANTS.get("LLM_RETRY_MAX_INTERVAL", 60),
-            },
+            initial_interval=constants.CONSTANTS.get("LLM_RETRY_INITIAL_INTERVAL", 1.0),
+            max_interval=constants.CONSTANTS.get("LLM_RETRY_MAX_INTERVAL", 60),
         )
     else:
         # Unknown provider - return unwrapped
@@ -215,10 +173,8 @@ def _create_model(
         model_kwargs: dict[str, Any] = {"provider": "vertexai"}
         if thinking_level is not None:
             model_kwargs["thinking_level"] = thinking_level
-        elif temperature is not None:
-            model_kwargs["temperature"] = temperature
         
-        # max_output_tokens should be passed directly to ChatGoogleGenerativeAI, not in model_kwargs
+        # temperature and max_output_tokens should be passed directly to ChatGoogleGenerativeAI, not in model_kwargs
         model_kwargs_for_constructor: dict[str, Any] = {
             "model": model_name,
             "model_kwargs": model_kwargs,
@@ -227,6 +183,10 @@ def _create_model(
             "credentials": creds,
             "max_retries": constants.CONSTANTS.get("VERTEX_AI_MAX_RETRIES", 6),
         }
+        
+        # Add temperature as a direct parameter if provided
+        if temperature is not None:
+            model_kwargs_for_constructor["temperature"] = temperature
         
         # Add max_output_tokens as a direct parameter if provided (for long reports)
         if max_output_tokens is not None:
