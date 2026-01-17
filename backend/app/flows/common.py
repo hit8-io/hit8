@@ -12,6 +12,13 @@ import httpx
 from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable
 from google.auth import credentials
 from google.oauth2 import service_account
+
+# Import ClientError for newer Google GenAI SDK error handling
+try:
+    from google.genai.errors import ClientError
+except ImportError:
+    # Fallback if google.genai.errors is not available
+    ClientError = None  # type: ignore
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.language_models import BaseChatModel
 from langfuse import Langfuse
@@ -57,6 +64,41 @@ def _get_vertex_credentials() -> tuple[credentials.Credentials, str]:
     return _credentials, _project_id
 
 
+def _is_quota_error(exception: Exception) -> bool:
+    """Check if the error is a 429 Resource Exhausted error.
+    
+    Args:
+        exception: The exception to check
+        
+    Returns:
+        True if this is a 429/quota error that should be retried
+    """
+    # Check for newer ClientError with 429 status code
+    if ClientError is not None and isinstance(exception, ClientError):
+        # Check status code if available
+        if hasattr(exception, "status_code") and exception.status_code == 429:
+            return True
+        # Also check error message for "Resource exhausted" or "429"
+        error_str = str(exception)
+        if "Resource exhausted" in error_str or "429" in error_str or "Too Many Requests" in error_str:
+            return True
+    
+    # Check for legacy ResourceExhausted exception
+    if isinstance(exception, ResourceExhausted):
+        return True
+    
+    # Check for ServiceUnavailable
+    if isinstance(exception, ServiceUnavailable):
+        return True
+    
+    # Check error message for 429 indicators (fallback)
+    error_str = str(exception)
+    if "429" in error_str and ("Too Many Requests" in error_str or "Resource exhausted" in error_str):
+        return True
+    
+    return False
+
+
 def _wrap_with_retry(runnable: Any) -> Any:
     """Wrap a runnable (model or agent) with retry logic based on provider.
     
@@ -84,10 +126,17 @@ def _wrap_with_retry(runnable: Any) -> Any:
                 "max": constants.CONSTANTS.get("LLM_RETRY_MAX_INTERVAL", 60),
             },
         )
-    else:
+    elif settings.LLM_PROVIDER == "vertex":
         # Vertex AI: retry on 429 errors that slip through internal retries
+        # Catch both legacy ResourceExhausted and newer ClientError
+        # Note: ClientError is a generic wrapper, but we catch it and let retry handle it
+        # The internal max_retries should handle most cases, this catches ones that slip through
+        exception_types = [ResourceExhausted, ServiceUnavailable]
+        if ClientError is not None:
+            exception_types.append(ClientError)
+        
         return runnable.with_retry(
-            retry_if_exception_type=(ResourceExhausted, ServiceUnavailable),
+            retry_if_exception_type=tuple(exception_types),
             wait_exponential_jitter=True,
             stop_after_attempt=constants.CONSTANTS.get("LLM_RETRY_STOP_AFTER_ATTEMPT", 10),
             exponential_jitter_params={
@@ -95,6 +144,13 @@ def _wrap_with_retry(runnable: Any) -> Any:
                 "max": constants.CONSTANTS.get("LLM_RETRY_MAX_INTERVAL", 60),
             },
         )
+    else:
+        # Unknown provider - return unwrapped
+        logger.warning(
+            "unknown_llm_provider",
+            provider=settings.LLM_PROVIDER,
+        )
+        return runnable
 
 
 def _create_model(
@@ -152,7 +208,7 @@ def _create_model(
             log_data["num_predict"] = max_output_tokens
         
         logger.info(f"{log_name}_initialized_ollama", **log_data)
-    else:
+    elif settings.LLM_PROVIDER == "vertex":
         # Vertex AI Logic
         creds, project_id = _get_vertex_credentials()
         
