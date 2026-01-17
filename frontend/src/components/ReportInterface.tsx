@@ -251,6 +251,19 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
         signal: abortControllerRef.current.signal,
       })
 
+      // Check if response is OK before processing
+      if (!response.ok) {
+        const errorText = await response.text()
+        let errorMessage = `Failed to start report: ${response.status}`
+        try {
+          const errorData = JSON.parse(errorText)
+          errorMessage = errorData.detail || errorMessage
+        } catch {
+          errorMessage = errorText || errorMessage
+        }
+        throw new Error(errorMessage)
+      }
+
       // Check if response is streaming (local mode) or JSON (cloud_run modes)
       const contentType = response.headers.get('content-type') || ''
       

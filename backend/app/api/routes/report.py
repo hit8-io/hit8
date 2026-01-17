@@ -186,10 +186,24 @@ async def start_report(
     """
     Starts a new report generation job.
     """
+    logger.info(
+        "report_start_endpoint_called",
+        has_payload=bool(payload),
+        execution_mode=payload.get("execution_mode") if payload else None,
+    )
+    
     user_id = user_payload["sub"]
     email = user_payload["email"]
     org = (x_org or "").strip()
     project = (x_project or "").strip()
+    
+    logger.info(
+        "report_start_processing",
+        user_id=user_id,
+        email=email,
+        org=org,
+        project=project,
+    )
     
     if not org or not project:
         raise HTTPException(
@@ -355,13 +369,54 @@ async def start_report(
     
     elif mode == "cloud_run_service":
         # --- Cloud Run Service Mode (async execution in same service) ---
+        logger.info(
+            "cloud_run_service_mode_entered",
+            thread_id=thread_id,
+            org=org,
+            project=project,
+        )
+        
         # Get the report graph instance
-        report_graph = get_graph(org, project, "report")
+        try:
+            logger.info(
+                "report_graph_retrieval_starting",
+                thread_id=thread_id,
+                org=org,
+                project=project,
+            )
+            report_graph = get_graph(org, project, "report")
+            logger.info(
+                "report_graph_retrieved",
+                thread_id=thread_id,
+                org=org,
+                project=project,
+            )
+        except Exception as e:
+            logger.exception(
+                "report_graph_retrieval_failed",
+                thread_id=thread_id,
+                org=org,
+                project=project,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to initialize report graph: {str(e)}"
+            )
         
         # Wrap in a coroutine so we can track and cancel it
         async def run_report():
             try:
+                logger.info(
+                    "report_execution_starting",
+                    thread_id=thread_id,
+                )
                 await report_graph.ainvoke(initial_state, config)
+                logger.info(
+                    "report_execution_completed",
+                    thread_id=thread_id,
+                )
             except asyncio.CancelledError:
                 logger.info("report_execution_cancelled", thread_id=thread_id)
             except Exception as e:
@@ -609,13 +664,32 @@ async def stop_report(
     Sets cancellation flag so current nodes finish but no new nodes start.
     Also cancels the task for cloud_run_service mode.
     """
+    logger.info(
+        "report_stop_endpoint_called",
+        thread_id=thread_id,
+        user_id=user_payload.get("sub"),
+    )
+    
     # Set cancellation flag - checked in event loop between nodes
     _cancelled_threads[thread_id] = True
     
     # Also cancel task for cloud_run_service mode
     task = _active_tasks.get(thread_id)
     if task:
+        logger.info(
+            "report_task_cancellation_starting",
+            thread_id=thread_id,
+        )
         task.cancel()
+        logger.info(
+            "report_task_cancelled",
+            thread_id=thread_id,
+        )
+    else:
+        logger.info(
+            "report_stop_no_active_task",
+            thread_id=thread_id,
+        )
     
     logger.info("report_stop_requested", thread_id=thread_id)
     return {"status": "stopping", "message": "Termination signal sent to agent."}
