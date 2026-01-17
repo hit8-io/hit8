@@ -411,8 +411,20 @@ async def start_report(
                 logger.info(
                     "report_execution_starting",
                     thread_id=thread_id,
+                    initial_state_keys=list(initial_state.keys()),
+                    initial_state_procedures_count=len(initial_state.get("raw_procedures", [])),
+                    config_keys=list(config.get("configurable", {}).keys()),
+                    config_thread_id=config.get("configurable", {}).get("thread_id"),
                 )
+                
+                # Log right before ainvoke to catch any immediate failures
+                logger.info(
+                    "report_ainvoke_calling",
+                    thread_id=thread_id,
+                )
+                
                 await report_graph.ainvoke(initial_state, config)
+                
                 logger.info(
                     "report_execution_completed",
                     thread_id=thread_id,
@@ -425,12 +437,51 @@ async def start_report(
                     thread_id=thread_id,
                     error=str(e),
                     error_type=type(e).__name__,
+                    error_repr=repr(e),
+                    exc_info=True,
                 )
+                # Re-raise to ensure task shows as failed
+                raise
             finally:
                 _active_tasks.pop(thread_id, None)
+                logger.info(
+                    "report_task_cleanup_complete",
+                    thread_id=thread_id,
+                )
         
+        # Create task to run in background
+        # Note: In Cloud Run, tasks created with asyncio.create_task() will continue
+        # running after the HTTP response is sent, as long as the instance stays alive
         task = asyncio.create_task(run_report())
         _active_tasks[thread_id] = task
+        
+        # Add done callback to log if task fails silently
+        def task_done_callback(task: asyncio.Task):
+            try:
+                # This will raise if the task failed
+                task.result()
+                logger.info(
+                    "report_task_completed_successfully",
+                    thread_id=thread_id,
+                )
+            except asyncio.CancelledError:
+                # Task was cancelled, already logged
+                logger.info(
+                    "report_task_cancelled_in_callback",
+                    thread_id=thread_id,
+                )
+            except Exception as e:
+                # Task failed but exception wasn't caught in run_report
+                logger.exception(
+                    "report_task_failed_in_callback",
+                    thread_id=thread_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    error_repr=repr(e),
+                    exc_info=True,
+                )
+        
+        task.add_done_callback(task_done_callback)
         
         logger.info(
             "cloud_run_service_report_started",
