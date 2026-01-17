@@ -368,129 +368,30 @@ async def start_report(
             )
     
     elif mode == "cloud_run_service":
-        # --- Cloud Run Service Mode (async execution in same service) ---
+        # --- Cloud Run Service Mode (same as local - streaming) ---
+        # Stream events directly like local mode
+        # This keeps the connection alive and provides real-time feedback
         logger.info(
             "cloud_run_service_mode_entered",
             thread_id=thread_id,
             org=org,
             project=project,
         )
-        
-        # Get the report graph instance
-        try:
-            logger.info(
-                "report_graph_retrieval_starting",
+        return StreamingResponse(
+            stream_report_events(
+                initial_state=initial_state,
+                config=config,
                 thread_id=thread_id,
                 org=org,
                 project=project,
-            )
-            report_graph = get_graph(org, project, "report")
-            logger.info(
-                "report_graph_retrieved",
-                thread_id=thread_id,
-                org=org,
-                project=project,
-            )
-        except Exception as e:
-            logger.exception(
-                "report_graph_retrieval_failed",
-                thread_id=thread_id,
-                org=org,
-                project=project,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to initialize report graph: {str(e)}"
-            )
-        
-        # Wrap in a coroutine so we can track and cancel it
-        async def run_report():
-            try:
-                logger.info(
-                    "report_execution_starting",
-                    thread_id=thread_id,
-                    initial_state_keys=list(initial_state.keys()),
-                    initial_state_procedures_count=len(initial_state.get("raw_procedures", [])),
-                    config_keys=list(config.get("configurable", {}).keys()),
-                    config_thread_id=config.get("configurable", {}).get("thread_id"),
-                )
-                
-                # Log right before ainvoke to catch any immediate failures
-                logger.info(
-                    "report_ainvoke_calling",
-                    thread_id=thread_id,
-                )
-                
-                await report_graph.ainvoke(initial_state, config)
-                
-                logger.info(
-                    "report_execution_completed",
-                    thread_id=thread_id,
-                )
-            except asyncio.CancelledError:
-                logger.info("report_execution_cancelled", thread_id=thread_id)
-            except Exception as e:
-                logger.exception(
-                    "report_execution_failed",
-                    thread_id=thread_id,
-                    error=str(e),
-                    error_type=type(e).__name__,
-                    error_repr=repr(e),
-                    exc_info=True,
-                )
-                # Re-raise to ensure task shows as failed
-                raise
-            finally:
-                _active_tasks.pop(thread_id, None)
-                logger.info(
-                    "report_task_cleanup_complete",
-                    thread_id=thread_id,
-                )
-        
-        # Create task to run in background
-        # Note: In Cloud Run, tasks created with asyncio.create_task() will continue
-        # running after the HTTP response is sent, as long as the instance stays alive
-        task = asyncio.create_task(run_report())
-        _active_tasks[thread_id] = task
-        
-        # Add done callback to log if task fails silently
-        def task_done_callback(task: asyncio.Task):
-            try:
-                # This will raise if the task failed
-                task.result()
-                logger.info(
-                    "report_task_completed_successfully",
-                    thread_id=thread_id,
-                )
-            except asyncio.CancelledError:
-                # Task was cancelled, already logged
-                logger.info(
-                    "report_task_cancelled_in_callback",
-                    thread_id=thread_id,
-                )
-            except Exception as e:
-                # Task failed but exception wasn't caught in run_report
-                logger.exception(
-                    "report_task_failed_in_callback",
-                    thread_id=thread_id,
-                    error=str(e),
-                    error_type=type(e).__name__,
-                    error_repr=repr(e),
-                    exc_info=True,
-                )
-        
-        task.add_done_callback(task_done_callback)
-        
-        logger.info(
-            "cloud_run_service_report_started",
-            thread_id=thread_id,
-            org=org,
-            project=project,
+            ),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",  # Disable nginx buffering
+            },
         )
-        
-        return {"job_id": thread_id, "status": "started", "mode": mode}
     
     else:  # mode == "local"
         # --- Local Streaming Mode ---
@@ -510,9 +411,6 @@ async def start_report(
                 "X-Accel-Buffering": "no",  # Disable nginx buffering
             },
         )
-    
-    # For cloud_run modes, return job_id (non-streaming)
-    return {"job_id": thread_id, "status": "started", "mode": mode}
 
 @router.get("/{thread_id}/snapshots")
 async def list_snapshots(
@@ -713,7 +611,8 @@ async def stop_report(
     """Stops an ongoing report generation.
     
     Sets cancellation flag so current nodes finish but no new nodes start.
-    Also cancels the task for cloud_run_service mode.
+    Works for both streaming mode (local/cloud_run_service) and background task mode.
+    For streaming mode, the frontend will also abort the connection.
     """
     logger.info(
         "report_stop_endpoint_called",
