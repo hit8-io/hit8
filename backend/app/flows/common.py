@@ -22,6 +22,7 @@ except ImportError:
         pass
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.language_models import BaseChatModel
+from langchain_core.runnables import RunnableRetry
 from langfuse import Langfuse
 from langfuse.langchain import CallbackHandler
 
@@ -76,8 +77,9 @@ def _wrap_with_retry(runnable: Any) -> Any:
     """
     if settings.LLM_PROVIDER == "ollama":
         # Ollama: retry on connection errors and timeouts
-        return runnable.with_retry(
-            retry_if_exception_type=(
+        return RunnableRetry(
+            bound=runnable,
+            retry_exception_types=(
                 ConnectionError,
                 ConnectionRefusedError,
                 TimeoutError,
@@ -85,22 +87,30 @@ def _wrap_with_retry(runnable: Any) -> Any:
                 httpx.ReadTimeout,
                 httpx.HTTPError,  # Catch-all for other httpx errors
             ),
+            max_attempt_number=constants.CONSTANTS.get("LLM_RETRY_STOP_AFTER_ATTEMPT", 10),
             wait_exponential_jitter=True,
-            stop_after_attempt=constants.CONSTANTS.get("LLM_RETRY_STOP_AFTER_ATTEMPT", 10),
-            initial_interval=constants.CONSTANTS.get("LLM_RETRY_INITIAL_INTERVAL", 1.0),
-            max_interval=constants.CONSTANTS.get("LLM_RETRY_MAX_INTERVAL", 60),
+            exponential_jitter_params={
+                "initial": constants.CONSTANTS.get("LLM_RETRY_INITIAL_INTERVAL", 1.0),
+                "max": constants.CONSTANTS.get("LLM_RETRY_MAX_INTERVAL", 60),
+                "multiplier": 2,
+            },
         )
     elif settings.LLM_PROVIDER == "vertex":
         # Vertex AI: retry on 429 errors that slip through internal retries
         # Catch both legacy ResourceExhausted and newer ClientError
         exception_types = [ResourceExhausted, ServiceUnavailable, ClientError]
         
-        return runnable.with_retry(
-            retry_if_exception_type=tuple(exception_types),
+        # Manually construct RunnableRetry to avoid .with_retry() signature issues
+        return RunnableRetry(
+            bound=runnable,
+            retry_exception_types=tuple(exception_types),
+            max_attempt_number=constants.CONSTANTS.get("LLM_RETRY_STOP_AFTER_ATTEMPT", 10),
             wait_exponential_jitter=True,
-            stop_after_attempt=constants.CONSTANTS.get("LLM_RETRY_STOP_AFTER_ATTEMPT", 10),
-            initial_interval=constants.CONSTANTS.get("LLM_RETRY_INITIAL_INTERVAL", 1.0),
-            max_interval=constants.CONSTANTS.get("LLM_RETRY_MAX_INTERVAL", 60),
+            exponential_jitter_params={
+                "initial": constants.CONSTANTS.get("LLM_RETRY_INITIAL_INTERVAL", 1.0),
+                "max": constants.CONSTANTS.get("LLM_RETRY_MAX_INTERVAL", 60),
+                "multiplier": 2,
+            },
         )
     else:
         # Unknown provider - return unwrapped
