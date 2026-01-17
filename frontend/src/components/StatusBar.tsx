@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { CheckCircle2, XCircle, AlertCircle, Wifi, WifiOff } from 'lucide-react'
-import { getApiHeaders } from '../utils/api'
+import { getApiHeaders, fetchWithRetry } from '../utils/api'
 import { getUserFriendlyError, logError } from '../utils/errorHandling'
 import { ERROR_AUTO_DISMISS_DELAY, HEALTH_CHECK_INTERVAL, METADATA_FETCH_INTERVAL, VERSION_FETCH_INTERVAL } from '../constants'
 
@@ -127,11 +127,16 @@ export default function StatusBar({ apiUrl, token, userName }: StatusBarProps) {
     }
 
     const fetchMetadata = async () => {
+      if (!token) {
+        return
+      }
+
       try {
-        const response = await fetch(`${apiUrl}/metadata`, {
-          method: 'GET',
-          headers: getApiHeaders(token),
-        })
+        const response = await fetchWithRetry(
+          `${apiUrl}/metadata`,
+          { method: 'GET' },
+          token
+        )
 
         if (response.ok) {
           const data = await response.json() as { account?: string; org?: string; project?: string; environment?: string; log_level?: string }
