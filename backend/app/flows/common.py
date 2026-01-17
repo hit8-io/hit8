@@ -4,6 +4,7 @@ Shared utilities for LangGraph flows.
 from __future__ import annotations
 
 import json
+import sys
 import threading
 from typing import Any
 
@@ -14,12 +15,18 @@ from google.auth import credentials
 from google.oauth2 import service_account
 
 # Import ClientError for newer Google GenAI SDK error handling
+# Ensure we get the REAL exception class
 try:
     from google.genai.errors import ClientError
 except ImportError:
-    # Dummy if not found, but it likely will be
-    class ClientError(Exception):
-        pass
+    # Fallback: Try to find it in loaded modules (if langchain loaded it already)
+    if 'google.genai.errors' in sys.modules:
+        ClientError = getattr(sys.modules['google.genai.errors'], 'ClientError', None)
+    else:
+        # If we typically use Vertex, this IS fatal for retries.
+        # But if we use Ollama, it's fine.
+        # Define it as None so we can check later.
+        ClientError = None
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.language_models import BaseChatModel
 from langchain_core.runnables.retry import RunnableRetry
@@ -98,7 +105,17 @@ def _wrap_with_retry(runnable: Any) -> Any:
     elif settings.LLM_PROVIDER == "vertex":
         # Vertex AI: retry on 429 errors that slip through internal retries
         # Catch both legacy ResourceExhausted and newer ClientError
-        exception_types = [ResourceExhausted, ServiceUnavailable, ClientError]
+        exception_types = [ResourceExhausted, ServiceUnavailable]
+        
+        # Only append if we found the REAL class
+        if ClientError is not None:
+            exception_types.append(ClientError)
+        else:
+            logger.error(
+                "client_error_class_missing",
+                message="Cannot retry on ClientError (429) because the exception class is missing! "
+                        "Install google-genai package: uv add google-genai",
+            )
         
         # Manually construct RunnableRetry to avoid .with_retry() signature issues
         return RunnableRetry(
