@@ -14,19 +14,10 @@ from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable
 from google.auth import credentials
 from google.oauth2 import service_account
 
-# Import ClientError for newer Google GenAI SDK error handling
-# Ensure we get the REAL exception class
-try:
-    from google.genai.errors import ClientError
-except ImportError:
-    # Fallback: Try to find it in loaded modules (if langchain loaded it already)
-    if 'google.genai.errors' in sys.modules:
-        ClientError = getattr(sys.modules['google.genai.errors'], 'ClientError', None)
-    else:
-        # If we typically use Vertex, this IS fatal for retries.
-        # But if we use Ollama, it's fine.
-        # Define it as None so we can check later.
-        ClientError = None
+# CRITICAL: This must succeed. If it fails, `uv add google-genai`
+import google.genai.errors 
+ClientError = google.genai.errors.ClientError
+
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.language_models import BaseChatModel
 from langchain_core.runnables.retry import RunnableRetry
@@ -45,6 +36,41 @@ except ImportError:
 logger = structlog.get_logger(__name__)
 
 OAUTH_SCOPE_CLOUD_PLATFORM = "https://www.googleapis.com/auth/cloud-platform"
+
+
+def is_retryable_vertex_error(exception: Exception) -> bool:
+    """Return True if the exception looks like a Vertex 429/503 error.
+    
+    This function checks both exception types and error messages to catch
+    Vertex AI rate limiting errors that might be wrapped or have different formats.
+    
+    Args:
+        exception: The exception to check
+        
+    Returns:
+        True if this exception should trigger a retry
+    """
+    # Check exception types first
+    if isinstance(exception, (ResourceExhausted, ServiceUnavailable)):
+        return True
+    
+    # Check for ClientError (newer Google GenAI SDK)
+    try:
+        if isinstance(exception, ClientError):
+            return True
+    except (NameError, AttributeError):
+        # ClientError might not be defined
+        pass
+    
+    # Check error message for 429/Resource exhausted indicators
+    msg = str(exception)
+    return (
+        "429" in msg or
+        "Resource exhausted" in msg or
+        "Too Many Requests" in msg or
+        "503" in msg or
+        "Service Unavailable" in msg
+    )
 
 # Global singletons
 _langfuse_client: Langfuse | None = None
@@ -104,20 +130,17 @@ def _wrap_with_retry(runnable: Any) -> Any:
         )
     elif settings.LLM_PROVIDER == "vertex":
         # Vertex AI: retry on 429 errors that slip through internal retries
-        # Catch both legacy ResourceExhausted and newer ClientError
-        exception_types = [ResourceExhausted, ServiceUnavailable]
+        # Use ClientError imported at module level (from google.genai.errors)
+        # Build exception types list with all known Vertex AI error types
+        exception_types = [
+            ResourceExhausted,
+            ServiceUnavailable,
+            ClientError,
+        ]
         
-        # Only append if we found the REAL class
-        if ClientError is not None:
-            exception_types.append(ClientError)
-        else:
-            logger.error(
-                "client_error_class_missing",
-                message="Cannot retry on ClientError (429) because the exception class is missing! "
-                        "Install google-genai package: uv add google-genai",
-            )
-        
-        # Manually construct RunnableRetry to avoid .with_retry() signature issues
+        # Manually construct RunnableRetry with exception types
+        # The custom filter function is_retryable_vertex_error() is available
+        # for future use or debugging, but RunnableRetry uses exception types directly
         return RunnableRetry(
             bound=runnable,
             retry_exception_types=tuple(exception_types),
