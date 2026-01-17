@@ -494,12 +494,15 @@ async def editor_node(state: ReportState):
     
     # Use model with high output token limit for long reports
     # Editor node needs higher limits to generate complete reports
-    from app import constants
     if settings.LLM_PROVIDER == "ollama":
-        max_output_tokens = constants.CONSTANTS.get("EDITOR_NODE_MAX_OUTPUT_TOKENS_OLLAMA", 16384)
+        max_output_tokens = constants.CONSTANTS.get("EDITOR_NODE_MAX_OUTPUT_TOKENS_OLLAMA")
+    elif settings.LLM_PROVIDER == "vertex":
+        max_output_tokens = constants.CONSTANTS.get("EDITOR_NODE_MAX_OUTPUT_TOKENS_VERTEX")
+    
+    if max_output_tokens is not None:
+        llm = get_agent_model(max_output_tokens=max_output_tokens)
     else:
-        max_output_tokens = 8192
-    llm = get_agent_model(max_output_tokens=max_output_tokens)
+        llm = get_agent_model()
     
     # Format date
     formatted_date = datetime.now().strftime("%d %B %Y")

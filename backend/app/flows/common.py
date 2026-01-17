@@ -121,17 +121,20 @@ def _create_model(
     elif temperature is not None:
         model_kwargs["temperature"] = temperature
     
-    # Add max_output_tokens if provided (for long reports)
-    if max_output_tokens is not None:
-        model_kwargs["max_output_tokens"] = max_output_tokens
+    # max_output_tokens should be passed directly to ChatGoogleGenerativeAI, not in model_kwargs
+    model_kwargs_for_constructor: dict[str, Any] = {
+        "model": model_name,
+        "model_kwargs": model_kwargs,
+        "project": project_id,
+        "location": settings.VERTEX_AI_LOCATION,
+        "credentials": creds,
+    }
     
-    model = ChatGoogleGenerativeAI(
-        model=model_name,
-        model_kwargs=model_kwargs,
-        project=project_id,
-        location=settings.VERTEX_AI_LOCATION,
-        credentials=creds,
-    )
+    # Add max_output_tokens as a direct parameter if provided (for long reports)
+    if max_output_tokens is not None:
+        model_kwargs_for_constructor["max_output_tokens"] = max_output_tokens
+    
+    model = ChatGoogleGenerativeAI(**model_kwargs_for_constructor)
     
     log_data = {"model": model_name}
     if thinking_level is not None:
