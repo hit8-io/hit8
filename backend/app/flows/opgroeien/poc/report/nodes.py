@@ -3,7 +3,7 @@ Nodes for the Report Engine Map-Reduce Graph.
 """
 import json
 from datetime import datetime
-from typing import List, Dict, TypedDict
+from typing import Any, List, Dict, TypedDict
 
 import structlog
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -16,7 +16,7 @@ from app.flows.opgroeien.poc.chat.tools.get_procedure import get_procedure
 from app.flows.opgroeien.poc.chat.tools.get_regelgeving import get_regelgeving
 
 logger = structlog.get_logger(__name__)
-from app.flows.common import get_agent_model
+from app.flows.common import get_agent_model, _wrap_with_retry
 from app.prompts.loader import load_prompt
 from app.flows.opgroeien.poc.constants import MAX_PARALLEL_WORKERS
 from app import constants
@@ -238,6 +238,8 @@ async def analyst_node(input_data: ClusterInput):
     # Create the ReAct agent for this specific slice
     # We use a simple prebuilt agent here
     agent_executor = create_agent(llm, tools, system_prompt=system_prompt)
+    # Apply retry wrapper to agent executor
+    agent_executor = _wrap_with_retry(agent_executor)
     
     # Invoke
     result = await agent_executor.ainvoke({
@@ -519,7 +521,9 @@ async def editor_node(state: ReportState):
     # Format: Each chapter is separated by "\n\n---\n\n"
     human_message = full_text
     
-    response = await llm.ainvoke([
+    # Apply retry wrapper for direct model invocation
+    llm_with_retry = _wrap_with_retry(llm)
+    response = await llm_with_retry.ainvoke([
         SystemMessage(content=system_prompt),
         HumanMessage(content=human_message)
     ])

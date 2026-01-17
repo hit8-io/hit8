@@ -13,7 +13,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Overwrite
 
 from app.api.checkpointer import get_checkpointer
-from app.flows.common import get_agent_model, get_langfuse_handler
+from app.flows.common import get_agent_model, get_langfuse_handler, _wrap_with_retry
 from app.flows.opgroeien.poc import constants as flow_constants
 from app.flows.opgroeien.poc.constants import (
     NODE_AGENT,
@@ -65,6 +65,8 @@ def agent_node(state: AgentState, config: Optional[RunnableConfig] = None) -> Ag
     
     # Bind tools to model
     model_with_tools = model.bind_tools(tools)
+    # Apply retry wrapper after binding tools
+    model_with_tools = _wrap_with_retry(model_with_tools)
     
     # Get messages from state
     all_messages = state["messages"]

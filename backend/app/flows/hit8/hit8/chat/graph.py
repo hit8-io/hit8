@@ -11,7 +11,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, StateGraph
 
 from app.api.checkpointer import get_checkpointer
-from app.flows.common import get_agent_model
+from app.flows.common import get_agent_model, _wrap_with_retry
 from app.flows.hit8.hit8 import constants as flow_constants
 from app.config import settings
 
@@ -52,8 +52,10 @@ def generate_node(
     config_dict["metadata"]["org"] = flow_constants.ORG
     config_dict["metadata"]["project"] = flow_constants.PROJECT
     
+    # Apply retry wrapper for direct model invocation
+    model_with_retry = _wrap_with_retry(model)
     # Generate response with metadata injection
-    response = model.invoke([last_message], config=config_dict)
+    response = model_with_retry.invoke([last_message], config=config_dict)
     state["messages"].append(response)
     
     return state

@@ -15,7 +15,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
-from app.flows.common import get_tool_model
+from app.flows.common import get_tool_model, _wrap_with_retry
 from app.flows.opgroeien.poc import constants as flow_constants
 from app.prompts.loader import load_prompt
 
@@ -126,6 +126,8 @@ def _extract_entities_impl(chatInput: str, thread_id: str | None = None, callbac
             [ExtractKnowledgeInput],
             tool_choice="any"  # Force function call (equivalent to "ANY" in JSON spec)
         )
+        # Apply retry wrapper after binding tools
+        model_with_tools = _wrap_with_retry(model_with_tools)
         
         # Load system prompt from YAML
         prompt_obj = load_prompt("opgroeien/poc/extract_system_prompt")

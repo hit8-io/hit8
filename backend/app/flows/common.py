@@ -8,6 +8,8 @@ import threading
 from typing import Any
 
 import structlog
+import httpx
+from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable
 from google.auth import credentials
 from google.oauth2 import service_account
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -55,6 +57,46 @@ def _get_vertex_credentials() -> tuple[credentials.Credentials, str]:
     return _credentials, _project_id
 
 
+def _wrap_with_retry(runnable: Any) -> Any:
+    """Wrap a runnable (model or agent) with retry logic based on provider.
+    
+    Args:
+        runnable: The runnable to wrap (can be a model, bound model, or agent executor)
+        
+    Returns:
+        Runnable wrapped with retry logic
+    """
+    if settings.LLM_PROVIDER == "ollama":
+        # Ollama: retry on connection errors and timeouts
+        return runnable.with_retry(
+            retry_if_exception_type=(
+                ConnectionError,
+                ConnectionRefusedError,
+                TimeoutError,
+                httpx.ConnectError,
+                httpx.ReadTimeout,
+                httpx.HTTPError,  # Catch-all for other httpx errors
+            ),
+            wait_exponential_jitter=True,
+            stop_after_attempt=constants.CONSTANTS.get("LLM_RETRY_STOP_AFTER_ATTEMPT", 10),
+            exponential_jitter_params={
+                "initial": constants.CONSTANTS.get("LLM_RETRY_INITIAL_INTERVAL", 1.0),
+                "max": constants.CONSTANTS.get("LLM_RETRY_MAX_INTERVAL", 60),
+            },
+        )
+    else:
+        # Vertex AI: retry on 429 errors that slip through internal retries
+        return runnable.with_retry(
+            retry_if_exception_type=(ResourceExhausted, ServiceUnavailable),
+            wait_exponential_jitter=True,
+            stop_after_attempt=constants.CONSTANTS.get("LLM_RETRY_STOP_AFTER_ATTEMPT", 10),
+            exponential_jitter_params={
+                "initial": constants.CONSTANTS.get("LLM_RETRY_INITIAL_INTERVAL", 1.0),
+                "max": constants.CONSTANTS.get("LLM_RETRY_MAX_INTERVAL", 60),
+            },
+        )
+
+
 def _create_model(
     model_name: str,
     thinking_level: str | None,
@@ -71,6 +113,7 @@ def _create_model(
         log_name: Name for logging purposes
         max_output_tokens: Optional max output tokens (for Vertex AI) or num_predict (for Ollama)
     """
+    model: BaseChatModel
     
     # Switch provider based on settings
     if settings.LLM_PROVIDER == "ollama":
@@ -81,19 +124,6 @@ def _create_model(
             )
         if not settings.OLLAMA_BASE_URL:
             raise ValueError("OLLAMA_BASE_URL is required when LLM_PROVIDER is 'ollama'")
-        # Note: Ollama (Llama 3.1) does not support 'thinking_level', so we ignore it.
-        # We use the temperature passed in (which comes from existing constants).
-        
-        log_data = {
-            "model": model_name,
-            "url": settings.OLLAMA_BASE_URL,
-        }
-        if settings.OLLAMA_NUM_CTX is not None:
-            log_data["num_ctx"] = settings.OLLAMA_NUM_CTX
-        if max_output_tokens is not None:
-            log_data["num_predict"] = max_output_tokens
-        
-        logger.info(f"{log_name}_initialized_ollama", **log_data)
         
         chat_kwargs: dict[str, Any] = {
             "model": model_name,
@@ -110,41 +140,57 @@ def _create_model(
         if max_output_tokens is not None:
             chat_kwargs["num_predict"] = max_output_tokens
         
-        return ChatOllama(**chat_kwargs)
-
-    # Vertex AI Logic
-    creds, project_id = _get_vertex_credentials()
+        model = ChatOllama(**chat_kwargs)
+        
+        log_data = {
+            "model": model_name,
+            "url": settings.OLLAMA_BASE_URL,
+        }
+        if settings.OLLAMA_NUM_CTX is not None:
+            log_data["num_ctx"] = settings.OLLAMA_NUM_CTX
+        if max_output_tokens is not None:
+            log_data["num_predict"] = max_output_tokens
+        
+        logger.info(f"{log_name}_initialized_ollama", **log_data)
+    else:
+        # Vertex AI Logic
+        creds, project_id = _get_vertex_credentials()
+        
+        model_kwargs: dict[str, Any] = {"provider": "vertexai"}
+        if thinking_level is not None:
+            model_kwargs["thinking_level"] = thinking_level
+        elif temperature is not None:
+            model_kwargs["temperature"] = temperature
+        
+        # max_output_tokens should be passed directly to ChatGoogleGenerativeAI, not in model_kwargs
+        model_kwargs_for_constructor: dict[str, Any] = {
+            "model": model_name,
+            "model_kwargs": model_kwargs,
+            "project": project_id,
+            "location": settings.VERTEX_AI_LOCATION,
+            "credentials": creds,
+            "max_retries": constants.CONSTANTS.get("VERTEX_AI_MAX_RETRIES", 6),
+        }
+        
+        # Add max_output_tokens as a direct parameter if provided (for long reports)
+        if max_output_tokens is not None:
+            model_kwargs_for_constructor["max_output_tokens"] = max_output_tokens
+        
+        model = ChatGoogleGenerativeAI(**model_kwargs_for_constructor)
+        
+        log_data = {
+            "model": model_name,
+            "max_retries": constants.CONSTANTS.get("VERTEX_AI_MAX_RETRIES", 6),
+        }
+        if thinking_level is not None:
+            log_data["thinking_level"] = thinking_level
+        elif temperature is not None:
+            log_data["temperature"] = temperature
+        if max_output_tokens is not None:
+            log_data["max_output_tokens"] = max_output_tokens
+        
+        logger.info(f"{log_name}_initialized", **log_data)
     
-    model_kwargs: dict[str, Any] = {"provider": "vertexai"}
-    if thinking_level is not None:
-        model_kwargs["thinking_level"] = thinking_level
-    elif temperature is not None:
-        model_kwargs["temperature"] = temperature
-    
-    # max_output_tokens should be passed directly to ChatGoogleGenerativeAI, not in model_kwargs
-    model_kwargs_for_constructor: dict[str, Any] = {
-        "model": model_name,
-        "model_kwargs": model_kwargs,
-        "project": project_id,
-        "location": settings.VERTEX_AI_LOCATION,
-        "credentials": creds,
-    }
-    
-    # Add max_output_tokens as a direct parameter if provided (for long reports)
-    if max_output_tokens is not None:
-        model_kwargs_for_constructor["max_output_tokens"] = max_output_tokens
-    
-    model = ChatGoogleGenerativeAI(**model_kwargs_for_constructor)
-    
-    log_data = {"model": model_name}
-    if thinking_level is not None:
-        log_data["thinking_level"] = thinking_level
-    elif temperature is not None:
-        log_data["temperature"] = temperature
-    if max_output_tokens is not None:
-        log_data["max_output_tokens"] = max_output_tokens
-    
-    logger.info(f"{log_name}_initialized", **log_data)
     return model
 
 
