@@ -22,7 +22,7 @@ except ImportError:
         pass
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.language_models import BaseChatModel
-from langchain_core.runnables import RunnableRetry
+from langchain_core.runnables.retry import RunnableRetry
 from langfuse import Langfuse
 from langfuse.langchain import CallbackHandler
 
