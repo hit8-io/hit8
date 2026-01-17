@@ -14,10 +14,6 @@ from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable
 from google.auth import credentials
 from google.oauth2 import service_account
 
-# CRITICAL: This must succeed. If it fails, `uv add google-genai`
-import google.genai.errors 
-ClientError = google.genai.errors.ClientError
-
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.language_models import BaseChatModel
 from langchain_core.runnables.retry import RunnableRetry
@@ -34,6 +30,23 @@ except ImportError:
     ChatOllama = None  # type: ignore
 
 logger = structlog.get_logger(__name__)
+
+ClientError = None
+try:
+    # Try direct import
+    from google.genai.errors import ClientError
+except ImportError:
+    # Try finding it in sys.modules
+    for name, module in sys.modules.items():
+        if "google" in name and "genai" in name and "errors" in name:
+            if hasattr(module, "ClientError"):
+                ClientError = getattr(module, "ClientError")
+                logger.info(f"Found ClientError in {name}")
+                break
+
+if ClientError is None:
+    logger.error("CRITICAL: Could not find ClientError class. Retries will fail.")
+
 
 OAUTH_SCOPE_CLOUD_PLATFORM = "https://www.googleapis.com/auth/cloud-platform"
 
