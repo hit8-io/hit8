@@ -94,53 +94,21 @@ export function useUserConfig(token: string | null): UseUserConfigResult {
       selection.org in config.projects &&
       config.projects[selection.org]?.includes(selection.project) === true
 
-    // Only auto-select if there's no valid selection
+    // If selection is valid, no need to change it
     if (isCurrentSelectionValid) {
       return
     }
 
+    // Find first available org and project
     const orgs = Object.keys(config.projects)
-    
-    // Count total projects across all orgs
-    let totalProjects = 0
-    let singleProjectOrg: string | null = null
-    let singleProject: string | null = null
-    
-    for (const org of orgs) {
-      const projects = config.projects[org] || []
-      totalProjects += projects.length
-      if (projects.length === 1) {
-        singleProjectOrg = org
-        singleProject = projects[0]
-      }
+    if (orgs.length === 0) {
+      return
     }
-    
-    // Auto-select if only 1 org
-    if (orgs.length === 1) {
-      const singleOrg = orgs[0]
-      const projects = config.projects[singleOrg] || []
-      
-      // Auto-select if only 1 project for that org
-      if (projects.length === 1) {
-        setSelection(singleOrg, projects[0])
-      } else if (projects.length > 0) {
-        // If multiple projects, auto-select the first one
-        setSelection(singleOrg, projects[0])
-      }
-    } 
-    // Auto-select if user has only 1 project total (across all orgs)
-    else if (totalProjects === 1 && singleProjectOrg && singleProject) {
-      setSelection(singleProjectOrg, singleProject)
-    }
-    // If org is already selected, check if only 1 project for that org
-    else if (selection?.org && selection.org in config.projects) {
-      const projects = config.projects[selection.org] || []
-      if (projects.length === 1) {
-        setSelection(selection.org, projects[0])
-      } else if (projects.length > 0 && !config.projects[selection.org]?.includes(selection.project)) {
-        // If current project is invalid, select first available
-        setSelection(selection.org, projects[0])
-      }
+
+    const firstOrg = orgs[0]
+    const firstOrgProjects = config.projects[firstOrg] || []
+    if (firstOrgProjects.length > 0) {
+      setSelection(firstOrg, firstOrgProjects[0])
     }
   }, [config, selection, setSelection])
 

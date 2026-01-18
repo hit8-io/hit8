@@ -10,7 +10,7 @@ from fastapi import FastAPI
 
 from app.api.database import cleanup_pool, initialize_pool
 from app.api.checkpointer import cleanup_checkpointer, initialize_checkpointer
-from app.api.middleware import setup_cors, setup_exception_handlers, setup_api_token_middleware
+from app.api.middleware import setup_cors, setup_exception_handlers, setup_api_token_middleware, setup_security_headers
 from app.api.routes import api_router
 from app.config import settings
 
@@ -63,6 +63,7 @@ def create_app() -> FastAPI:
     
     # Setup middleware
     setup_cors(app)
+    setup_security_headers(app)
     setup_api_token_middleware(app)
     setup_exception_handlers(app)
     
