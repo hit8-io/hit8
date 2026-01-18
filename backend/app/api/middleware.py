@@ -30,6 +30,21 @@ def setup_cors(app: FastAPI) -> None:
     )
 
 
+def setup_security_headers(app: FastAPI) -> None:
+    """Setup security headers for popup authentication compatibility.
+    
+    Sets Cross-Origin-Opener-Policy to allow Firebase popup authentication.
+    """
+    @app.middleware("http")
+    async def add_security_headers(request: Request, call_next):
+        """Add security headers to all responses."""
+        response = await call_next(request)
+        # Set COOP header to allow popup authentication
+        # This is required for Firebase signInWithPopup to work properly
+        response.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
+        return response
+
+
 def _create_error_response(
     request: Request,
     status_code: int,

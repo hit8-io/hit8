@@ -1,0 +1,10 @@
+{
+  "name": "identity-blocking-function-v1",
+  "version": "1.0.0",
+  "dependencies": {
+    "gcip-cloud-functions": "^0.2.0"
+  },
+  "engines": {
+    "node": "20"
+  }
+}

@@ -62,3 +62,4 @@ infra/*.tfvars
 infra/*.tfvars.json
 infra/.terraformrc
 infra/terraform.rc
+infra/functions/**/*.zip

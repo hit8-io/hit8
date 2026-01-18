@@ -106,27 +106,17 @@ export function useAuth(): UseAuthResult {
             setLoading(false)
             return
           }
-          if (!firebaseUser.displayName) {
-            logError('useAuth: User display name is required but not provided', {})
-            setUser(null)
-            setIdToken(null)
-            setLoading(false)
-            return
-          }
-          if (!firebaseUser.photoURL) {
-            logError('useAuth: User photo URL is required but not provided', {})
-            setUser(null)
-            setIdToken(null)
-            setLoading(false)
-            return
-          }
+          // Provide defaults for email/password users who don't have displayName or photoURL
+          const displayName = firebaseUser.displayName || firebaseUser.email.split('@')[0] || 'User'
+          const photoURL = firebaseUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=random`
+          
           const token = await firebaseUser.getIdToken(false)
           setIdToken(token)
           const userData: User = {
             id: firebaseUser.uid,
             email: firebaseUser.email,
-            name: firebaseUser.displayName,
-            picture: firebaseUser.photoURL,
+            name: displayName,
+            picture: photoURL,
           }
           setUser(userData)
           // Set Sentry user context

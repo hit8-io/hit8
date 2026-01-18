@@ -68,8 +68,8 @@ CONSTANTS: dict[str, Any] = {
 if ENVIRONMENT == "dev":
     CONSTANTS.update({
         "LOG_LEVEL": "DEBUG",
-        # "LLM_MODEL_NAME": "gemini-2.0-flash-lite-001",
-        # "TOOL_LLM_MODEL": "gemini-2.0-flash-lite-001",
+        "LLM_MODEL_NAME": "gemini-2.0-flash-lite-001",
+        "TOOL_LLM_MODEL": "gemini-2.0-flash-lite-001",
         # "LLM_PROVIDER": "ollama",
         # "LLM_MODEL_NAME": "llama3.1:8b",
         # "TOOL_LLM_MODEL": "llama3.1:8b",

@@ -3,6 +3,7 @@ Authentication dependencies for Google Identity Platform (Firebase Auth) token v
 """
 import json
 import threading
+from urllib.parse import quote
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import firebase_admin
@@ -51,15 +52,39 @@ async def verify_google_token(
     
     if 'email' not in decoded_token:
         raise ValueError("Email is required in ID token but not present")
-    if 'name' not in decoded_token:
-        raise ValueError("Name is required in ID token but not present")
-    if 'picture' not in decoded_token:
-        raise ValueError("Picture is required in ID token but not present")
+    
+    # Get name and picture from token, or fetch from user record if missing
+    name = decoded_token.get('name')
+    picture = decoded_token.get('picture')
+    
+    # If name or picture are missing from token, fetch from user record
+    if not name or not picture:
+        try:
+            user_record = auth.get_user(decoded_token['uid'])
+            if not name:
+                name = user_record.display_name
+            if not picture:
+                picture = user_record.photo_url
+        except Exception as e:
+            logger.warning(
+                "failed_to_fetch_user_record",
+                uid=decoded_token['uid'],
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+    
+    # Provide defaults if still missing
+    if not name:
+        email = decoded_token['email']
+        name = email.split('@')[0] if email else 'User'
+    if not picture:
+        # Generate a default avatar URL
+        picture = f"https://ui-avatars.com/api/?name={quote(name)}&background=random"
     
     return {
         'sub': decoded_token['uid'],
         'email': decoded_token['email'],
-        'name': decoded_token['name'],
-        'picture': decoded_token['picture'],
+        'name': name,
+        'picture': picture,
     }
 

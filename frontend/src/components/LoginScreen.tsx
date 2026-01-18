@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { FirebaseApp } from 'firebase/app'
-import { getAuth, signInWithPopup, GoogleAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth'
+import { getAuth, signInWithPopup, GoogleAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
@@ -73,7 +73,14 @@ export default function LoginScreen({ firebaseApp }: LoginScreenProps) {
     const auth = getAuth(firebaseApp)
     try {
       if (isSignUp) {
-        await createUserWithEmailAndPassword(auth, email, password)
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password)
+        // Set default displayName and photoURL for new email/password users
+        const displayName = email.split('@')[0] || 'User'
+        const photoURL = `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=random`
+        await updateProfile(userCredential.user, {
+          displayName,
+          photoURL,
+        })
       } else {
         await signInWithEmailAndPassword(auth, email, password)
       }

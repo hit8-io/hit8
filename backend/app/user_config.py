@@ -1,5 +1,8 @@
 """
 User configuration service for managing user accounts, orgs, and projects.
+
+Supports both individual user entries (by email) and domain-based entries
+(by email domain). Individual entries take precedence over domain entries.
 """
 from __future__ import annotations
 
@@ -13,22 +16,68 @@ logger = structlog.get_logger(__name__)
 
 # Cache for user configuration
 _user_config_cache: dict[str, dict[str, Any]] | None = None
+_domain_config_cache: dict[str, dict[str, Any]] | None = None
 
 
-def _load_users_config() -> dict[str, dict[str, Any]]:
+def _extract_domain_from_email(email: str) -> str | None:
+    """Extract domain from email address.
+    
+    Args:
+        email: Email address (e.g., "user@example.com").
+        
+    Returns:
+        Domain with @ prefix (e.g., "@example.com"), or None if invalid.
+    """
+    if "@" not in email:
+        return None
+    # Split on first @ only to handle edge cases
+    _, domain = email.split("@", 1)
+    return f"@{domain.lower()}"
+
+
+def _validate_entry(entry: dict[str, Any], entry_index: int) -> None:
+    """Validate a single configuration entry.
+    
+    Args:
+        entry: Configuration entry dictionary.
+        entry_index: Index of entry in users array (for error messages).
+        
+    Raises:
+        ValueError: If entry is invalid.
+    """
+    if "account" not in entry:
+        raise ValueError(f"Entry at index {entry_index} must have an 'account' field")
+    
+    if "projects" not in entry:
+        raise ValueError(f"Entry at index {entry_index} must have a 'projects' field")
+    
+    if not isinstance(entry["projects"], dict):
+        raise ValueError(f"Entry at index {entry_index} 'projects' field must be an object")
+    
+    # Validate that projects for each org is a list
+    for org, projects in entry["projects"].items():
+        if not isinstance(projects, list):
+            raise ValueError(
+                f"Entry at index {entry_index}: projects for org '{org}' must be an array"
+            )
+
+
+def _load_users_config() -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
     """Load and parse users.json configuration file.
     
     Returns:
-        Dictionary mapping email addresses to user configuration.
+        Tuple of (user_map, domain_map):
+        - user_map: Dictionary mapping email addresses to user configuration
+        - domain_map: Dictionary mapping domains to domain-based configurations
         
     Raises:
         FileNotFoundError: If users.json file doesn't exist.
         ValueError: If users.json is invalid JSON or missing required fields.
     """
-    global _user_config_cache
+    global _user_config_cache, _domain_config_cache
     
-    if _user_config_cache is not None:
-        return _user_config_cache
+    if _user_config_cache is not None and _domain_config_cache is not None:
+        return _user_config_cache, _domain_config_cache
     
     # Get the path to users.json (in app directory)
     app_dir = Path(__file__).parent
@@ -52,55 +101,61 @@ def _load_users_config() -> dict[str, dict[str, Any]]:
     if not isinstance(config_data["users"], list):
         raise ValueError("users.json 'users' field must be an array")
     
-    # Build email -> user config mapping
+    # Build email -> user config mapping and domain -> config mapping
     user_map: dict[str, dict[str, Any]] = {}
+    domain_map: dict[str, dict[str, Any]] = {}
     
-    for user in config_data["users"]:
-        if not isinstance(user, dict):
-            raise ValueError("Each user in users.json must be an object")
+    for index, entry in enumerate(config_data["users"]):
+        if not isinstance(entry, dict):
+            raise ValueError(f"Entry at index {index} in users.json must be an object")
         
-        if "email" not in user:
-            raise ValueError("Each user must have an 'email' field")
-        
-        email = user["email"].lower().strip()
-        
-        if "account" not in user:
-            raise ValueError(f"User {email} must have an 'account' field")
-        
-        if "projects" not in user:
-            raise ValueError(f"User {email} must have a 'projects' field")
-        
-        if not isinstance(user["projects"], dict):
-            raise ValueError(f"User {email} 'projects' field must be an object")
-        
-        # Validate that projects for each org is a list
-        for org, projects in user["projects"].items():
-            if not isinstance(projects, list):
-                raise ValueError(
-                    f"User {email} projects for org '{org}' must be an array"
-                )
+        _validate_entry(entry, index)
         
         # Derive orgs from projects keys
-        orgs = list(user["projects"].keys())
+        orgs = list(entry["projects"].keys())
         
-        user_map[email] = {
-            "email": email,
-            "account": user["account"],
-            "orgs": orgs,  # Derived from projects keys
-            "projects": user["projects"],
+        config_entry = {
+            "account": entry["account"],
+            "orgs": orgs,
+            "projects": entry["projects"],
         }
+        
+        # Check if this is a domain-based entry or individual user
+        if "domain" in entry:
+            # Domain-based entry
+            domain = entry["domain"].lower().strip()
+            if not domain.startswith("@"):
+                raise ValueError(
+                    f"Entry at index {index}: domain must start with '@', got: {domain}"
+                )
+            config_entry["domain"] = domain
+            domain_map[domain] = config_entry
+        elif "email" in entry:
+            # Individual user entry
+            email = entry["email"].lower().strip()
+            config_entry["email"] = email
+            user_map[email] = config_entry
+        else:
+            raise ValueError(
+                f"Entry at index {index} must have either an 'email' or 'domain' field"
+            )
     
     _user_config_cache = user_map
+    _domain_config_cache = domain_map
     logger.info(
         "users_config_loaded",
         user_count=len(user_map),
+        domain_count=len(domain_map),
     )
     
-    return user_map
+    return user_map, domain_map
 
 
 def get_user_config(email: str) -> dict[str, Any] | None:
     """Get user configuration by email address.
+    
+    Checks individual user entries first, then domain-based entries.
+    Individual entries take precedence over domain entries.
     
     Args:
         email: User email address (case-insensitive).
@@ -110,9 +165,24 @@ def get_user_config(email: str) -> dict[str, Any] | None:
         or None if user not found.
     """
     try:
-        users_config = _load_users_config()
+        users_config, domain_map = _load_users_config()
         email_lower = email.lower().strip()
-        return users_config.get(email_lower)
+        
+        # First, check for individual user entry (takes precedence)
+        if email_lower in users_config:
+            return users_config[email_lower]
+        
+        # Then, check domain-based entries
+        email_domain = _extract_domain_from_email(email_lower)
+        if email_domain and email_domain in domain_map:
+            logger.info(
+                "user_matched_domain",
+                email=email_lower,
+                domain=email_domain,
+            )
+            return domain_map[email_domain]
+        
+        return None
     except Exception as e:
         logger.error(
             "get_user_config_failed",
@@ -154,7 +224,8 @@ def validate_user_access(email: str, org: str, project: str) -> bool:
         return False
     
     # Check if project is in user's projects for this org
-    org_projects = user_config["projects"].get(org, [])
+    # We already verified org exists above, so we can safely access it
+    org_projects = user_config["projects"][org]
     if project not in org_projects:
         logger.warning(
             "user_project_access_denied",
@@ -177,19 +248,17 @@ def get_user_orgs_projects(email: str) -> dict[str, Any] | None:
     Returns:
         Dictionary with 'account', 'orgs', and 'projects' keys,
         or None if user not found.
-        Note: 'orgs' is derived from 'projects' keys.
+        Note: 'orgs' is already derived and stored in the config.
     """
     user_config = get_user_config(email)
     
     if user_config is None:
         return None
     
-    # Derive orgs from projects keys
-    orgs = list(user_config["projects"].keys())
-    
+    # orgs is already stored in the config, no need to re-derive
     return {
         "account": user_config["account"],
-        "orgs": orgs,
+        "orgs": user_config["orgs"],
         "projects": user_config["projects"],
     }
 
