@@ -1,24 +1,118 @@
 import { useState } from 'react'
 import { FirebaseApp } from 'firebase/app'
-import { getAuth, signInWithPopup, GoogleAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from 'firebase/auth'
+import {
+  getAuth,
+  signInWithPopup,
+  GoogleAuthProvider,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  updateProfile,
+  sendEmailVerification,
+  sendPasswordResetEmail,
+  signOut
+} from 'firebase/auth'
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
+import { GoogleIcon } from './icons/GoogleIcon'
 
 interface LoginScreenProps {
-  firebaseApp: FirebaseApp
+  readonly firebaseApp: FirebaseApp
 }
 
 export default function LoginScreen({ firebaseApp }: LoginScreenProps) {
-  const [authMode, setAuthMode] = useState<'select' | 'email'>('select')
+  // Added 'reset' to authMode to handle the Forgot Password view
+  const [authMode, setAuthMode] = useState<'select' | 'email' | 'reset'>('select')
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  // New state for password confirmation
+  const [confirmPassword, setConfirmPassword] = useState('')
+
   const [isSignUp, setIsSignUp] = useState(false)
   const [authError, setAuthError] = useState<string | null>(null)
+  // New state for success messages (e.g., "Reset link sent")
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [authLoading, setAuthLoading] = useState(false)
+
+  // Helper function to check if error is a rejection
+  const isRejectionError = (err: { code?: string; message?: string }): boolean => {
+    if (!err) return false
+
+    const message = err.message?.toLowerCase() || ''
+    return (
+      err.code === 'auth/operation-not-allowed' ||
+      (err.code === 'auth/internal-error' && (
+        err.message?.includes('403') ||
+        err.message?.includes('Forbidden') ||
+        err.message?.includes('permission-denied') ||
+        err.message?.includes('Unauthorized email domain')
+      )) ||
+      message.includes('unauthorized email domain') ||
+      message.includes('permission-denied')
+    )
+  }
+
+  // Helper function to get user-friendly error message
+  const getAuthErrorMessage = (err: { code?: string; message?: string }): string => {
+    if (isRejectionError(err)) {
+      return 'Sign up is not available for your email domain.'
+    }
+
+    if (
+      err.code === 'auth/invalid-credential' ||
+      err.code === 'auth/user-not-found' ||
+      err.code === 'auth/wrong-password'
+    ) {
+      return 'Invalid email or password. Please check your credentials and try again.'
+    }
+
+    if (err.code === 'auth/password-does-not-meet-requirements') {
+      // Extract password requirement from error message
+      // Error format: "Firebase: Missing password requirements: [Password must contain a non-alphanumeric character]"
+      if (err.message) {
+        const bracketStart = err.message.indexOf('[')
+        const bracketEnd = err.message.indexOf(']')
+        if (bracketStart >= 0 && bracketEnd > bracketStart) {
+          const requirement = err.message.substring(bracketStart + 1, bracketEnd)
+          // Remove "Password must" prefix and convert to lowercase for cleaner message
+          const cleanRequirement = requirement.replace(/^Password must /i, '').toLowerCase()
+          return `Password must ${cleanRequirement}.`
+        }
+      }
+      return 'Password does not meet the requirements. Please check the password policy and try again.'
+    }
+
+    if (err.code === 'auth/weak-password') {
+      return 'Password is too weak. Please choose a stronger password.'
+    }
+
+    if (err.code === 'auth/too-many-requests') {
+      return 'Too many failed attempts. Please try again later.'
+    }
+
+    if (err.code === 'auth/user-disabled') {
+      return 'This account has been disabled.'
+    }
+
+    if (err.code === 'auth/email-already-in-use') {
+      return 'An account with this email already exists. Please sign in instead.'
+    }
+
+    if (err.code === 'auth/network-request-failed') {
+      return 'Network error. Please check your connection and try again.'
+    }
+
+    if (err.code === 'auth/requires-recent-login') {
+      return 'This operation requires recent authentication. Please sign in again.'
+    }
+
+    return err.message || 'An error occurred during authentication.'
+  }
 
   const handleLogin = async () => {
     setAuthError(null)
+    setSuccessMessage(null)
     setAuthLoading(true)
     try {
       const auth = getAuth(firebaseApp)
@@ -28,7 +122,6 @@ export default function LoginScreen({ firebaseApp }: LoginScreenProps) {
     } catch (error: unknown) {
       const err = error as { code?: string; message?: string }
       if (err.code === 'auth/popup-closed-by-user') {
-        // User closed the popup - don't show error
         setAuthError(null)
       } else if (
         err.code === 'auth/missing-or-invalid-nonce' ||
@@ -53,12 +146,10 @@ export default function LoginScreen({ firebaseApp }: LoginScreenProps) {
           // Ignore errors when accessing sessionStorage
         }
         setAuthError(
-          'Authentication state was cleared. Please try signing in again. If the problem persists, try clearing your browser cache or using a different browser.'
+          'Authentication state was cleared. Please try signing in again.'
         )
-      } else if (err.message) {
-        setAuthError(err.message)
       } else {
-        setAuthError('Failed to sign in with Google. Please try again.')
+        setAuthError(getAuthErrorMessage(err))
       }
     } finally {
       setAuthLoading(false)
@@ -68,180 +159,340 @@ export default function LoginScreen({ firebaseApp }: LoginScreenProps) {
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault()
     setAuthError(null)
-    setAuthLoading(true)
+    setSuccessMessage(null)
 
+    // 1. Frontend Check: Validate passwords match during sign up
+    if (isSignUp && password !== confirmPassword) {
+      setAuthError("Passwords do not match.")
+      return
+    }
+
+    setAuthLoading(true)
     const auth = getAuth(firebaseApp)
+
     try {
       if (isSignUp) {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password)
-        // Set default displayName and photoURL for new email/password users
         const displayName = email.split('@')[0] || 'User'
         const photoURL = `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=random`
+
         await updateProfile(userCredential.user, {
           displayName,
           photoURL,
         })
+
+        // 2. Email Verification: Send link immediately after creation
+        await sendEmailVerification(userCredential.user)
+        // Sign out the user immediately - they need to verify email before logging in
+        await signOut(auth)
+        setSuccessMessage("Account created! A verification email has been sent to your inbox. Please verify your email before signing in.")
+        setIsSignUp(false) // Switch back to sign-in mode
       } else {
-        await signInWithEmailAndPassword(auth, email, password)
+        const userCredential = await signInWithEmailAndPassword(auth, email, password)
+
+        // Check if email is verified - require verification for login
+        if (!userCredential.user.emailVerified) {
+          // Send a new verification email before signing out
+          try {
+            await sendEmailVerification(userCredential.user)
+            await signOut(auth)
+            setAuthError('Please verify your email address before signing in. A new verification email has been sent to your inbox.')
+          } catch {
+            // If sending verification fails, still sign out and show error
+            await signOut(auth)
+            setAuthError('Please verify your email address before signing in. Check your inbox for the verification link.')
+          }
+          return
+        }
       }
     } catch (error: unknown) {
       const err = error as { code?: string; message?: string }
-      if (err.code === 'auth/internal-error' && (err.message?.includes('403') || err.message?.includes('Forbidden'))) {
-        setAuthError('Sign up is not available. Please contact an administrator.')
-      } else if (err.message) {
-        setAuthError(err.message)
+      setAuthError(getAuthErrorMessage(err))
+    } finally {
+      setAuthLoading(false)
+    }
+  }
+
+  // 3. Password Reset Handler
+  const handlePasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setAuthError(null)
+    setSuccessMessage(null)
+
+    if (!email) {
+      setAuthError("Please enter your email address.")
+      return
+    }
+
+    setAuthLoading(true)
+    const auth = getAuth(firebaseApp)
+    try {
+      await sendPasswordResetEmail(auth, email)
+      setSuccessMessage('If an account exists with this email, a password reset link has been sent.')
+    } catch (error: unknown) {
+      const err = error as { code?: string; message?: string }
+      // Check for rejection errors (e.g., email not found)
+      if (err.code === 'auth/user-not-found') {
+        // Use generic message to prevent user enumeration
+        setAuthError('If an account exists with this email, a password reset link has been sent.')
+      } else if (err.code === 'auth/invalid-email') {
+        setAuthError('Invalid email address. Please check and try again.')
+      } else if (err.code === 'auth/too-many-requests') {
+        setAuthError('Too many requests. Please try again later.')
       } else {
-        setAuthError('An error occurred during authentication')
+        setAuthError(err.message || "Failed to send reset email.")
       }
     } finally {
       setAuthLoading(false)
     }
   }
 
+  // Helper to render the correct card title/description based on mode
+  const getCardHeader = () => {
+    if (authMode === 'reset') {
+      return { title: 'Reset Password', desc: 'Enter your email to receive a reset link' }
+    }
+    if (authMode === 'select') {
+      return { title: 'Welcome to Hit8', desc: 'Choose a sign-in method to continue' }
+    }
+    return {
+      title: 'Welcome to Hit8',
+      desc: isSignUp ? 'Create a new account' : 'Sign in to your account'
+    }
+  }
+
+  // Helper to render the appropriate form content based on auth mode
+  const renderAuthContent = () => {
+    if (authMode === 'select') {
+      return (
+        <>
+          <Button
+            onClick={() => {
+              void handleLogin()
+            }}
+            className="w-full"
+            size="lg"
+            disabled={authLoading}
+            aria-label="Sign in with Google"
+          >
+            <GoogleIcon className="w-5 h-5 mr-2" />
+            Sign in with Google
+          </Button>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-background px-2 text-muted-foreground">
+                Or continue with
+              </span>
+            </div>
+          </div>
+
+          <Button
+            onClick={() => setAuthMode('email')}
+            variant="outline"
+            className="w-full"
+            size="lg"
+          >
+            Sign in with Email
+          </Button>
+        </>
+      )
+    }
+
+    if (authMode === 'reset') {
+      return (
+        <form onSubmit={(e) => { void handlePasswordReset(e) }} className="space-y-4">
+          <div className="space-y-2">
+            <label htmlFor="reset-email" className="text-sm font-medium">Email</label>
+            <Input
+              id="reset-email"
+              type="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              disabled={authLoading}
+            />
+          </div>
+
+          {authError && (
+            <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
+              {authError}
+            </div>
+          )}
+
+          <Button type="submit" className="w-full" size="lg" disabled={authLoading}>
+            {authLoading ? 'Sending...' : 'Send Reset Link'}
+          </Button>
+
+          <div className="text-center">
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode('email')
+                setAuthError(null)
+                setSuccessMessage(null)
+              }}
+              className="text-muted-foreground hover:underline text-xs"
+            >
+              ← Back to Sign In
+            </button>
+          </div>
+        </form>
+      )
+    }
+
+    let buttonText = 'Sign In'
+    if (authLoading) {
+      buttonText = 'Please wait...'
+    } else if (isSignUp) {
+      buttonText = 'Sign Up'
+    }
+
+    return (
+      <form onSubmit={(e) => { void handleEmailAuth(e) }} className="space-y-4">
+        <div className="space-y-2">
+          <label htmlFor="email" className="text-sm font-medium">
+            Email
+          </label>
+          <Input
+            id="email"
+            type="email"
+            placeholder="you@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            disabled={authLoading}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label htmlFor="password" className="text-sm font-medium">
+            Password
+          </label>
+          <Input
+            id="password"
+            type="password"
+            placeholder="••••••••"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            disabled={authLoading}
+            minLength={6}
+          />
+          {!isSignUp && (
+            <div className="text-right">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode('reset')
+                  setAuthError(null)
+                  setSuccessMessage(null)
+                }}
+                className="text-xs text-primary hover:underline"
+              >
+                Forgot password?
+              </button>
+            </div>
+          )}
+        </div>
+
+        {isSignUp && (
+          <div className="space-y-2">
+            <label htmlFor="confirmPassword" className="text-sm font-medium">
+              Confirm Password
+            </label>
+            <Input
+              id="confirmPassword"
+              type="password"
+              placeholder="••••••••"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              disabled={authLoading}
+              minLength={6}
+            />
+          </div>
+        )}
+
+        {authError && (
+          <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
+            {authError}
+          </div>
+        )}
+
+        <Button
+          type="submit"
+          className="w-full"
+          size="lg"
+          disabled={authLoading}
+        >
+          {buttonText}
+        </Button>
+
+        <div className="text-center text-sm space-y-2">
+          <button
+            type="button"
+            onClick={() => {
+              setIsSignUp(!isSignUp)
+              setConfirmPassword('')
+              setAuthError(null)
+              setSuccessMessage(null)
+            }}
+            className="text-primary hover:underline"
+            disabled={authLoading}
+          >
+            {isSignUp
+              ? 'Already have an account? Sign in'
+              : "Don't have an account? Sign up"}
+          </button>
+          <div>
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode('select')
+                setEmail('')
+                setPassword('')
+                setConfirmPassword('')
+                setAuthError(null)
+                setSuccessMessage(null)
+                setIsSignUp(false)
+              }}
+              className="text-muted-foreground hover:underline text-xs"
+              disabled={authLoading}
+            >
+              ← Back to sign-in options
+            </button>
+          </div>
+        </div>
+      </form>
+    )
+  }
+
+  const { title, desc } = getCardHeader()
+
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle className="text-2xl">Hit8 Chat</CardTitle>
-          <CardDescription>
-            {authMode === 'select' 
-              ? 'Choose a sign-in method to continue'
-              : isSignUp 
-                ? 'Create a new account'
-                : 'Sign in to your account'}
-          </CardDescription>
+          <CardTitle className="text-2xl">{title}</CardTitle>
+          <CardDescription>{desc}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {authMode === 'select' ? (
-            <>
-              <Button 
-                onClick={handleLogin} 
-                className="w-full"
-                size="lg"
-              >
-                <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24" aria-hidden="true">
-                  <path
-                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                    fill="#4285F4"
-                  />
-                  <path
-                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                    fill="#34A853"
-                  />
-                  <path
-                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                    fill="#FBBC05"
-                  />
-                  <path
-                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                    fill="#EA4335"
-                  />
-                </svg>
-                Sign in with Google
-              </Button>
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-background px-2 text-muted-foreground">
-                    Or continue with
-                  </span>
-                </div>
-              </div>
-              <Button 
-                onClick={() => setAuthMode('email')} 
-                variant="outline"
-                className="w-full"
-                size="lg"
-              >
-                Sign in with Email
-              </Button>
-            </>
-          ) : (
-            <form onSubmit={handleEmailAuth} className="space-y-4">
-              <div className="space-y-2">
-                <label htmlFor="email" className="text-sm font-medium">
-                  Email
-                </label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="you@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  disabled={authLoading}
-                />
-              </div>
-              <div className="space-y-2">
-                <label htmlFor="password" className="text-sm font-medium">
-                  Password
-                </label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  disabled={authLoading}
-                  minLength={6}
-                />
-              </div>
-              {authError && (
-                <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
-                  {authError}
-                </div>
-              )}
-              <Button 
-                type="submit" 
-                className="w-full"
-                size="lg"
-                disabled={authLoading}
-              >
-                {authLoading 
-                  ? 'Please wait...' 
-                  : isSignUp 
-                    ? 'Sign Up' 
-                    : 'Sign In'}
-              </Button>
-              <div className="text-center text-sm space-y-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsSignUp(!isSignUp)
-                    setAuthError(null)
-                  }}
-                  className="text-primary hover:underline"
-                  disabled={authLoading}
-                >
-                  {isSignUp 
-                    ? 'Already have an account? Sign in' 
-                    : "Don't have an account? Sign up"}
-                </button>
-                <div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAuthMode('select')
-                      setEmail('')
-                      setPassword('')
-                      setAuthError(null)
-                      setIsSignUp(false)
-                    }}
-                    className="text-muted-foreground hover:underline text-xs"
-                    disabled={authLoading}
-                  >
-                    ← Back to sign-in options
-                  </button>
-                </div>
-              </div>
-            </form>
+
+          {/* Success Message Display */}
+          {successMessage && (
+            <div className="text-sm text-green-600 bg-green-50 p-3 rounded-md border border-green-200">
+              {successMessage}
+            </div>
           )}
+
+          {renderAuthContent()}
         </CardContent>
       </Card>
     </div>
   )
 }
-

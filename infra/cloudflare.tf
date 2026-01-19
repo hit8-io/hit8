@@ -58,6 +58,34 @@ resource "cloudflare_record" "mx_records" {
   ttl      = 1
 }
 
+resource "cloudflare_record" "txt_records" {
+  for_each = {
+    "spf"     = "v=spf1 include:_spf.firebasemail.com ~all"
+    "firebase" = "firebase=hit8-poc"
+  }
+
+  zone_id = var.cloudflare_zone_id
+  name    = var.domain_name
+  content = each.value
+  type    = "TXT"
+  proxied = false
+  ttl     = 1
+}
+
+resource "cloudflare_record" "firebase_dkim" {
+  for_each = {
+    "firebase1._domainkey" = "mail-hit8-io.dkim1._domainkey.firebasemail.com."
+    "firebase2._domainkey" = "mail-hit8-io.dkim2._domainkey.firebasemail.com."
+  }
+
+  zone_id = var.cloudflare_zone_id
+  name    = each.key
+  content = each.value
+  type    = "CNAME"
+  proxied = false
+  ttl     = 1
+}
+
 ################################################################################
 #                             RULESETS & REDIRECTS                             #
 ################################################################################

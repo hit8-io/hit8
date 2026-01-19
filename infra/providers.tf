@@ -32,3 +32,13 @@ provider "google-beta" {
   zone    = var.zone
   user_project_override = true
 }
+
+provider "cloudflare" {
+  # API token is provided via CLOUDFLARE_API_TOKEN environment variable (set via Doppler)
+  # Minimal retries to fail fast on authentication/IP restriction errors
+  retries            = 1
+  min_backoff        = 1
+  max_backoff        = 2
+  # Enable API client logging for better error messages
+  api_client_logging = true
+}

@@ -106,6 +106,23 @@ export function useAuth(): UseAuthResult {
             setLoading(false)
             return
           }
+          
+          // Check email verification - only allow verified users (except Google OAuth users who are auto-verified)
+          // Google OAuth users don't have emailVerified property set, but they're implicitly verified
+          const isGoogleOAuth = firebaseUser.providerData.some(
+            provider => provider.providerId === 'google.com'
+          )
+          
+          if (!isGoogleOAuth && !firebaseUser.emailVerified) {
+            // Email not verified - sign out the user
+            logError('useAuth: User email not verified', { email: firebaseUser.email })
+            await signOut(auth)
+            setUser(null)
+            setIdToken(null)
+            setLoading(false)
+            return
+          }
+          
           // Provide defaults for email/password users who don't have displayName or photoURL
           const displayName = firebaseUser.displayName || firebaseUser.email.split('@')[0] || 'User'
           const photoURL = firebaseUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=random`

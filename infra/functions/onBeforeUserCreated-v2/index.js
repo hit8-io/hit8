@@ -30,14 +30,12 @@ exports.onBeforeUserCreated = authClient.functions().beforeCreateHandler((user, 
   const isApproved = isApprovedDomain || isApprovedEmail;
   
   // Optional: Reject users who are not approved
-  /*
   if (!isApproved) {
     throw new gcipCloudFunctions.https.HttpsError(
       'permission-denied', 
       `Unauthorized email domain: ${email}`
     );
   }
-  */
   
   return {
     customClaims: {
