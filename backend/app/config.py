@@ -47,14 +47,30 @@ def _load_doppler_secrets() -> None:
     """
     doppler_secrets_json = os.getenv("DOPPLER_SECRETS_JSON")
     if not doppler_secrets_json:
+        logger.warning(
+            "doppler_secrets_missing",
+            environment=os.getenv("ENVIRONMENT", "unknown"),
+        )
         return
     
-    secrets = json.loads(doppler_secrets_json)
-    logger.info("doppler_secrets_loaded", secret_count=len(secrets))
-    
-    for key, value in secrets.items():
-        if key not in os.environ:
-            os.environ[key] = str(value)
+    try:
+        secrets = json.loads(doppler_secrets_json)
+        logger.info(
+            "doppler_secrets_loaded",
+            secret_count=len(secrets),
+            environment=os.getenv("ENVIRONMENT", "unknown"),
+        )
+        
+        for key, value in secrets.items():
+            if key not in os.environ:
+                os.environ[key] = str(value)
+    except json.JSONDecodeError as e:
+        logger.error(
+            "doppler_secrets_parse_error",
+            error=str(e),
+            environment=os.getenv("ENVIRONMENT", "unknown"),
+        )
+        raise
 
 
 def _load_constants_config(settings_fields: set[str] | None = None) -> dict[str, Any]:
@@ -63,18 +79,22 @@ def _load_constants_config(settings_fields: set[str] | None = None) -> dict[str,
     All configuration uses uppercase keys (e.g., APP_NAME).
     Automatically loads all constants from constants.CONSTANTS dictionary.
     Only includes constants that are defined in the Settings model.
-    
-    Ensures environment-specific constants are applied even if constants.py
-    was imported before ENVIRONMENT was set.
     """
     if settings_fields is None:
         # Get Settings fields from the class (defined later in this module)
         # This avoids circular import by using a parameter
         settings_fields = set(Settings.model_fields.keys())
     
-    # Ensure environment-specific constants are applied
-    # (in case constants.py was imported before ENVIRONMENT was set)
-    constants.ensure_environment_constants()
+    # Log constants loading for debugging
+    current_env = os.getenv("ENVIRONMENT", "unknown")
+    logger.debug(
+        "loading_constants_config",
+        environment=current_env,
+        constants_env=constants.ENVIRONMENT,
+        has_log_level="LOG_LEVEL" in constants.CONSTANTS,
+        has_log_format="LOG_FORMAT" in constants.CONSTANTS,
+        has_cors_origins="CORS_ALLOW_ORIGINS" in constants.CONSTANTS,
+    )
     
     # Filter constants to only include Settings fields
     config = {

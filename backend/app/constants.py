@@ -95,74 +95,61 @@ CONSTANTS: dict[str, Any] = {
     ],
 }
 
-# Environment-specific constants
-_ENV_CONSTANTS: dict[str, dict[str, Any]] = {
-    "dev": {
-        "LOG_LEVEL": "DEBUG",
-        "LLM": [
-            {
-                "MODEL_NAME": "gemini-2.0-flash-lite-001",
-                "PROVIDER": "vertex",
-                "LOCATION": "europe-west1",
-                "THINKING_LEVEL": None,
-                "TEMPERATURE": 0.3,
-            },
-            {
-                "MODEL_NAME": "llama3.1:8b",
-                "PROVIDER": "ollama",
-                "LOCATION": None,
-                "THINKING_LEVEL": None,
-                "TEMPERATURE": 0.3,
-            },
-        ],
-        "LOG_FORMAT": "console",
-        "CORS_ALLOW_ORIGINS": [
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-        ],
-        "MAX_BATCHES": None,
-        "MAX_PROCEDURES_DEV": None,
-    },
-    "stg": {
-        "LOG_LEVEL": "INFO",
-        "LOG_FORMAT": "json",
-        "CORS_ALLOW_ORIGINS": [
-            "https://www.hit8.io",
-            "https://hit8.io",
-            "https://hit8.pages.dev",
-        ],
-    },
-    "prd": {
-        "LOG_LEVEL": "INFO",
-        "LOG_FORMAT": "json",
-        "CORS_ALLOW_ORIGINS": [
-            "https://www.hit8.io",
-            "https://hit8.io",
-            "https://hit8.pages.dev",
-        ],
-    },
-}
+# dev
+if ENVIRONMENT == "dev":
+    CONSTANTS.update(
+        {
+            "LOG_LEVEL": "DEBUG",
+            "LLM": [
+                {
+                    "MODEL_NAME": "gemini-2.0-flash-lite-001",
+                    "PROVIDER": "vertex",
+                    "LOCATION": "europe-west1",
+                    "THINKING_LEVEL": None,
+                    "TEMPERATURE": 0.3,
+                },
+                {
+                    "MODEL_NAME": "llama3.1:8b",
+                    "PROVIDER": "ollama",
+                    "LOCATION": None,
+                    "THINKING_LEVEL": None,
+                    "TEMPERATURE": 0.3,
+                },
+            ],
+            "LOG_FORMAT": "console",
+            "CORS_ALLOW_ORIGINS": [
+                "http://localhost:5173",
+                "http://127.0.0.1:5173",
+            ],
+            "MAX_BATCHES": None,
+            "MAX_PROCEDURES_DEV": None,
+        }
+    )
 
+# stg
+if ENVIRONMENT == "stg":
+    CONSTANTS.update(
+        {
+            "LOG_LEVEL": "INFO",
+            "LOG_FORMAT": "json",
+            "CORS_ALLOW_ORIGINS": [
+                "https://www.hit8.io",
+                "https://hit8.io",
+                "https://hit8.pages.dev",
+            ],
+        }
+    )
 
-def _apply_environment_constants(env: str) -> None:
-    """Apply environment-specific constants to CONSTANTS dict."""
-    if env in _ENV_CONSTANTS:
-        CONSTANTS.update(_ENV_CONSTANTS[env])
-
-
-# Apply environment-specific constants at module import
-_apply_environment_constants(ENVIRONMENT)
-
-
-def ensure_environment_constants() -> None:
-    """Ensure environment-specific constants are applied.
-    
-    Re-evaluates ENVIRONMENT and applies environment-specific constants
-    if they weren't applied during module import (e.g., if ENVIRONMENT
-    wasn't set when constants.py was imported).
-    """
-    current_env = os.getenv("ENVIRONMENT", "dev")
-    
-    # Only update if constants weren't applied (check if LOG_LEVEL is missing)
-    if "LOG_LEVEL" not in CONSTANTS:
-        _apply_environment_constants(current_env)
+# prd
+if ENVIRONMENT == "prd":
+    CONSTANTS.update(
+        {
+            "LOG_LEVEL": "INFO",
+            "LOG_FORMAT": "json",
+            "CORS_ALLOW_ORIGINS": [
+                "https://www.hit8.io",
+                "https://hit8.io",
+                "https://hit8.pages.dev",
+            ],
+        }
+    )
