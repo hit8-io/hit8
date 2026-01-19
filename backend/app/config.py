@@ -63,11 +63,18 @@ def _load_constants_config(settings_fields: set[str] | None = None) -> dict[str,
     All configuration uses uppercase keys (e.g., APP_NAME).
     Automatically loads all constants from constants.CONSTANTS dictionary.
     Only includes constants that are defined in the Settings model.
+    
+    Ensures environment-specific constants are applied even if constants.py
+    was imported before ENVIRONMENT was set.
     """
     if settings_fields is None:
         # Get Settings fields from the class (defined later in this module)
         # This avoids circular import by using a parameter
         settings_fields = set(Settings.model_fields.keys())
+    
+    # Ensure environment-specific constants are applied
+    # (in case constants.py was imported before ENVIRONMENT was set)
+    constants.ensure_environment_constants()
     
     # Filter constants to only include Settings fields
     config = {
