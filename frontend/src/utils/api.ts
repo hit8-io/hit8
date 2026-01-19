@@ -251,3 +251,51 @@ export async function getChatHistory(
   }
 }
 
+export async function getAvailableModels(
+  token: string | null
+): Promise<string[]> {
+  if (!token) {
+    throw new Error('Authentication token is required')
+  }
+
+  if (!API_URL) {
+    throw new Error('API URL is not configured')
+  }
+
+  const url = `${API_URL}/config/models`
+  const method = 'GET'
+
+  try {
+    const response = await fetchWithRetry(
+      url,
+      { method },
+      token
+    )
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      const error = new Error(`Failed to fetch available models: ${response.status} ${errorText}`)
+      // Add request context to error for Sentry
+      ;(error as Error & { requestContext?: Record<string, unknown> }).requestContext = {
+        url,
+        method,
+        statusCode: response.status,
+        statusText: response.statusText,
+      }
+      throw error
+    }
+
+    const data = await response.json()
+    return data.models || []
+  } catch (error) {
+    // If it's a network error, add request context
+    if (error instanceof Error && !(error as Error & { requestContext?: Record<string, unknown> }).requestContext) {
+      ;(error as Error & { requestContext?: Record<string, unknown> }).requestContext = {
+        url,
+        method,
+      }
+    }
+    throw error
+  }
+}
+

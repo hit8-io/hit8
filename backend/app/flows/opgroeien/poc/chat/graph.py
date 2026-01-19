@@ -60,7 +60,22 @@ class AgentState(TypedDict):
 
 def agent_node(state: AgentState, config: Optional[RunnableConfig] = None) -> AgentState:
     """Agent node that processes messages and may call tools."""
-    model = get_agent_model()
+    # Extract model_name from config if provided
+    model_name = None
+    if config:
+        # Try multiple ways to access configurable
+        if hasattr(config, "configurable"):
+            if isinstance(config.configurable, dict):
+                model_name = config.configurable.get("model_name")
+            elif hasattr(config.configurable, "get"):
+                model_name = config.configurable.get("model_name")
+        # Also try accessing as dict
+        if not model_name and isinstance(config, dict):
+            configurable = config.get("configurable", {})
+            if isinstance(configurable, dict):
+                model_name = configurable.get("model_name")
+    
+    model = get_agent_model(model_name=model_name)
     tools = get_all_tools()
     
     # Bind tools to model

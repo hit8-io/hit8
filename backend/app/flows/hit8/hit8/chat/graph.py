@@ -39,7 +39,22 @@ def generate_node(
     Returns:
         Updated state with AI response appended
     """
-    model = get_agent_model()
+    # Extract model_name from config if provided
+    model_name = None
+    if config:
+        # Try multiple ways to access configurable
+        if hasattr(config, "configurable"):
+            if isinstance(config.configurable, dict):
+                model_name = config.configurable.get("model_name")
+            elif hasattr(config.configurable, "get"):
+                model_name = config.configurable.get("model_name")
+        # Also try accessing as dict
+        if not model_name and isinstance(config, dict):
+            configurable = config.get("configurable", {})
+            if isinstance(configurable, dict):
+                model_name = configurable.get("model_name")
+    
+    model = get_agent_model(model_name=model_name)
     last_message = state["messages"][-1]
     
     # Prepare config with metadata for Vertex AI

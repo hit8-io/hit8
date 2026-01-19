@@ -89,6 +89,8 @@ interface UseChatStreamOptions {
   org?: string
   /** Project identifier */
   project?: string
+  /** Selected model name */
+  model?: string
   /** Callback for execution state updates */
   onExecutionStateUpdate?: (state: ExecutionState | null) => void
   /** Callback for chat state changes */
@@ -143,6 +145,7 @@ export function useChatStream({
   token,
   org,
   project,
+  model,
   onExecutionStateUpdate,
   onChatStateChange,
 }: UseChatStreamOptions): UseChatStreamReturn {
@@ -339,6 +342,9 @@ export function useChatStream({
       const formData = new FormData()
       formData.append('message', messageContent)
       formData.append('thread_id', activeThreadId)
+      if (model) {
+        formData.append('model', model)
+      }
       selectedFiles.forEach(file => {
         formData.append('files', file)
       })

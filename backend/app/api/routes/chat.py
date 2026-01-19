@@ -181,6 +181,7 @@ async def stream_chat_events(
 async def chat(
     message: str = Form(...),
     thread_id: str | None = Form(None),
+    model: str | None = Form(None),
     files: list[UploadFile] = File(None),
     user_payload: dict = Depends(verify_google_token),
     x_org: str = Header(..., alias="X-Org"),
@@ -188,7 +189,7 @@ async def chat(
 ):
     """Chat endpoint that processes user messages through LangGraph with streaming support.
     
-    Accepts multipart/form-data with message, optional thread_id, and optional files.
+    Accepts multipart/form-data with message, optional thread_id, optional model, and optional files.
     Requires X-Org and X-Project headers to specify which org/project to use.
     """
     user_id = user_payload["sub"]
@@ -305,6 +306,9 @@ async def chat(
     config: dict[str, Any] = {
         "configurable": {"thread_id": session_id}
     }
+    # Add model_name to configurable if provided
+    if model:
+        config["configurable"]["model_name"] = model
     if langfuse_handler:
         config["callbacks"] = [langfuse_handler]
         logger.debug(

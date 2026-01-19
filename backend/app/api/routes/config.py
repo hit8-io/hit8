@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.auth import verify_google_token
 from app.user_config import get_user_orgs_projects
+from app.config import settings
 
 logger = structlog.get_logger(__name__)
 router = APIRouter()
@@ -50,4 +51,24 @@ async def get_user_config_endpoint(
     )
     
     return user_config
+
+
+@router.get("/models")
+async def get_available_models(
+    user_payload: dict = Depends(verify_google_token)
+):
+    """Get list of available LLM models.
+    
+    Returns:
+        Dictionary with:
+        - models: List of available model names (MODEL_NAME from LLM config)
+    """
+    models = [llm.MODEL_NAME for llm in settings.LLM]
+    
+    logger.debug(
+        "available_models_retrieved",
+        model_count=len(models),
+    )
+    
+    return {"models": models}
 

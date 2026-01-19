@@ -15,7 +15,7 @@ os.environ.setdefault("DATABASE_CONNECTION_STRING", "postgresql://test:test@loca
 os.environ.setdefault("LANGFUSE_ENABLED", "false")
 os.environ.setdefault("API_TOKEN", "test-api-token")
 os.environ.setdefault("VERTEX_SERVICE_ACCOUNT", '{"project_id": "mock", "type": "service_account"}')
-os.environ.setdefault("LLM_MODEL_NAME", "mock-model")
+os.environ.setdefault("LLM", '[{"MODEL_NAME": "mock-model", "PROVIDER": "vertex", "LOCATION": "global", "THINKING_LEVEL": None, "TEMPERATURE": None}]')
 os.environ.setdefault("GCP_PROJECT", "mock-project")
 os.environ.setdefault("GOOGLE_IDENTITY_PLATFORM_DOMAIN", "mock-domain")
 os.environ.setdefault("CORS_ALLOW_ORIGINS", '["*"]')

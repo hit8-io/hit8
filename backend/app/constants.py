@@ -40,17 +40,36 @@ CONSTANTS: dict[str, Any] = {
     "MAX_TOOL_RESULT_LENGTH": 15_000,
     "APP_NAME": "Hit8 Chat API",
     "APP_VERSION": "0.3.0",
-    "LLM_PROVIDER": "vertex",
-    # "LLM_MODEL_NAME": "gemini-3-pro-preview",
-    "LLM_MODEL_NAME": "gemini-2.5-pro",
-    # "TOOL_LLM_MODEL": "gemini-3-flash-preview",
-    "TOOL_LLM_MODEL": "gemini-2.5-flash",
-    "VERTEX_AI_LOCATION": "europe-west1",
-    "LLM_THINKING_LEVEL": None,
-    "TOOL_LLM_THINKING_LEVEL": None,
-    "LLM_TEMPERATURE": 0.3,
-    "TOOL_LLM_TEMPERATURE": 0.1,
-    "LLM_PROVIDER": "vertex",
+    "LLM": [
+        {
+            "MODEL_NAME": "gemini-2.5-pro",
+            "PROVIDER": "vertex",
+            "LOCATION": "europe-west1",
+            "THINKING_LEVEL": None,
+            "TEMPERATURE": 0.3,
+        },
+        {
+            "MODEL_NAME": "gemini-2.5-flash",
+            "PROVIDER": "vertex",
+            "LOCATION": "europe-west1",
+            "THINKING_LEVEL": None,
+            "TEMPERATURE": 0.3,
+        },
+        {
+            "MODEL_NAME": "gemini-3-pro-preview",
+            "PROVIDER": "vertex",
+            "LOCATION": "global",
+            "THINKING_LEVEL": None,
+            "TEMPERATURE": None,
+        },
+        {
+            "MODEL_NAME": "gemini-3-flash-preview",
+            "PROVIDER": "vertex",
+            "LOCATION": "global",
+            "THINKING_LEVEL": None,
+            "TEMPERATURE": None,
+        }
+    ],
     "CORS_ALLOW_CREDENTIALS": True,
     "ACCOUNT": "hit8",
     "ORG": "opgroeien",
@@ -61,40 +80,62 @@ CONSTANTS: dict[str, Any] = {
     "LLM_RETRY_STOP_AFTER_ATTEMPT": 10,
     "LLM_RETRY_MAX_INTERVAL": 60,
     "LLM_RETRY_INITIAL_INTERVAL": 1.0,
-    "VERTEX_AI_MAX_RETRIES": 6,
+    "LLM_PROVIDER": [
+        {
+            "PROVIDER": "vertex",
+            "VERTEX_AI_MAX_RETRIES": 6,
+        },
+        {
+            "PROVIDER": "ollama",
+            "OLLAMA_KEEP_ALIVE": "0",
+            "OLLAMA_BASE_URL": "http://213.173.110.232:36161",
+            "OLLAMA_NUM_CTX": 65536,
+            "OLLAMA_EDITOR_NODE_MAX_OUTPUT_TOKENS": 16384,
+        },
+    ],
 }
 
 # dev
 if ENVIRONMENT == "dev":
-    CONSTANTS.update({
-        "LOG_LEVEL": "DEBUG",
-        "LLM_MODEL_NAME": "gemini-2.0-flash-lite-001",
-        "TOOL_LLM_MODEL": "gemini-2.0-flash-lite-001",
-        # "LLM_PROVIDER": "ollama",
-        # "LLM_MODEL_NAME": "llama3.1:8b",
-        # "TOOL_LLM_MODEL": "llama3.1:8b",
-        # "OLLAMA_KEEP_ALIVE": "0",
-        # "OLLAMA_BASE_URL": "http://213.173.110.232:36161",
-        # "OLLAMA_NUM_CTX": 65536,
-        # "EDITOR_NODE_MAX_OUTPUT_TOKENS_OLLAMA": 16384,
-        "LOG_FORMAT": "console",
-        "CORS_ALLOW_ORIGINS": [
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-        ],
-        "MAX_BATCHES": None,
-        "MAX_PROCEDURES_DEV": None,
-    })
+    CONSTANTS.update(
+        {
+            "LOG_LEVEL": "DEBUG",
+            "LLM": [
+                {
+                    "MODEL_NAME": "gemini-2.0-flash-lite-001",
+                    "PROVIDER": "vertex",
+                    "LOCATION": "europe-west1",
+                    "THINKING_LEVEL": None,
+                    "TEMPERATURE": 0.3,
+                },
+                {
+                    "MODEL_NAME": "llama3.1:8b",
+                    "PROVIDER": "ollama",
+                    "LOCATION": None,
+                    "THINKING_LEVEL": None,
+                    "TEMPERATURE": 0.3,
+                },
+            ],
+            "LOG_FORMAT": "console",
+            "CORS_ALLOW_ORIGINS": [
+                "http://localhost:5173",
+                "http://127.0.0.1:5173",
+            ],
+            "MAX_BATCHES": None,
+            "MAX_PROCEDURES_DEV": None,
+        }
+    )
 
 # prd
 if ENVIRONMENT == "prd":
-    CONSTANTS.update({
-        "LOG_LEVEL": "INFO",
-        "LOG_FORMAT": "json",
-        "CORS_ALLOW_ORIGINS": [
-            "https://www.hit8.io",
-            "https://hit8.io",
-            "https://hit8.pages.dev",
-        ],
-    })
-
+    CONSTANTS.update(
+        {
+            "LOG_LEVEL": "INFO",
+            "LOG_FORMAT": "json",
+            "CORS_ALLOW_ORIGINS": [
+                "https://www.hit8.io",
+                "https://hit8.io",
+                "https://hit8.pages.dev",
+            ],
+        }
+    )

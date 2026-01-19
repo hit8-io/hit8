@@ -496,9 +496,14 @@ async def editor_node(state: ReportState):
     
     # Use model with high output token limit for long reports
     # Editor node needs higher limits to generate complete reports
-    if settings.LLM_PROVIDER == "ollama":
-        max_output_tokens = constants.CONSTANTS.get("EDITOR_NODE_MAX_OUTPUT_TOKENS_OLLAMA")
-    elif settings.LLM_PROVIDER == "vertex":
+    from app.flows.common import _get_first_available_llm_config, _get_provider_config
+    llm_config = _get_first_available_llm_config()
+    provider = llm_config["PROVIDER"]
+    provider_config = _get_provider_config(provider)
+    
+    if provider == "ollama":
+        max_output_tokens = provider_config.get("OLLAMA_EDITOR_NODE_MAX_OUTPUT_TOKENS")
+    elif provider == "vertex":
         max_output_tokens = constants.CONSTANTS.get("EDITOR_NODE_MAX_OUTPUT_TOKENS_VERTEX")
     
     if max_output_tokens is not None:

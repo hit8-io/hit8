@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Send, Maximize2, Minimize2, Paperclip, X, Plus, MessageSquare } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
@@ -9,6 +9,7 @@ import { Input } from './ui/input'
 import { Card } from './ui/card'
 import { ScrollArea } from './ui/scroll-area'
 import type { ExecutionState } from '../types'
+import { getAvailableModels } from '../utils/api'
 
 interface ChatInterfaceProps {
   readonly token: string
@@ -26,6 +27,22 @@ const API_URL = import.meta.env.VITE_API_URL
 export default function ChatInterface({ token, threadId, onChatStateChange, onExecutionStateUpdate, isExpanded = false, onToggleExpand, org, project }: ChatInterfaceProps) {
   const navigate = useNavigate()
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [selectedModel, setSelectedModel] = useState<string | null>(null)
+  const [availableModels, setAvailableModels] = useState<string[]>([])
+  
+  // Fetch available models on mount
+  useEffect(() => {
+    getAvailableModels(token)
+      .then((models) => {
+        setAvailableModels(models)
+        if (models.length > 0) {
+          setSelectedModel((prev) => prev || models[0])
+        }
+      })
+      .catch((error) => {
+        console.error('Failed to fetch available models:', error)
+      })
+  }, [token])
   
   const {
     messages,
@@ -44,6 +61,7 @@ export default function ChatInterface({ token, threadId, onChatStateChange, onEx
     project,
     onExecutionStateUpdate,
     onChatStateChange,
+    model: selectedModel || undefined,
   })
 
   const handleNewChat = () => {
@@ -89,6 +107,26 @@ export default function ChatInterface({ token, threadId, onChatStateChange, onEx
             Chat
           </h1>
           <div className="flex items-center gap-4">
+            {availableModels.length > 0 && (
+              <div className="flex items-center gap-2">
+                <label htmlFor="model-select" className="text-sm text-muted-foreground">
+                  Model:
+                </label>
+                <select
+                  id="model-select"
+                  value={selectedModel || ''}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  disabled={isLoading}
+                  className="px-2 py-1 text-sm border border-input bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {availableModels.map((model) => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <Button 
               variant="outline" 
               size="icon" 

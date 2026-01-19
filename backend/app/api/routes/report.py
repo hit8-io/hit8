@@ -308,7 +308,10 @@ async def start_report(
             import json
             
             # Job name format: projects/{project}/locations/{location}/jobs/{job}
-            job_name = f"projects/{settings.GCP_PROJECT}/locations/{settings.VERTEX_AI_LOCATION}/jobs/hit8-report-job"
+            from app.flows.common import _get_first_available_llm_config
+            llm_config = _get_first_available_llm_config()
+            location = llm_config.get("LOCATION") or settings.VERTEX_AI_LOCATION or "europe-west1"
+            job_name = f"projects/{settings.GCP_PROJECT}/locations/{location}/jobs/hit8-report-job"
             
             # Create execution overrides with environment variables
             # Pass job parameters as JSON in environment variable for simplicity

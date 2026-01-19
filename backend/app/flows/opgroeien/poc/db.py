@@ -87,7 +87,7 @@ def _get_embedding_model() -> GoogleGenerativeAIEmbeddings:
             output_dimensionality=EMBEDDING_OUTPUT_DIMENSIONALITY,
             model_kwargs={"provider": EMBEDDING_PROVIDER},
             project=project_id,
-            location=settings.VERTEX_AI_LOCATION,
+            location=settings.VERTEX_AI_LOCATION or "europe-west1",  # Fallback for backward compatibility
             credentials=creds,
         )
     return _embedding_model

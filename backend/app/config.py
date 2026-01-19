@@ -9,12 +9,34 @@ import threading
 from typing import Any
 
 import structlog
-from pydantic import Field, computed_field, field_validator, model_validator
+from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
+import json
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 from app import constants
 
 logger = structlog.get_logger(__name__)
+
+
+class LLMConfig(BaseModel):
+    """Configuration for a single LLM model."""
+    MODEL_NAME: str
+    PROVIDER: str
+    LOCATION: str | None = None
+    THINKING_LEVEL: str | None = None
+    TEMPERATURE: float | None = None
+
+
+class LLMProviderConfig(BaseModel):
+    """Configuration for an LLM provider."""
+    PROVIDER: str
+    # Vertex AI specific
+    VERTEX_AI_MAX_RETRIES: int | None = None
+    # Ollama specific
+    OLLAMA_KEEP_ALIVE: str | None = None
+    OLLAMA_BASE_URL: str | None = None
+    OLLAMA_NUM_CTX: int | None = None
+    OLLAMA_EDITOR_NODE_MAX_OUTPUT_TOKENS: int | None = None
 
 
 def _load_doppler_secrets() -> None:
@@ -89,22 +111,77 @@ class Settings(BaseSettings):
     CORS_ALLOW_ORIGINS: list[str]
     CORS_ALLOW_CREDENTIALS: bool
     
-    # Vertex AI
-    LLM_MODEL_NAME: str
-    LLM_PROVIDER: str
-    OLLAMA_BASE_URL: str | None = None  # Only required when LLM_PROVIDER == "ollama"
-    OLLAMA_NUM_CTX: int | None = None
-    OLLAMA_KEEP_ALIVE: str = "0"  # Ollama keep_alive setting ("0" = unload immediately, "5m" = keep for 5 minutes)
-    VERTEX_AI_LOCATION: str
+    # LLM Configuration
+    LLM: list[LLMConfig]
+    LLM_PROVIDER: list[LLMProviderConfig]
+    
+    @field_validator("LLM", mode="before")
+    @classmethod
+    def parse_llm_config(cls, v: str | list[dict[str, Any]] | list[LLMConfig] | Any) -> list[dict[str, Any]]:
+        """Parse LLM config from various formats.
+        
+        Supports:
+        - JSON string: '[{"MODEL_NAME": "...", "PROVIDER": "...", ...}]'
+        - List of dicts: [{"MODEL_NAME": "...", ...}]
+        - List of LLMConfig objects (will be converted to dicts)
+        """
+        if isinstance(v, list):
+            # Convert list of LLMConfig to list of dicts if needed
+            if v and isinstance(v[0], LLMConfig):
+                return [item.model_dump() for item in v]
+            # Already a list of dicts
+            return v
+        if isinstance(v, str):
+            # Try parsing as JSON
+            try:
+                parsed = json.loads(v)
+                if isinstance(parsed, list):
+                    return parsed
+                # Single object, wrap in list
+                return [parsed] if isinstance(parsed, dict) else [{"MODEL_NAME": str(parsed), "PROVIDER": "vertex", "LOCATION": None, "THINKING_LEVEL": None, "TEMPERATURE": None}]
+            except (json.JSONDecodeError, TypeError):
+                # Not JSON, treat as single model name (backward compatibility)
+                return [{"MODEL_NAME": v, "PROVIDER": "vertex", "LOCATION": None, "THINKING_LEVEL": None, "TEMPERATURE": None}]
+        # Fallback
+        return [{"MODEL_NAME": str(v), "PROVIDER": "vertex", "LOCATION": None, "THINKING_LEVEL": None, "TEMPERATURE": None}]
+    
+    @field_validator("LLM_PROVIDER", mode="before")
+    @classmethod
+    def parse_llm_provider_config(cls, v: str | list[dict[str, Any]] | list[LLMProviderConfig] | Any) -> list[dict[str, Any]]:
+        """Parse LLM_PROVIDER config from various formats.
+        
+        Supports:
+        - JSON string: '[{"provider": "...", ...}]'
+        - List of dicts: [{"provider": "...", ...}]
+        - List of LLMProviderConfig objects (will be converted to dicts)
+        """
+        if isinstance(v, list):
+            # Convert list of LLMProviderConfig to list of dicts if needed
+            if v and isinstance(v[0], LLMProviderConfig):
+                return [item.model_dump() for item in v]
+            # Already a list of dicts
+            return v
+        if isinstance(v, str):
+            # Try parsing as JSON
+            try:
+                parsed = json.loads(v)
+                if isinstance(parsed, list):
+                    return parsed
+                # Single object, wrap in list
+                return [parsed] if isinstance(parsed, dict) else []
+            except (json.JSONDecodeError, TypeError):
+                # Not JSON, return empty list
+                return []
+        # Fallback
+        return []
+    
+    # Legacy fields for backward compatibility (deprecated)
+    OLLAMA_BASE_URL: str | None = None  # Deprecated, use LLM_PROVIDER[].ollama_base_url
+    OLLAMA_NUM_CTX: int | None = None  # Deprecated, use LLM_PROVIDER[].ollama_num_ctx
+    OLLAMA_KEEP_ALIVE: str = "0"  # Deprecated, use LLM_PROVIDER[].ollama_keep_alive
+    VERTEX_AI_LOCATION: str | None = None  # Deprecated, use LLM[].location
     GCP_PROJECT: str
     VERTEX_SERVICE_ACCOUNT: str = Field(exclude=True)
-    
-    @model_validator(mode='after')
-    def validate_ollama_base_url_required_when_using_ollama(self) -> 'Settings':
-        """Validate that OLLAMA_BASE_URL is provided when using Ollama provider."""
-        if self.LLM_PROVIDER == "ollama" and not self.OLLAMA_BASE_URL:
-            raise ValueError("OLLAMA_BASE_URL is required when LLM_PROVIDER is 'ollama'")
-        return self
     
     # Database
     DATABASE_CONNECTION_STRING: str = Field(exclude=True)
