@@ -99,10 +99,10 @@ doppler run -- env | grep GCP_PROJECT
 **Production (GCP Secret Manager):**
 ```bash
 # Verify secret exists
-gcloud secrets describe doppler-hit8-prod --project=hit8-poc
+gcloud secrets describe doppler-hit8-prd --project=hit8-poc
 
 # Check secret version
-gcloud secrets versions list doppler-hit8-prod --project=hit8-poc
+gcloud secrets versions list doppler-hit8-prd --project=hit8-poc
 
 # Verify Cloud Run secret configuration
 gcloud run services describe hit8-api --region=europe-west1 \
@@ -127,7 +127,7 @@ gcloud run services describe hit8-api --region=europe-west1 \
 ```bash
 # Check secret JSON is valid
 gcloud secrets versions access latest \
-  --secret=doppler-hit8-prod \
+  --secret=doppler-hit8-prd \
   --project=hit8-poc | jq .
 ```
 

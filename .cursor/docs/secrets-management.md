@@ -52,12 +52,12 @@ doppler run -- npm run dev
 
 ### Secret Storage
 
-**Secret Name**: `doppler-hit8-prod`
+**Secret Name**: `doppler-hit8-prd`
 
 **Storage Location**: Google Cloud Secret Manager
 - Project: `hit8-poc`
 - Project Number: `617962194338`
-- Secret Path: `projects/617962194338/secrets/doppler-hit8-prod`
+- Secret Path: `projects/617962194338/secrets/doppler-hit8-prd`
 
 **Format**: JSON string containing all secrets
 
@@ -65,7 +65,7 @@ doppler run -- npm run dev
 
 **Cloud Run Configuration:**
 ```yaml
---set-secrets="DOPPLER_SECRETS_JSON=projects/617962194338/secrets/doppler-hit8-prod:latest"
+--set-secrets="DOPPLER_SECRETS_JSON=projects/617962194338/secrets/doppler-hit8-prd:latest"
 ```
 
 **Runtime Parsing:**
@@ -209,7 +209,7 @@ process.env.VITE_GOOGLE_IDENTITY_PLATFORM_KEY =
      ```
    - Update GCP Secret Manager:
      ```bash
-     echo "$SECRETS_JSON" | gcloud secrets versions add doppler-hit8-prod \
+     echo "$SECRETS_JSON" | gcloud secrets versions add doppler-hit8-prd \
        --data-file=- \
        --project=hit8-poc
      ```

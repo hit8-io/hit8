@@ -54,12 +54,30 @@ def _validate_entry(entry: dict[str, Any], entry_index: int) -> None:
     if not isinstance(entry["projects"], dict):
         raise ValueError(f"Entry at index {entry_index} 'projects' field must be an object")
     
-    # Validate that projects for each org is a list
-    for org, projects in entry["projects"].items():
-        if not isinstance(projects, list):
+    # Validate nested structure: each org maps to an object where keys are project names
+    # and values are flow arrays (must be non-empty arrays)
+    for org, org_projects in entry["projects"].items():
+        if not isinstance(org_projects, dict):
             raise ValueError(
-                f"Entry at index {entry_index}: projects for org '{org}' must be an array"
+                f"Entry at index {entry_index}: projects for org '{org}' must be an object"
             )
+        
+        # Validate each project has a flows array
+        for project, flows in org_projects.items():
+            if not isinstance(flows, list):
+                raise ValueError(
+                    f"Entry at index {entry_index}: flows for org '{org}' project '{project}' must be an array"
+                )
+            if len(flows) == 0:
+                raise ValueError(
+                    f"Entry at index {entry_index}: flows for org '{org}' project '{project}' must be a non-empty array"
+                )
+            # Validate each flow is a string
+            for flow in flows:
+                if not isinstance(flow, str):
+                    raise ValueError(
+                        f"Entry at index {entry_index}: flow in org '{org}' project '{project}' must be a string"
+                    )
 
 
 def _load_users_config() -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
@@ -223,16 +241,24 @@ def validate_user_access(email: str, org: str, project: str) -> bool:
         )
         return False
     
-    # Check if project is in user's projects for this org
-    # We already verified org exists above, so we can safely access it
+    # Check if project exists in user's projects for this org
+    # projects[org] is now a dict where keys are project names
     org_projects = user_config["projects"][org]
+    if not isinstance(org_projects, dict):
+        logger.warning(
+            "user_project_structure_invalid",
+            email=email,
+            org=org,
+        )
+        return False
+    
     if project not in org_projects:
         logger.warning(
             "user_project_access_denied",
             email=email,
             org=org,
             project=project,
-            accessible_projects=org_projects,
+            accessible_projects=list(org_projects.keys()),
         )
         return False
     
@@ -249,6 +275,7 @@ def get_user_orgs_projects(email: str) -> dict[str, Any] | None:
         Dictionary with 'account', 'orgs', and 'projects' keys,
         or None if user not found.
         Note: 'orgs' is already derived and stored in the config.
+        Projects structure: projects[org][project] = flows[]
     """
     user_config = get_user_config(email)
     
@@ -261,4 +288,58 @@ def get_user_orgs_projects(email: str) -> dict[str, Any] | None:
         "orgs": user_config["orgs"],
         "projects": user_config["projects"],
     }
+
+
+def get_user_flows(email: str, org: str, project: str) -> list[str]:
+    """Get available flows for a specific org/project combination.
+    
+    Args:
+        email: User email address (case-insensitive).
+        org: Organization name.
+        project: Project name.
+        
+    Returns:
+        List of available flow names, or empty list if user/org/project not found.
+    """
+    user_config = get_user_config(email)
+    
+    if user_config is None:
+        return []
+    
+    # Check if org exists
+    if org not in user_config["projects"]:
+        return []
+    
+    org_projects = user_config["projects"][org]
+    if not isinstance(org_projects, dict):
+        return []
+    
+    # Check if project exists and return its flows
+    if project not in org_projects:
+        return []
+    
+    flows = org_projects[project]
+    if not isinstance(flows, list):
+        return []
+    
+    return flows
+
+
+def validate_user_flow_access(email: str, org: str, project: str, flow: str) -> bool:
+    """Validate that a user has access to a specific flow for an org/project combination.
+    
+    Args:
+        email: User email address (case-insensitive).
+        org: Organization name.
+        project: Project name.
+        flow: Flow name (e.g., "chat", "report").
+        
+    Returns:
+        True if user has access to the flow, False otherwise.
+    """
+    if not validate_user_access(email, org, project):
+        return False
+    
+    available_flows = get_user_flows(email, org, project)
+    return flow in available_flows
 

@@ -4,24 +4,30 @@
       "email": "cedric@acceconsult.be",
       "account": "hit8",
       "projects": {
-        "opgroeien": ["poc"],
-        "hit8": ["hit8"]
+        "opgroeien": {
+          "poc": ["chat", "report"]
+        }
       }
     },
     {
       "domain": "@hit8.io",
       "account": "hit8",
       "projects": {
-        "opgroeien": ["poc"],
-        "hit8": ["hit8"]
+        "opgroeien": {
+          "poc": ["chat", "report"]
+        },
+        "hit8": {
+          "hit8": ["chat"]
+        }
       }
     },
     {
       "domain": "@opgroeien.be",
       "account": "opgroeien",
       "projects": {
-        "opgroeien": ["poc"],
-        "hit8": ["hit8"]
+        "opgroeien": {
+          "poc": ["chat", "report"]
+        }
       }
     }
   ]

@@ -18,7 +18,7 @@ env:
   PROJECT_NUMBER: 617962194338
   SERVICE_NAME: hit8-api
   REGION: europe-west1
-  SECRET_NAME: doppler-hit8-prod
+  SECRET_NAME: doppler-hit8-prd
 ```
 
 ### Build Process
@@ -256,7 +256,7 @@ gcloud run deploy hit8-api \
   --subnet=production-subnet \
   --vpc-egress=all-traffic \
   --set-env-vars="ENVIRONMENT=prd" \
-  --set-secrets="DOPPLER_SECRETS_JSON=projects/617962194338/secrets/doppler-hit8-prod:latest" \
+  --set-secrets="DOPPLER_SECRETS_JSON=projects/617962194338/secrets/doppler-hit8-prd:latest" \
   --memory=2Gi \
   --cpu=2 \
   --timeout=300 \

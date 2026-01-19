@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
+import * as React from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom'
 import ChatInterface from './components/ChatInterface'
 import LoginScreen from './components/LoginScreen'
@@ -46,9 +47,79 @@ function AppContent({ threadId }: { threadId: string }) {
   const [isChatExpanded, setIsChatExpanded] = useLocalStorage<boolean>('chatExpanded', false)
   const [activeTab, setActiveTab] = useState<'chat' | 'reports'>('chat')
   
-  const { selection } = useUserConfig(idToken)
+  const { selection, getAvailableFlows } = useUserConfig(idToken)
   const org = selection?.org
   const project = selection?.project
+  
+  // Get available flows for current org/project selection
+  // Use state + useEffect to ensure reactivity when selection changes
+  const [availableFlows, setAvailableFlows] = useState<string[]>([])
+  
+  // Update flows when selection changes from hook
+  React.useEffect(() => {
+    if (!selection?.org || !selection?.project) {
+      setAvailableFlows([])
+      return
+    }
+    const flows = getAvailableFlows(selection.org, selection.project)
+    setAvailableFlows(flows)
+  }, [selection, getAvailableFlows])
+  
+  // Also poll localStorage to catch changes from UserMenu (which uses separate hook instance)
+  // This ensures App.tsx reacts when UserMenu updates selection
+  React.useEffect(() => {
+    const updateFromStorage = () => {
+      const storedOrg = localStorage.getItem('activeOrg')
+      const storedProject = localStorage.getItem('activeProject')
+      
+      if (storedOrg && storedProject && getAvailableFlows) {
+        const flows = getAvailableFlows(storedOrg, storedProject)
+        setAvailableFlows(flows)
+      } else {
+        setAvailableFlows([])
+      }
+    }
+    
+    // Check initially
+    updateFromStorage()
+    
+    // Poll for changes (since same-tab localStorage changes don't trigger storage events)
+    const interval = setInterval(updateFromStorage, 100)
+    
+    // Also listen for storage events (from other tabs)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'activeOrg' || e.key === 'activeProject') {
+        updateFromStorage()
+      }
+    }
+    
+    window.addEventListener('storage', handleStorageChange)
+    
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('storage', handleStorageChange)
+    }
+  }, [getAvailableFlows])
+  
+  // Ensure active tab is valid for current flows
+  // If current tab is not available, switch to an available one
+  React.useEffect(() => {
+    if (availableFlows.length === 0) {
+      return // No flows available yet
+    }
+    
+    if (activeTab === 'reports' && !availableFlows.includes('report')) {
+      // Report flow not available, switch to chat if available
+      if (availableFlows.includes('chat')) {
+        setActiveTab('chat')
+      }
+    } else if (activeTab === 'chat' && !availableFlows.includes('chat')) {
+      // Chat flow not available, switch to report if available
+      if (availableFlows.includes('report')) {
+        setActiveTab('reports')
+      }
+    }
+  }, [activeTab, availableFlows])
 
   const handleChatStateChange = (active: boolean, _threadId?: string | null) => {
     setIsChatActive(active)
@@ -133,6 +204,7 @@ function AppContent({ threadId }: { threadId: string }) {
           onLogout={logout}
           activeTab={activeTab}
           onTabChange={setActiveTab}
+          availableFlows={availableFlows}
         />
 
         {/* Main Content - Adjusted for sidebar (always minimal width) */}

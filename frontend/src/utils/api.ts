@@ -109,7 +109,7 @@ export function getApiHeaders(token: string | null): Record<string, string> {
 export interface UserConfig {
   account: string
   orgs: string[]
-  projects: Record<string, string[]>
+  projects: Record<string, Record<string, string[]>>
 }
 
 export async function getUserConfig(token: string | null): Promise<UserConfig> {

@@ -14,7 +14,7 @@ export interface Message {
 export interface UserConfig {
   account: string
   orgs: string[]
-  projects: Record<string, string[]>
+  projects: Record<string, Record<string, string[]>>
 }
 
 export interface OrgProjectSelection {

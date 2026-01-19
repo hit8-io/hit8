@@ -83,7 +83,7 @@ gcloud run deploy hit8-api \
   --region europe-west1 \
   --allow-unauthenticated \
   --set-env-vars="ENVIRONMENT=prod" \
-  --set-secrets="DOPPLER_SECRETS_JSON=projects/617962194338/secrets/doppler-hit8-prod:latest" \
+  --set-secrets="DOPPLER_SECRETS_JSON=projects/617962194338/secrets/doppler-hit8-prd:latest" \
   --memory=2Gi \
   --cpu=2 \
   --timeout=300 \

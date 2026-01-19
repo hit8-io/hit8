@@ -18,13 +18,15 @@ router = APIRouter()
 async def get_user_config_endpoint(
     user_payload: dict = Depends(verify_google_token)
 ):
-    """Get user's account and accessible orgs/projects.
+    """Get user's account and accessible orgs/projects with flows.
     
     Returns:
         Dictionary with:
         - account: User's account name
         - orgs: List of accessible organization names
-        - projects: Dictionary mapping org names to lists of project names
+        - projects: Nested dictionary mapping org names to project objects
+          Format: projects[org][project] = flows[]
+          Example: {"opgroeien": {"poc": ["chat", "report"]}}
         
     Raises:
         HTTPException: 404 if user not found in configuration.

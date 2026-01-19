@@ -28,9 +28,12 @@ export function UserMenu({ user, onLogout }: UserMenuProps) {
 
   const handleOrgChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newOrg = e.target.value
-    if (config && config.projects[newOrg] && config.projects[newOrg].length > 0) {
+    if (config && config.projects[newOrg] && typeof config.projects[newOrg] === 'object') {
       // Auto-select first project for the new org
-      setSelection(newOrg, config.projects[newOrg][0])
+      const projectKeys = Object.keys(config.projects[newOrg])
+      if (projectKeys.length > 0) {
+        setSelection(newOrg, projectKeys[0])
+      }
     }
   }
 
@@ -40,7 +43,10 @@ export function UserMenu({ user, onLogout }: UserMenuProps) {
     }
   }
 
-  const availableProjects = selection && config ? (config.projects[selection.org] || []) : []
+  // Extract project list from nested structure: projects[org] is an object with project keys
+  const availableProjects = selection && config && config.projects[selection.org] && typeof config.projects[selection.org] === 'object'
+    ? Object.keys(config.projects[selection.org])
+    : []
 
   return (
     <div className="relative">

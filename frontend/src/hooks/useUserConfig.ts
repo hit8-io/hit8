@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { getUserConfig } from '../utils/api'
 import { logError } from '../utils/errorHandling'
+import { getAvailableFlows as getAvailableFlowsUtil } from '../utils/userConfig'
 import type { UserConfig, OrgProjectSelection } from '../types'
 
 const STORAGE_KEY_ORG = 'activeOrg'
@@ -13,6 +14,7 @@ interface UseUserConfigResult {
   selection: OrgProjectSelection | null
   setSelection: (org: string, project: string) => void
   isSelectionValid: boolean
+  getAvailableFlows: (org: string, project: string) => string[]
 }
 
 export function useUserConfig(token: string | null): UseUserConfigResult {
@@ -90,9 +92,10 @@ export function useUserConfig(token: string | null): UseUserConfigResult {
     }
 
     // Check if current selection is valid
+    // projects[org] is now an object where keys are project names
     const isCurrentSelectionValid = selection !== null && 
       selection.org in config.projects &&
-      config.projects[selection.org]?.includes(selection.project) === true
+      selection.project in (config.projects[selection.org] || {})
 
     // If selection is valid, no need to change it
     if (isCurrentSelectionValid) {
@@ -106,16 +109,28 @@ export function useUserConfig(token: string | null): UseUserConfigResult {
     }
 
     const firstOrg = orgs[0]
-    const firstOrgProjects = config.projects[firstOrg] || []
-    if (firstOrgProjects.length > 0) {
-      setSelection(firstOrg, firstOrgProjects[0])
+    const firstOrgProjects = config.projects[firstOrg]
+    if (firstOrgProjects && typeof firstOrgProjects === 'object') {
+      const projectKeys = Object.keys(firstOrgProjects)
+      if (projectKeys.length > 0) {
+        setSelection(firstOrg, projectKeys[0])
+      }
     }
   }, [config, selection, setSelection])
+
+  // Helper function to get available flows for a specific org/project
+  // Wraps the pure utility function with current config to maintain hook API
+  const getAvailableFlows = useCallback(
+    (org: string, project: string): string[] => {
+      return getAvailableFlowsUtil(config, org, project)
+    },
+    [config]
+  )
 
   // Validate that selection is valid (org exists in projects and project exists for that org)
   const isSelectionValid = config !== null && selection !== null && 
     selection.org in config.projects &&
-    config.projects[selection.org]?.includes(selection.project) === true
+    selection.project in (config.projects[selection.org] || {})
 
   return {
     config,
@@ -124,6 +139,7 @@ export function useUserConfig(token: string | null): UseUserConfigResult {
     selection,
     setSelection,
     isSelectionValid,
+    getAvailableFlows,
   }
 }
 

@@ -15,7 +15,7 @@ env:
   PROJECT_NUMBER: 617962194338
   SERVICE_NAME: hit8-api
   REGION: europe-west1
-  SECRET_NAME: doppler-hit8-prod
+  SECRET_NAME: doppler-hit8-prd
   IMAGE_REPO: europe-west1-docker.pkg.dev/hit8-poc/backend/api
 
 jobs:

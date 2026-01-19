@@ -11,12 +11,17 @@ interface SidebarProps {
   readonly onLogout: () => void
   readonly activeTab: 'chat' | 'reports'
   readonly onTabChange: (tab: 'chat' | 'reports') => void
+  readonly availableFlows: string[]
 }
 
-export function Sidebar({ user, onLogout, activeTab, onTabChange }: SidebarProps) {
+export function Sidebar({ user, onLogout, activeTab, onTabChange, availableFlows }: SidebarProps) {
   // Sidebar is always minimal
   const [iconError, setIconError] = React.useState(false)
   const { threadId } = useParams<{ threadId: string }>()
+  
+  // Simple, direct boolean checks - no memoization needed
+  const hasChatFlow = availableFlows.includes('chat')
+  const hasReportFlow = availableFlows.includes('report')
 
   return (
     <aside
@@ -35,25 +40,29 @@ export function Sidebar({ user, onLogout, activeTab, onTabChange }: SidebarProps
         {/* Divider */}
         <div className="h-px bg-border my-2" />
 
-        <ChatHistoryMenu 
-          currentThreadId={threadId} 
-          onTabChange={() => onTabChange('chat')}
-          isActive={activeTab === 'chat'}
-        />
+        {hasChatFlow && (
+          <ChatHistoryMenu 
+            currentThreadId={threadId} 
+            onTabChange={() => onTabChange('chat')}
+            isActive={activeTab === 'chat'}
+          />
+        )}
 
-        <button
-          onClick={() => onTabChange('reports')}
-          className={cn(
-            "w-full flex items-center justify-center gap-3 px-3 py-2 rounded-md transition-colors",
-            "hover:bg-accent hover:text-accent-foreground",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-            activeTab === 'reports' ? "bg-accent text-accent-foreground" : "text-muted-foreground"
-          )}
-          aria-label="Reports"
-          title="Reports"
-        >
-          <FileText className="h-5 w-5 flex-shrink-0" />
-        </button>
+        {hasReportFlow && (
+          <button
+            onClick={() => onTabChange('reports')}
+            className={cn(
+              "w-full flex items-center justify-center gap-3 px-3 py-2 rounded-md transition-colors",
+              "hover:bg-accent hover:text-accent-foreground",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+              activeTab === 'reports' ? "bg-accent text-accent-foreground" : "text-muted-foreground"
+            )}
+            aria-label="Reports"
+            title="Reports"
+          >
+            <FileText className="h-5 w-5 flex-shrink-0" />
+          </button>
+        )}
 
         {/* Divider */}
         <div className="h-px bg-border my-2" />

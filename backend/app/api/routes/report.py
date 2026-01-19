@@ -14,7 +14,7 @@ import structlog
 import pypandoc
 
 from app.auth import verify_google_token
-from app.user_config import validate_user_access
+from app.user_config import validate_user_access, validate_user_flow_access
 from app.api.graph_manager import get_graph
 from app.api.streaming.async_events import process_async_stream_events
 from app.api.constants import EVENT_GRAPH_END, EVENT_ERROR
@@ -223,6 +223,21 @@ async def start_report(
         raise HTTPException(
             status_code=403,
             detail=f"User does not have access to org '{org}' / project '{project}'",
+        )
+    
+    # Validate user has access to report flow for this org/project
+    if not validate_user_flow_access(email, org, project, "report"):
+        logger.warning(
+            "user_flow_access_denied",
+            email=email,
+            org=org,
+            project=project,
+            flow="report",
+            action="start_report",
+        )
+        raise HTTPException(
+            status_code=403,
+            detail=f"User does not have access to 'report' flow for org '{org}' / project '{project}'",
         )
     # Get thread_id from payload if provided, otherwise generate new one
     thread_id = payload.get("thread_id")

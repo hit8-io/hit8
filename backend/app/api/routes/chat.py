@@ -26,7 +26,7 @@ from app.api.user_threads import upsert_thread, generate_thread_title, thread_ex
 from app.config import settings
 from app.auth import verify_google_token
 from app.prompts.loader import get_system_prompt
-from app.user_config import validate_user_access
+from app.user_config import validate_user_access, validate_user_flow_access
 import importlib
 
 if TYPE_CHECKING:
@@ -263,6 +263,21 @@ async def chat(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"User does not have access to org '{org}' / project '{project}'",
+        )
+    
+    # Validate user has access to chat flow for this org/project
+    if not validate_user_flow_access(email, org, project, "chat"):
+        logger.warning(
+            "user_flow_access_denied",
+            email=email,
+            org=org,
+            project=project,
+            flow="chat",
+            thread_id=session_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"User does not have access to 'chat' flow for org '{org}' / project '{project}'",
         )
     
     # Process uploaded files and append converted content to message

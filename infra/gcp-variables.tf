@@ -1,3 +1,6 @@
+# ==============================================================================
+# VARIABLES
+# ==============================================================================
 variable "project_id" {
   description = "GCP Project ID"
   type        = string
@@ -31,7 +34,7 @@ variable "service_name" {
 variable "secret_name" {
   description = "Secret Manager secret name"
   type        = string
-  default     = "doppler-hit8-prod"
+  default     = "doppler-hit8-prd"
 }
 
 variable "artifact_registry_repository" {
