@@ -4,7 +4,6 @@
 
 resource "cloudflare_record" "services" {
   for_each = {
-    "api"      = "ghs.googlehosted.com"
     "langfuse" = "8e1e99a0-9f3f-4c30-90da-2cc2d18b9f94.cfargotunnel.com"
     "n8n"      = "8e1e99a0-9f3f-4c30-90da-2cc2d18b9f94.cfargotunnel.com"
     "neo4j"    = "8e1e99a0-9f3f-4c30-90da-2cc2d18b9f94.cfargotunnel.com"
@@ -19,6 +18,18 @@ resource "cloudflare_record" "services" {
   proxied = true
   ttl     = 1
 }
+
+resource "cloudflare_record" "api_endpoints" {
+  for_each = local.envs
+
+  zone_id = var.cloudflare_zone_id
+  name    = each.value.host        # api-prd / api-stg
+  content = "ghs.googlehosted.com"
+  type    = "CNAME"
+  proxied = true
+  ttl     = 1
+}
+
 
 # Dummy A record for root domain - actual routing handled by redirect ruleset
 resource "cloudflare_record" "root" {
@@ -157,7 +168,7 @@ resource "cloudflare_ruleset" "waf_custom" {
   rules {
     description = "Block Direct API Access"
     enabled     = true
-    expression  = "(http.host eq \"api.hit8.io\" and not http.referer contains \"hit8.pages.dev\" and not http.referer contains \"www.hit8.io\")"
+    expression = "((http.host eq \"api-prd.hit8.io\" or http.host eq \"api-stg.hit8.io\") and not http.referer contains \"hit8.pages.dev\" and not http.referer contains \"www.hit8.io\")"
     action      = "block"
   }
 }

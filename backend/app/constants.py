@@ -32,7 +32,7 @@ from __future__ import annotations
 import os
 from typing import Any, Literal
 
-ENVIRONMENT: Literal["dev", "prd"] = os.getenv("ENVIRONMENT", "dev")
+ENVIRONMENT: Literal["dev", "stg", "prd"] = os.getenv("ENVIRONMENT", "dev")
 
 # Defaults
 CONSTANTS: dict[str, Any] = {
@@ -123,6 +123,20 @@ if ENVIRONMENT == "dev":
             ],
             "MAX_BATCHES": None,
             "MAX_PROCEDURES_DEV": None,
+        }
+    )
+
+# stg
+if ENVIRONMENT == "stg":
+    CONSTANTS.update(
+        {
+            "LOG_LEVEL": "INFO",
+            "LOG_FORMAT": "json",
+            "CORS_ALLOW_ORIGINS": [
+                "https://www.hit8.io",
+                "https://hit8.io",
+                "https://hit8.pages.dev",
+            ],
         }
     )
 

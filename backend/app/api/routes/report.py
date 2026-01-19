@@ -731,39 +731,25 @@ async def get_status(
     
     is_complete = "final_report" in current_values
     
-    # We can determine "visited" nodes by looking at history or 
-    # just returning the current node and what's next.
-    # For a simpler integration with GraphView:
+    # Extract visited nodes from current snapshot tasks (optimized - no history iteration)
+    # This eliminates expensive get_state_history() call that iterates through all checkpoints
     next_nodes = list(snapshot.next) if snapshot.next else []
-    
-    # Deriving visited nodes from history
     visited_nodes = []
-    try:
-        async for state_item in report_graph.get_state_history(config):
-            # The state_item.metadata['source'] often indicates the node
-            # But simpler is to look at the tasks in history
-            if state_item.tasks:
-                for t in state_item.tasks:
-                    if t.name not in visited_nodes:
-                        visited_nodes.append(t.name)
-    except Exception:
-        pass
+    if snapshot.tasks:
+        visited_nodes = [t.name for t in snapshot.tasks if hasattr(t, 'name')]
+
+    # Limit logs to last 20 entries to reduce payload size
+    recent_logs = logs[-20:] if logs else []
 
     return {
         "status": "completed" if is_complete else "running",
         "progress": {
             "chapters_completed": len(chapters),
-            "recent_logs": logs
+            "recent_logs": recent_logs
         },
         "graph_state": {
             "visited_nodes": visited_nodes,
             "next": next_nodes
-        },
-        "state": {
-            "raw_procedures": current_values.get("raw_procedures", []),
-            "pending_clusters": current_values.get("pending_clusters", []),
-            "chapters": chapters,
-            "final_report": current_values.get("final_report") if is_complete else None
         },
         "result": current_values.get("final_report") if is_complete else None
     }
