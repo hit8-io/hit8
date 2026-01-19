@@ -13,9 +13,7 @@ on:
 env:
   PROJECT_ID: hit8-poc
   PROJECT_NUMBER: 617962194338
-  SERVICE_NAME: hit8-api-prd  # Updated to use new service name
   REGION: europe-west1
-  SECRET_NAME: doppler-hit8-prd
   IMAGE_REPO: europe-west1-docker.pkg.dev/hit8-poc/backend/api
 
 jobs:
@@ -72,16 +70,21 @@ jobs:
           # Use version tag for deployment
           IMAGE_TAG="${{ steps.version.outputs.version }}"
           
-          echo "Updating Cloud Run services with new image: $IMAGE_REPO:$IMAGE_TAG"
+          echo "Deploying to both production and staging environments"
+          echo "Image: $IMAGE_REPO:$IMAGE_TAG"
           
           # Update production service
           echo "Updating production service: hit8-api-prd"
           gcloud run services update hit8-api-prd \
             --image $IMAGE_REPO:$IMAGE_TAG \
-            --region $REGION
+            --region $REGION \
+            || { echo "Failed to update production service"; exit 1; }
           
           # Update staging service
           echo "Updating staging service: hit8-api-stg"
           gcloud run services update hit8-api-stg \
             --image $IMAGE_REPO:$IMAGE_TAG \
-            --region $REGION
+            --region $REGION \
+            || { echo "Failed to update staging service"; exit 1; }
+          
+          echo "Successfully deployed to both environments"

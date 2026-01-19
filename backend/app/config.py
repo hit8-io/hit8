@@ -222,7 +222,7 @@ class Settings(BaseSettings):
     @computed_field
     @property
     def environment(self) -> str:
-        """Current environment (dev or prd)."""
+        """Current environment (dev, stg, or prd)."""
         return constants.ENVIRONMENT
     
     @computed_field
