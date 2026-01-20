@@ -9,9 +9,9 @@ import { useAuth } from "../hooks/useAuth"
 import { logError } from "../utils/errorHandling"
 
 interface ChatHistoryMenuProps {
-  currentThreadId?: string | null
-  isActive?: boolean
-  onTabChange?: () => void
+  readonly currentThreadId?: string | null
+  readonly isActive?: boolean
+  readonly onTabChange?: () => void
 }
 
 export function ChatHistoryMenu({ currentThreadId, isActive, onTabChange }: ChatHistoryMenuProps) {
