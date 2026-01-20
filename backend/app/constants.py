@@ -136,6 +136,7 @@ if ENVIRONMENT == "stg":
                 "https://www.hit8.io",
                 "https://hit8.io",
                 "https://hit8.pages.dev",
+                "https://main-staging.hit8.pages.dev",
             ],
         }
     )

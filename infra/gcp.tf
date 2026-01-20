@@ -447,6 +447,17 @@ resource "google_identity_platform_config" "auth_config" {
   provider = google-beta
   project  = var.project_id
 
+  # Authorized domains for OAuth operations
+  authorized_domains = [
+    "localhost",
+    "www.hit8.io",
+    "hit8.io",
+    "hit8.pages.dev",
+    "main-staging.hit8.pages.dev",
+    "hit8-poc.firebaseapp.com",
+    "hit8-poc.web.app",
+  ]
+
   blocking_functions {
     triggers {
       event_type   = "beforeCreate"
