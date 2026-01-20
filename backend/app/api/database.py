@@ -7,6 +7,7 @@ Initialized once at application startup via FastAPI lifespan.
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -113,6 +114,9 @@ def _build_connection_string() -> str:
     - If running in Docker and connection string uses localhost, converts to host.docker.internal
     - If running on host and connection string uses host.docker.internal, converts to localhost
     
+    For production, removes any existing SSL parameters from the connection string
+    and adds correct ones using the certificate from DATABASE_SSL_ROOT_CERT.
+    
     Returns:
         str: Connection string with SSL parameters if in production
     """
@@ -141,8 +145,17 @@ def _build_connection_string() -> str:
     
     # Production requires SSL with certificate verification
     if constants.ENVIRONMENT == "prd":
+        # Remove any existing SSL parameters (they might point to non-existent files)
+        conninfo = re.sub(r'[&?]sslmode=[^&]*', '', conninfo)
+        conninfo = re.sub(r'[&?]sslrootcert=[^&]*', '', conninfo)
+        # Clean up any double separators
+        conninfo = re.sub(r'[?&]+', '&', conninfo)
+        conninfo = conninfo.rstrip('&?')
+        
+        # Get certificate file path (reads from DATABASE_SSL_ROOT_CERT and writes to temp file)
         cert_file_path = _get_ssl_cert_file_path()
-        # Append SSL parameters to connection string
+        
+        # Append SSL parameters using the certificate from DATABASE_SSL_ROOT_CERT
         separator = "&" if "?" in conninfo else "?"
         conninfo = f"{conninfo}{separator}sslmode=verify-full&sslrootcert={cert_file_path}"
     

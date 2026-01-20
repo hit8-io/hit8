@@ -1,4 +1,4 @@
-name: Deploy Backend to Cloud Run
+name: Build → Staging → Production
 
 on:
   push:
@@ -6,22 +6,29 @@ on:
       - main
     paths:
       - 'backend/**'
-      - 'cloudbuild.yaml'
       - '.github/workflows/deploy-backend.yaml'
   workflow_dispatch:
 
 env:
   PROJECT_ID: hit8-poc
-  PROJECT_NUMBER: 617962194338
   REGION: europe-west1
-  IMAGE_REPO: europe-west1-docker.pkg.dev/hit8-poc/backend/api
+  # Base name for the image (without tag)
+  IMAGE_BASE: europe-west1-docker.pkg.dev/hit8-poc/backend/api
 
 jobs:
-  deploy:
+  # --------------------------------------------------------------------------
+  # 1. BUILD: Build Docker Image Once & Push
+  # --------------------------------------------------------------------------
+  build:
+    name: Build & Push
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       id-token: write
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+      version: ${{ steps.meta.outputs.version }}
 
     steps:
       - name: Checkout
@@ -35,56 +42,127 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Configure Docker for Artifact Registry
-        run: gcloud auth configure-docker europe-west1-docker.pkg.dev
+      - name: Configure Docker
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
 
-      - name: Read VERSION file
-        id: version
+      # Determine version/tag (SHA + VERSION file fallback)
+      - name: Determine Tag
+        id: meta
         run: |
-          VERSION=$(cat VERSION | tr -d '[:space:]')
-          # Fallback to 'latest' if file is empty
-          if [ -z "$VERSION" ]; then VERSION="latest"; fi
+          set -e
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          if [ -f VERSION ]; then
+            VERSION=$(cat VERSION | tr -d '[:space:]')
+            if [ -z "$VERSION" ]; then
+              echo "Error: VERSION file is empty"
+              exit 1
+            fi
+          else
+            echo "Error: VERSION file is required but not found"
+            exit 1
+          fi
+          # Create a unique, traceable tag: version-sha
+          IMAGE_TAG="${VERSION}-${SHORT_SHA}"
+          echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Read version: $VERSION"
 
-      - name: Build and Push Docker Image
-        run: |-
-          # Using Artifact Registry path
-          gcloud builds submit \
-            --config cloudbuild.yaml \
-            --region=europe-west1 \
-            --substitutions=_IMAGE_NAME=$IMAGE_REPO,_TAG=$GITHUB_SHA,_VERSION=${{ steps.version.outputs.version }} \
-            . || {
-              # Check if build succeeded despite log streaming errors
-              if gcloud artifacts docker images describe $IMAGE_REPO:$GITHUB_SHA --format="value(image_summary.digest)" 2>/dev/null; then
-                echo "Build succeeded (image exists), ignoring log streaming error"
-                exit 0
-              else
-                echo "Build failed - image not found"
-                exit 1
-              fi
-            }
+      - name: Build and Push
+        run: |
+          set -e
+          FULL_IMAGE="${{ env.IMAGE_BASE }}:${{ steps.meta.outputs.image_tag }}"
+          VERSION="${{ steps.meta.outputs.version }}"
+          
+          # Build from backend directory (correct context)
+          docker build \
+            --tag "$FULL_IMAGE" \
+            --build-arg VERSION="$VERSION" \
+            ./backend
+          
+          # Push to Registry
+          docker push "$FULL_IMAGE"
+          
+          # Verify image exists
+          echo "Verifying image push..."
+          gcloud container images describe "$FULL_IMAGE" --format="value(image_summary.fully_qualified_digest)"
 
-      - name: Update Cloud Run Services
-        run: |-
-          # Use version tag for deployment
-          IMAGE_TAG="${{ steps.version.outputs.version }}"
+  # --------------------------------------------------------------------------
+  # 2. STAGING: Auto-Deploy
+  # --------------------------------------------------------------------------
+  deploy-staging:
+    name: Deploy Staging
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy Staging Services
+        run: |
+          set -e
+          IMAGE="${{ env.IMAGE_BASE }}:${{ needs.build.outputs.image_tag }}"
           
-          echo "Deploying to both production and staging environments"
-          echo "Image: $IMAGE_REPO:$IMAGE_TAG"
-          
-          # Update production service
-          echo "Updating production service: hit8-api-prd"
-          gcloud run services update hit8-api-prd \
-            --image $IMAGE_REPO:$IMAGE_TAG \
-            --region $REGION \
-            || { echo "Failed to update production service"; exit 1; }
-          
-          # Update staging service
-          echo "Updating staging service: hit8-api-stg"
+          echo "Deploying Staging..."
           gcloud run services update hit8-api-stg \
-            --image $IMAGE_REPO:$IMAGE_TAG \
-            --region $REGION \
-            || { echo "Failed to update staging service"; exit 1; }
+            --image "$IMAGE" \
+            --region ${{ env.REGION }} \
+            --quiet
           
-          echo "Successfully deployed to both environments"
+          # Verify deployment
+          echo "Verifying staging deployment..."
+          gcloud run services describe hit8-api-stg \
+            --region ${{ env.REGION }} \
+            --format="value(status.url)"
+
+          # Optional: Update Job if needed
+          # gcloud run jobs update hit8-report-job-stg --image "$IMAGE" ...
+
+  # --------------------------------------------------------------------------
+  # 3. PRODUCTION: Manual Approval (Gate)
+  # --------------------------------------------------------------------------
+  deploy-production:
+    name: Deploy Production
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production # <--- Triggers Manual Approval in GitHub UI
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy Production Services
+        run: |
+          set -e
+          # REUSE EXACT SAME IMAGE
+          IMAGE="${{ env.IMAGE_BASE }}:${{ needs.build.outputs.image_tag }}"
+          
+          echo "Deploying Production..."
+          gcloud run services update hit8-api-prd \
+            --image "$IMAGE" \
+            --region ${{ env.REGION }} \
+            --quiet
+          
+          # Verify deployment
+          echo "Verifying production deployment..."
+          gcloud run services describe hit8-api-prd \
+            --region ${{ env.REGION }} \
+            --format="value(status.url)"
