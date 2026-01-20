@@ -23,7 +23,7 @@ resource "cloudflare_record" "api_endpoints" {
   for_each = local.envs
 
   zone_id = var.cloudflare_zone_id
-  name    = each.value.host        # api-prd / api-stg
+  name    = each.value.host # api-prd / api-stg
   content = "ghs.googlehosted.com"
   type    = "CNAME"
   proxied = true
@@ -71,7 +71,7 @@ resource "cloudflare_record" "mx_records" {
 
 resource "cloudflare_record" "txt_records" {
   for_each = {
-    "spf"     = "v=spf1 include:_spf.firebasemail.com ~all"
+    "spf"      = "v=spf1 include:_spf.firebasemail.com ~all"
     "firebase" = "firebase=hit8-poc"
   }
 
@@ -168,7 +168,7 @@ resource "cloudflare_ruleset" "waf_custom" {
   rules {
     description = "Block Direct API Access"
     enabled     = true
-    expression = "((http.host eq \"api-prd.hit8.io\" or http.host eq \"api-stg.hit8.io\") and not http.referer contains \"hit8.pages.dev\" and not http.referer contains \"www.hit8.io\")"
+    expression  = "((http.host eq \"api-prd.hit8.io\" or http.host eq \"api-stg.hit8.io\") and not http.referer contains \"hit8.pages.dev\" and not http.referer contains \"www.hit8.io\")"
     action      = "block"
   }
 }
@@ -179,29 +179,29 @@ resource "cloudflare_ruleset" "waf_custom" {
 
 resource "cloudflare_zone_settings_override" "main_settings" {
   zone_id = var.cloudflare_zone_id
-  
+
   settings {
     # SSL / Security
     ssl                      = "strict"
     min_tls_version          = "1.2"
     always_use_https         = "on"
     automatic_https_rewrites = "on"
-    
+
     # Performance
-    brotli                   = "on"
-    http3                    = "on"
-    always_online            = "off"
-    development_mode         = "off"
-    
+    brotli           = "on"
+    http3            = "on"
+    always_online    = "off"
+    development_mode = "off"
+
     # Network
     ipv6                     = "on"
     websockets               = "on"
     opportunistic_encryption = "on"
-    
+
     # Privacy / Other
-    email_obfuscation        = "on"
-    security_level           = "medium"
-    }
+    email_obfuscation = "on"
+    security_level    = "medium"
+  }
 }
 
 resource "cloudflare_pages_project" "hit8" {
@@ -223,11 +223,11 @@ resource "cloudflare_pages_project" "hit8" {
       preview_branch_excludes       = []
     }
   }
-  
+
   build_config {
     build_command   = "cd frontend && npm ci && npm run build"
     destination_dir = "frontend/dist"
-    root_dir        = "/" 
+    root_dir        = "/"
   }
 }
 
