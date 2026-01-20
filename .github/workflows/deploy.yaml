@@ -195,7 +195,7 @@ jobs:
       - name: Deploy Frontend (Staging/Preview)
         uses: cloudflare/wrangler-action@v3
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          apiToken: ${{ secrets.CLOUDFLARE_API_PAGES_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           # "main-staging" branch name forces a Preview deployment
           command: pages deploy dist-stg --project-name=${{ env.CLOUDFLARE_PROJECT }} --branch=main-staging
@@ -255,7 +255,7 @@ jobs:
       - name: Deploy Frontend (Production)
         uses: cloudflare/wrangler-action@v3
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          apiToken: ${{ secrets.CLOUDFLARE_API_PAGES_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           # "main" matches Production Branch -> LIVE deployment
           command: pages deploy dist-prd --project-name=${{ env.CLOUDFLARE_PROJECT }} --branch=main --commit-dirty=true
