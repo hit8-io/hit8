@@ -39,7 +39,7 @@ CONSTANTS: dict[str, Any] = {
     "MAX_RECENT_MESSAGE_PAIRS": 5,
     "MAX_TOOL_RESULT_LENGTH": 15_000,
     "APP_NAME": "Hit8 Chat API",
-    "APP_VERSION": "0.3.0",
+    "APP_VERSION": "0.4.0",
     "LLM": [
         {
             "MODEL_NAME": "gemini-2.5-pro",
