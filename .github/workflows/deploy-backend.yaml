@@ -132,7 +132,7 @@ jobs:
   # --------------------------------------------------------------------------
   deploy-production:
     name: Deploy Production
-    needs: deploy-staging
+    needs: [build, deploy-staging]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: production # <--- Triggers Manual Approval in GitHub UI
