@@ -199,8 +199,22 @@ async def initialize_pool() -> None:
     )
     
     # Open the pool explicitly (required for newer psycopg_pool versions)
-    await _pool.open()
-    
+    try:
+        await _pool.open()
+    except Exception as e:
+        _pool = None
+        logger.error(
+            "database_connection_failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            environment=constants.ENVIRONMENT,
+        )
+        raise RuntimeError(
+            "Database connection failed at startup. Check DATABASE_CONNECTION_STRING, "
+            "network/firewall, and SSL (DATABASE_SSL_ROOT_CERT for prd, sslmode=require for stg). "
+            "See logs for the underlying error."
+        ) from e
+
     logger.info(
         "connection_pool_initialized",
         pool_type="AsyncConnectionPool",

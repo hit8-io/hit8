@@ -63,9 +63,33 @@ resource "google_compute_router_nat" "nat" {
 # Artifact Registry
 resource "google_artifact_registry_repository" "backend_api" {
   location      = var.region
-  repository_id = var.artifact_registry_repository # Uses "backend"
+  repository_id = var.artifact_registry_repository
   description   = "Docker repository for backend API"
   format        = "DOCKER"
+
+  # DISABLED Dry Run to enforce immediately
+  cleanup_policy_dry_run = false
+
+  # Policy 1: Explicitly KEEP the 5 most recent versions
+  # (This takes precedence over the delete policy below)
+  cleanup_policies {
+    id     = "keep-most-recent-5"
+    action = "KEEP"
+    most_recent_versions {
+      keep_count = 5
+    }
+  }
+
+  # Policy 2: DELETE everything else
+  # (Matches anything older than 1 hour; the Keep policy above rescues the top 5)
+  cleanup_policies {
+    id     = "delete-older-versions"
+    action = "DELETE"
+    condition {
+      tag_state  = "ANY"      # Matches both tagged and untagged images
+      older_than = "3600s"    # 1 hour (adjust to "86400s" for 1 day if preferred)
+    }
+  }
 }
 
 # Chat Documents (Dev)
@@ -249,7 +273,7 @@ resource "google_cloud_run_v2_service" "api" {
 
     scaling {
       min_instance_count = 0
-      max_instance_count = 3
+      max_instance_count = 10
     }
 
     # Share the existing network

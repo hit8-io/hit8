@@ -5,11 +5,14 @@ on:
     branches:
       - main
     paths:
-      # Trigger on backend OR frontend changes
       - 'backend/**'
       - 'frontend/**'
       - '.github/workflows/deploy.yaml'
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   REGION: europe-west1

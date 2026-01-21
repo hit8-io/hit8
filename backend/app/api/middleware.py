@@ -137,7 +137,7 @@ def setup_exception_handlers(app: FastAPI) -> None:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication failed",
         )
-    
+
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception):
         """Handle all exceptions and ensure CORS headers are included."""
