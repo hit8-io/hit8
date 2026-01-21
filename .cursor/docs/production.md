@@ -4,13 +4,14 @@
 
 ### Backend: Google Cloud Run
 
-The backend is deployed to **Google Cloud Run** via GitHub Actions CI/CD pipeline.
+The backend is deployed to **Google Cloud Run** via the [GitHub Actions workflow](cicd.md): **hit8-api-stg** (staging) and **hit8-api-prd** (production).
 
 **Service Details:**
 - **Project**: `hit8-poc`
-- **Service Name**: `hit8-api`
+- **Services**: `hit8-api-stg` (staging), `hit8-api-prd` (production)
 - **Region**: `europe-west1`
 - **Platform**: Managed (fully managed by Google)
+- **Image registry**: Artifact Registry `europe-west1-docker.pkg.dev/hit8-poc/backend/api`; tag format `{VERSION}-{SHORT_SHA}` (e.g. `0.4.0-a1b2c3d`)
 
 **Resource Configuration:**
 - Memory: 2Gi
@@ -19,25 +20,26 @@ The backend is deployed to **Google Cloud Run** via GitHub Actions CI/CD pipelin
 - Min Instances: 0 (scales to zero)
 - Max Instances: 10
 
+**API URLs:**
+- Staging: `https://api-stg.hit8.io`
+- Production: `https://api-prd.hit8.io`
+
 **Deployment Process:**
-- Automated on push to `main` branch (when `backend/**` files change)
-- Manual trigger available via GitHub Actions UI
-- See [CI/CD documentation](cicd.md) for detailed deployment steps
+- Driven by [deploy.yaml](.github/workflows/deploy.yaml): build → deploy staging (auto) → deploy production (manual approval in GitHub `environment: production`). Triggers on push to `main` with changes in `backend/**`, `frontend/**`, or the workflow file.
+- See [CI/CD documentation](cicd.md) for the full pipeline and manual deploy steps.
 
 ### Frontend: Cloudflare Pages
 
-The frontend is deployed to **Cloudflare Pages** via GitHub integration.
+The frontend is deployed to **Cloudflare Pages** via the [GitHub Actions workflow](cicd.md) using Wrangler `pages deploy`.
 
 **Deployment Configuration:**
-- **Build Command**: `npm run build:cloudflare`
-- **Build Directory**: `dist/`
+- **Build Command**: `npm run build` (`tsc && vite build`)
+- **Build Output**: `frontend/dist`
 - **Node Version**: 20
-- **Framework Preset**: Vite
 
-**Automatic Deployments:**
-- Triggered on push to `main` branch
-- Automatic preview deployments for pull requests
-- Production deployments for `main` branch
+**Deployments (from [deploy.yaml](.github/workflows/deploy.yaml)):**
+- **Staging (Preview)**: `dist-stg` (built with `VITE_API_URL=https://api-stg.hit8.io`) → `pages deploy ... --branch=main-staging`
+- **Production**: `dist-prd` (built with `VITE_API_URL=https://api-prd.hit8.io`) → `pages deploy ... --branch=main`
 
 **Domains:**
 - Primary: `https://www.hit8.io`
@@ -48,95 +50,46 @@ The frontend is deployed to **Cloudflare Pages** via GitHub integration.
 
 ### Backend Deployment
 
-**Automated Deployment (via GitHub Actions):**
+**Automated (via [deploy.yaml](.github/workflows/deploy.yaml)):**
+1. **Build**: `docker build` from `./backend` with `VERSION` from repo root; push to Artifact Registry `europe-west1-docker.pkg.dev/hit8-poc/backend/api:{VERSION}-{SHORT_SHA}`.
+2. **Staging**: `gcloud run services update hit8-api-stg --image ... --region europe-west1` (auto after build).
+3. **Production**: `gcloud run services update hit8-api-prd --image ... --region europe-west1` (after manual approval). Service config (env, secrets, VPC, scaling) is managed by Terraform in `infra/`; the workflow only updates the container image.
 
-1. **Trigger**: Push to `main` branch with changes in `backend/**`
-2. **Build**: Google Cloud Build with Kaniko
-   - Builds Docker image
-   - Pushes to GCR: `gcr.io/hit8-poc/hit8-api`
-   - Tags: Git SHA and `latest`
-3. **Deploy**: Cloud Run deployment
-   - Updates service with new image
-   - Injects secrets from GCP Secret Manager
-   - Sets environment variables
-
-**Manual Deployment:**
-
+**Manual Deployment (image-only; for full steps see [cicd.md](cicd.md)):**
 ```bash
-# Authenticate to Google Cloud
-gcloud auth login
+# From repo root: build and push image
+VERSION=$(cat VERSION | tr -d '[:space:]')
+TAG="${VERSION}-$(git rev-parse --short HEAD)"
+docker build --tag europe-west1-docker.pkg.dev/hit8-poc/backend/api:"$TAG" --build-arg VERSION="$VERSION" ./backend
+gcloud auth configure-docker europe-west1-docker.pkg.dev
+docker push europe-west1-docker.pkg.dev/hit8-poc/backend/api:"$TAG"
 
-# Set project
-gcloud config set project hit8-poc
-
-# Build and push image
-gcloud builds submit \
-  --config cloudbuild.yaml \
-  --region=europe-west1 \
-  --substitutions=_IMAGE_NAME=gcr.io/hit8-poc/hit8-api,_TAG=manual-$(date +%s),_PROJECT_ID=hit8-poc \
-  .
-
-# Deploy to Cloud Run
-gcloud run deploy hit8-api \
-  --image gcr.io/hit8-poc/hit8-api:latest \
-  --platform managed \
-  --region europe-west1 \
-  --allow-unauthenticated \
-  --set-env-vars="ENVIRONMENT=prod" \
-  --set-secrets="DOPPLER_SECRETS_JSON=projects/617962194338/secrets/doppler-hit8-prd:latest" \
-  --memory=2Gi \
-  --cpu=2 \
-  --timeout=300 \
-  --max-instances=10 \
-  --min-instances=0
+# Update Cloud Run (staging or production)
+gcloud run services update hit8-api-stg --image europe-west1-docker.pkg.dev/hit8-poc/backend/api:"$TAG" --region europe-west1
+# or
+gcloud run services update hit8-api-prd --image europe-west1-docker.pkg.dev/hit8-poc/backend/api:"$TAG" --region europe-west1
 ```
+To change env, secrets, VPC, or scaling: use Terraform in `infra/`, not `gcloud run deploy`.
 
 ### Frontend Deployment
 
-**Automatic Deployment (via Cloudflare Pages):**
+**Automatic (via [deploy.yaml](.github/workflows/deploy.yaml)):**
+- **Staging**: `npm run build` with `VITE_API_URL=https://api-stg.hit8.io` → `wrangler pages deploy dist-stg --project-name=hit8 --branch=main-staging` (Preview).
+- **Production**: `npm run build` with `VITE_API_URL=https://api-prd.hit8.io` → `wrangler pages deploy dist-prd --project-name=hit8 --branch=main` (Production). Production runs after manual approval.
 
-1. **Trigger**: Push to `main` branch
-2. **Build**: Cloudflare Pages build system
-   - Runs `npm ci` to install dependencies
-   - Runs `tsc` for TypeScript compilation
-   - Runs `vite build` to create production bundle
-3. **Deploy**: Static files deployed to Cloudflare CDN
-   - Files from `dist/` directory
-   - `_redirects` file configured for SPA routing
-
-**Manual Deployment:**
-
-1. **Build locally**:
-   ```bash
-   cd frontend
-   npm ci
-   npm run build:cloudflare
-   ```
-
-2. **Deploy via Cloudflare Dashboard**:
-   - Go to Cloudflare Pages dashboard
-   - Select project
-   - Upload `dist/` directory
-   - Or use Wrangler CLI:
-     ```bash
-     npx wrangler pages deploy dist --project-name=hit8
-     ```
+**Manual (see [cicd.md](cicd.md) for full steps):**
+```bash
+cd frontend
+npm ci && npm run build
+# Set VITE_API_URL and other VITE_* for the target (stg or prd), then:
+npx wrangler pages deploy dist --project-name=hit8 --branch=main-staging   # staging
+# or
+npx wrangler pages deploy dist --project-name=hit8 --branch=main           # production
+```
 
 ### Frontend Build
 
-The frontend uses a specific build script for Cloudflare Pages:
-
-**Build Command**: `npm run build:cloudflare`
-
-**What it does:**
-1. `npm ci`: Clean install of dependencies
-2. `tsc`: TypeScript type checking and compilation
-3. `vite build`: Production build with optimizations
-
-**Build Output:**
-- Directory: `dist/`
-- Contains: Optimized HTML, CSS, JavaScript bundles
-- Includes: `_redirects` file for SPA routing
+**Build command**: `npm run build` (`tsc && vite build`). Output: `frontend/dist`.
 
 **SPA Routing:**
 The `_redirects` file in `public/` ensures all routes redirect to `index.html`:
@@ -179,16 +132,16 @@ See [Secrets Management documentation](secrets-management.md) for details.
 
 ### Cloud Run Logs
 
-**Accessing Logs:**
+**Accessing Logs (production; for staging use `hit8-api-stg`):**
 ```bash
 # View recent logs
-gcloud run services logs read hit8-api --region=europe-west1
+gcloud run services logs read hit8-api-prd --region=europe-west1
 
 # Follow logs in real-time
-gcloud run services logs tail hit8-api --region=europe-west1
+gcloud run services logs tail hit8-api-prd --region=europe-west1
 
 # Filter logs
-gcloud run services logs read hit8-api --region=europe-west1 --filter="severity>=ERROR"
+gcloud run services logs read hit8-api-prd --region=europe-west1 --filter="severity>=ERROR"
 ```
 
 **Log Levels:**
@@ -236,13 +189,13 @@ gcloud run services logs read hit8-api --region=europe-west1 --filter="severity>
 - Each instance handles multiple concurrent requests
 - Cold start time: ~5-10 seconds (when scaling from zero)
 
-**Monitoring Scaling:**
+**Monitoring Scaling (production; for staging use `hit8-api-stg`):**
 ```bash
 # View service metrics
-gcloud run services describe hit8-api --region=europe-west1
+gcloud run services describe hit8-api-prd --region=europe-west1
 
 # View instance count
-gcloud run services describe hit8-api --region=europe-west1 --format="value(status.conditions)"
+gcloud run services describe hit8-api-prd --region=europe-west1 --format="value(status.conditions)"
 ```
 
 ### Frontend Scaling
@@ -282,7 +235,7 @@ gcloud run services describe hit8-api --region=europe-west1 --format="value(stat
 curl http://localhost:8000/health
 
 # Production
-curl https://your-api-url.run.app/health
+curl https://api-prd.hit8.io/health
 ```
 
 ### Monitoring Health
@@ -297,8 +250,10 @@ curl https://your-api-url.run.app/health
 
 ### Backend Rollback
 
+Use **hit8-api-prd** for production; for staging use **hit8-api-stg**.
+
 **Via Cloud Run Console:**
-1. Go to Cloud Run → hit8-api → Revisions
+1. Go to Cloud Run → hit8-api-prd (or hit8-api-stg) → Revisions
 2. Select previous revision
 3. Click "Manage Traffic"
 4. Set traffic to 100% for previous revision
@@ -306,10 +261,10 @@ curl https://your-api-url.run.app/health
 **Via CLI:**
 ```bash
 # List revisions
-gcloud run revisions list --service=hit8-api --region=europe-west1
+gcloud run revisions list --service=hit8-api-prd --region=europe-west1
 
 # Rollback to specific revision
-gcloud run services update-traffic hit8-api \
+gcloud run services update-traffic hit8-api-prd \
   --to-revisions=REVISION_NAME=100 \
   --region=europe-west1
 ```

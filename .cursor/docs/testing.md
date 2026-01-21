@@ -10,9 +10,17 @@ Hit8 uses **pytest** for backend testing with a focus on unit tests and integrat
 backend/tests/
 ├── conftest.py           # Test configuration and fixtures
 ├── unit/
-│   └── test_graph.py     # Unit tests for LangGraph logic
+│   ├── test_async_events.py
+│   ├── test_config.py
+│   ├── test_document_utils.py
+│   ├── test_file_processing.py
+│   ├── test_graph.py
+│   ├── test_graph_agent.py
+│   ├── test_prompt_loader.py
+│   └── test_tools.py
 └── integration/
-    └── test_chat_api.py  # Integration tests for API endpoints
+    ├── test_chat_api.py  # Chat API
+    └── test_file_upload.py
 ```
 
 ## Test Types
@@ -165,16 +173,17 @@ def mock_firebase(mock_env):
 
 **Purpose**: Prevent real LLM API calls (avoid costs and latency)
 
-**Implementation:**
+**Implementation:** The chat and other routes obtain a graph via `app.api.graph_manager.get_graph(org, project)`. Mock at that layer or at the graph’s `ainvoke` / `astream_events`:
+
 ```python
-with patch("app.main.graph.invoke") as mock_graph:
-    mock_graph.return_value = {
-        "messages": [
-            HumanMessage(content="Hello"),
-            AIMessage(content="I am a test robot")
-        ]
-    }
+# Option 1: Mock get_graph to return a graph-like object with ainvoke/astream_events
+with patch("app.api.graph_manager.get_graph") as mock_get_graph:
+    mock_graph = MagicMock()
+    mock_graph.ainvoke.return_value = {"messages": [HumanMessage(content="Hi"), AIMessage(content="Response")]}
+    mock_get_graph.return_value = mock_graph
     # Test code
+
+# Option 2: If the route uses a module-level graph, patch where it is used (e.g. the route or graph_manager)
 ```
 
 **Benefits:**
@@ -186,8 +195,11 @@ with patch("app.main.graph.invoke") as mock_graph:
 
 **Purpose**: Bypass token verification in tests
 
-**Implementation:**
+**Implementation:** Override `verify_google_token` from `app.auth`:
+
 ```python
+from app.auth import verify_google_token
+
 async def mock_verify_token():
     return {"sub": "test_user_123"}
 
@@ -227,36 +239,20 @@ os.environ.setdefault("GOOGLE_IDENTITY_PLATFORM_DOMAIN", "mock-domain")
 
 ### Unit Test Example
 
-**File**: `backend/tests/unit/test_graph.py`
+**File**: `backend/tests/unit/test_graph.py` or `test_graph_agent.py`
+
+Unit tests typically patch the flow module or the model/credentials at the point of use (e.g. `app.flows.opgroeien.poc.chat.graph` or the specific node’s model/LLM). Example pattern:
 
 ```python
-def test_generate_node_adds_response():
-    """Test that generate_node adds AI response to state."""
-    # Setup: Mock both credentials and the Google Chat Model
-    with patch("app.graph.service_account.Credentials.from_service_account_info") as MockCreds, \
-         patch("app.graph.ChatGoogleGenerativeAI") as MockModel:
-        # Configure the mock credentials
-        MockCreds.return_value = MagicMock()
-        
-        # Configure the mock to return a fake message
-        mock_instance = MockModel.return_value
-        mock_ai_message = AIMessage(content="Mocked AI Response")
-        mock_instance.invoke.return_value = mock_ai_message
-        
-        # Setup: Initial state
-        state: AgentState = {"messages": [HumanMessage(content="Hi")]}
-        
-        # Action: Run the node
-        new_state = generate_node(state)
-        
-        # Assert: Did we get a response?
-        assert len(new_state["messages"]) == 2
-        assert new_state["messages"][-1].content == "Mocked AI Response"
-        assert isinstance(new_state["messages"][-1], AIMessage)
+# Patch the model or credentials in the flow module where they are used
+with patch("app.flows.opgroeien.poc.chat.graph.ChatGoogleGenerativeAI") as MockModel:
+    mock_instance = MockModel.return_value
+    mock_instance.invoke.return_value = AIMessage(content="Mocked AI Response")
+    # Run node or graph and assert on state
 ```
 
 **Key Points:**
-- Mocks external dependencies (credentials, Vertex AI)
+- Mock external dependencies (credentials, Vertex AI) in the flow or node under test
 - Tests state transformation
 - Validates response format
 
@@ -265,47 +261,32 @@ def test_generate_node_adds_response():
 **File**: `backend/tests/integration/test_chat_api.py`
 
 ```python
+from app.api import app
+from app.auth import verify_google_token
+
 @pytest.mark.asyncio
 async def test_chat_endpoint_success(client):
-    """Test successful chat endpoint request."""
-    # 1. Mock Auth (Bypass Google Token Check)
-    from app.main import app
-    from app.deps import verify_google_token
-    
     async def mock_verify_token():
-        return {"sub": "test_user_123"}
-    
+        return {"sub": "test_user_123", "email": "t@ex.com"}
+
     app.dependency_overrides[verify_google_token] = mock_verify_token
-    
     try:
-        # 2. Mock Graph (Prevent LLM costs)
-        with patch("app.main.graph.invoke") as mock_graph:
-            # Mock the return value structure of LangGraph
-            mock_graph.return_value = {
-                "messages": [
-                    HumanMessage(content="Hello"),
-                    AIMessage(content="I am a test robot")
-                ]
-            }
-            
-            # 3. Call the API
-            response = await client.post("/chat", json={"message": "Hello"})
-            
-            # 4. Verify
+        with patch("app.api.graph_manager.get_graph") as mock_get:
+            mock_graph = MagicMock()
+            # Chat uses astream_events; ainvoke or astream_events must be mocked as needed
+            mock_graph.ainvoke.return_value = {"messages": [HumanMessage(content="Hi"), AIMessage(content="OK")]}
+            mock_get.return_value = mock_graph
+            # Chat API uses FormData and X-Org, X-Project; response is SSE. Adapt to current route contract.
+            response = await client.post("/chat", data={"message": "Hi"}, headers={"X-Org": "opgroeien", "X-Project": "poc"})
             assert response.status_code == 200
-            data = response.json()
-            assert data["response"] == "I am a test robot"
-            assert data["user_id"] == "test_user_123"
     finally:
-        # Clean up dependency override
         app.dependency_overrides.clear()
 ```
 
 **Key Points:**
-- Mocks authentication dependency
-- Mocks LangGraph to avoid API costs
-- Tests complete request/response cycle
-- Validates response format and status code
+- Override `verify_google_token` from `app.auth`
+- Mock `app.api.graph_manager.get_graph` (or the graph’s `astream_events`/`ainvoke`) to avoid LLM calls
+- Chat uses `multipart/form-data`, `X-Org`, `X-Project`, and SSE (see [api-reference](api-reference.md)); adjust request/assertions to the current contract
 
 ### Unauthorized Test Example
 

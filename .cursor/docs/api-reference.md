@@ -8,7 +8,7 @@
 
 ## Authentication
 
-All API endpoints (except `/health`) require authentication via Bearer token.
+All API endpoints except `/health` and `/version` require authentication via Bearer token.
 
 **Header Format:**
 ```
@@ -62,116 +62,77 @@ curl http://localhost:8000/health
 
 **Endpoint**: `POST /chat`
 
-**Description**: Processes user chat messages through LangGraph and returns AI-generated responses.
+**Description**: Processes user chat messages through LangGraph and streams AI-generated responses as Server-Sent Events (SSE).
 
 **Authentication**: Required (Bearer token)
 
 **Request:**
+- **Content-Type**: `multipart/form-data`
+- **Form fields**: `message` (required), `thread_id` (optional), `model` (optional), `files` (optional, multiple)
+- **Required headers**: `Authorization: Bearer <id_token>`, `X-Org`, `X-Project`
+
 ```http
 POST /chat HTTP/1.1
 Host: api.example.com
 Authorization: Bearer <id_token>
-Content-Type: application/json
+X-Org: opgroeien
+X-Project: poc
+Content-Type: multipart/form-data; boundary=----WebKitFormBoundary
 
-{
-  "message": "Hello, how are you?"
-}
-```
+------WebKitFormBoundary
+Content-Disposition: form-data; name="message"
 
-**Request Body Schema:**
-```typescript
-interface ChatRequest {
-  message: string;  // User's chat message
-}
+Hello, how are you?
+------WebKitFormBoundary--
 ```
 
 **Response:**
-```json
-{
-  "response": "Hello! I'm doing well, thank you for asking. How can I help you today?",
-  "user_id": "user_123456789"
-}
-```
-
-**Response Schema:**
-```typescript
-interface ChatResponse {
-  response: string;  // AI-generated response
-  user_id: string;   // User ID from authenticated token
-}
-```
+- **Content-Type**: `text/event-stream`
+- **Body**: SSE stream. Main event types: `graph_start`, `content_chunk`, `state_update`, `tool_start`/`tool_end`, `llm_start`/`llm_end`, `graph_end`, `error`. See [architecture.md](architecture.md) for full event semantics.
 
 **Status Codes:**
-- `200 OK`: Request processed successfully
+- `200 OK`: Stream started successfully
 - `401 Unauthorized`: Missing or invalid authentication token
-- `422 Unvalidation Error`: Invalid request body
+- `403 Forbidden`: User does not have access to the requested org/project
+- `422 Unprocessable Entity`: Invalid request (e.g. missing `message` or required headers)
 - `500 Internal Server Error`: Server error during processing
 
-**Example:**
+**Example (curl):**
 ```bash
 curl -X POST http://localhost:8000/chat \
   -H "Authorization: Bearer <id_token>" \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Hello, how are you?"}'
+  -H "X-Org: opgroeien" \
+  -H "X-Project: poc" \
+  -F "message=Hello" \
+  -F "thread_id=optional-uuid"
 ```
 
-**Error Responses:**
+**Error Responses (non-streaming):** 401, 403, 422 return JSON `{"detail": "..."}`. During streaming, `error` events are sent in the SSE stream.
 
-**401 Unauthorized (Missing Token):**
-```json
-{
-  "detail": "Not authenticated"
-}
-```
+### Other Endpoints
 
-**401 Unauthorized (Invalid Token):**
-```json
-{
-  "detail": "Could not validate credentials"
-}
-```
+For full request/response schemas and parameters, see the live **OpenAPI** docs: `GET /docs` (Swagger UI) and `GET /openapi.json`.
 
-**422 Unprocessable Entity (Invalid Request):**
-```json
-{
-  "detail": [
-    {
-      "loc": ["body", "message"],
-      "msg": "field required",
-      "type": "value_error.missing"
-    }
-  ]
-}
-```
-
-**500 Internal Server Error:**
-```json
-{
-  "detail": "Internal server error"
-}
-```
-
-## Request/Response Formats
-
-### Pydantic Models
-
-**Request Model**: `ChatRequest`
-- Defined in [`backend/app/main.py`](backend/app/main.py)
-- Validates request body structure
-- Ensures `message` field is present and is a string
-
-**Response Model**: `ChatResponse`
-- Defined in [`backend/app/main.py`](backend/app/main.py)
-- Validates response structure
-- Ensures `response` and `user_id` fields are present
+| Endpoint | Description |
+|----------|-------------|
+| `GET /health` | Health check (no auth) |
+| `GET /version` | API version (no auth) |
+| `GET /config/user` | User config (auth, `X-Org`, `X-Project`) |
+| `GET /config/models` | Available models (auth, `X-Org`, `X-Project`) |
+| `GET /metadata` | Metadata (auth) |
+| `GET /graph/structure` | Graph nodes/edges (auth, `X-Org`, `X-Project`) |
+| `GET /graph/state` | Checkpointed state for `thread_id` (auth, `X-Org`, `X-Project`) |
+| `GET /history` | User threads (auth, `X-Org`, `X-Project`) |
+| `GET /usage/execution/{thread_id}` | Execution metrics (auth) |
+| `GET /usage/aggregated` | Aggregated metrics (auth) |
+| `GET /usage/executions` | List executions (auth) |
+| `POST /report/start`, `GET /report/{thread_id}/status`, etc. | Report flow (auth, `X-Org`, `X-Project`). See OpenAPI for full list. |
 
 ### Content Types
 
-**Request Content-Type**: `application/json`
+**Chat**: `multipart/form-data` (request), `text/event-stream` (response).
 
-**Response Content-Type**: `application/json`
-
-**Character Encoding**: UTF-8
+**Other JSON endpoints**: `application/json` request/response where applicable. **Character encoding**: UTF-8.
 
 ## Error Handling
 
@@ -205,29 +166,27 @@ All errors follow a consistent format:
 
 ### Error Handling in Frontend
 
-**Example Error Handling:**
+**Example (Chat with FormData and SSE):**
 ```typescript
-try {
-  const response = await axios.post(
-    `${API_URL}/chat`,
-    { message: userMessage.content },
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    }
-  )
-  // Handle success
-} catch (error) {
-  if (error.response?.status === 401) {
-    // Handle authentication error
-  } else if (error.response?.status === 422) {
-    // Handle validation error
-  } else {
-    // Handle other errors
-  }
+const form = new FormData()
+form.append('message', userMessage.content)
+if (threadId) form.append('thread_id', threadId)
+
+const response = await fetch(`${API_URL}/chat`, {
+  method: 'POST',
+  headers: {
+    Authorization: `Bearer ${token}`,
+    'X-Org': org,
+    'X-Project': project,
+  },
+  body: form,
+})
+if (!response.ok) {
+  const err = await response.json().catch(() => ({ detail: response.statusText }))
+  // handle 401, 403, 422, 500 via err.detail
+  return
 }
+// response.body is a ReadableStream; consume as SSE (EventSource or manual parsing)
 ```
 
 ## Rate Limiting
@@ -276,12 +235,13 @@ Currently, the API does not use versioning. All endpoints are at the root level.
 curl http://localhost:8000/health
 ```
 
-**Chat (with authentication):**
+**Chat (multipart/form-data, SSE response):**
 ```bash
 curl -X POST http://localhost:8000/chat \
   -H "Authorization: Bearer <id_token>" \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Hello"}'
+  -H "X-Org: opgroeien" \
+  -H "X-Project: poc" \
+  -F "message=Hello"
 ```
 
 ### Using HTTPie
@@ -291,21 +251,21 @@ curl -X POST http://localhost:8000/chat \
 http GET http://localhost:8000/health
 ```
 
-**Chat:**
+**Chat (form + SSE):**
 ```bash
-http POST http://localhost:8000/chat \
+http --form POST http://localhost:8000/chat \
   Authorization:"Bearer <id_token>" \
+  X-Org:opgroeien \
+  X-Project:poc \
   message="Hello"
 ```
 
 ### Using Postman
 
-1. Create new request
-2. Set method to `POST`
-3. Set URL to `http://localhost:8000/chat`
-4. Add header: `Authorization: Bearer <id_token>`
-5. Set body to JSON: `{"message": "Hello"}`
-6. Send request
+1. Create new request; set method to `POST`, URL to `http://localhost:8000/chat`
+2. Headers: `Authorization: Bearer <id_token>`, `X-Org`, `X-Project`
+3. Body: form-data with `message` (and optionally `thread_id`, `model`, `files`)
+4. Send request; response is `text/event-stream` (SSE)
 
 ## OpenAPI Documentation
 

@@ -120,9 +120,11 @@ export function handleGraphStart(
     (context as any).setThreadId(eventThreadId)
   }
   
+  const d = data as { ts?: number }
   const graphStartEvent: StreamEvent = {
     type: 'graph_start',
     thread_id: eventThreadId,
+    ...(typeof d?.ts === 'number' ? { ts: d.ts } : {}),
   }
   
   context.setStreamEvents([graphStartEvent])
@@ -289,11 +291,14 @@ export function handleNodeStart(
   if (!nodeName) return
   
   const eventThreadId = getThreadId(data, context.threadId || '')
+  const d = data as { ts?: number; run_id?: string }
   const nodeStartEvent: StreamEvent = {
     type: 'node_start',
     node: nodeName,
     thread_id: eventThreadId,
     input_preview: typeof data.input_preview === 'string' ? data.input_preview : undefined,
+    ...(typeof d?.ts === 'number' ? { ts: d.ts } : {}),
+    ...(typeof d?.run_id === 'string' ? { run_id: d.run_id } : {}),
   }
   
   // Flatten nested state updates to avoid race conditions
@@ -334,11 +339,14 @@ export function handleNodeEnd(
   if (!nodeName) return
   
   const eventThreadId = getThreadId(data, context.threadId || '')
+  const d = data as { ts?: number; run_id?: string }
   const nodeEndEvent: StreamEvent = {
     type: 'node_end',
     node: nodeName,
     thread_id: eventThreadId,
     output_preview: typeof data.output_preview === 'string' ? data.output_preview : undefined,
+    ...(typeof d?.ts === 'number' ? { ts: d.ts } : {}),
+    ...(typeof d?.run_id === 'string' ? { run_id: d.run_id } : {}),
   }
   
   // Clear active node immediately
@@ -395,12 +403,14 @@ export function handleGraphEnd(
   context.setStreamingContent('')
   
   const eventThreadId = getThreadId(data, context.threadId || '')
+  const d = data as { ts?: number }
   const graphEndEvent: StreamEvent = {
     type: 'graph_end',
     thread_id: eventThreadId,
     response: newFinalResponse,
+    ...(typeof d?.ts === 'number' ? { ts: d.ts } : {}),
   }
-  
+
   context.setStreamEvents(prev => {
     const updatedEvents = [...prev, graphEndEvent]
     context.queueStateUpdate(createExecutionState({

@@ -56,7 +56,7 @@ docker-compose down
 **Services Started:**
 - **API**: `http://localhost:8000`
 - **Frontend**: `http://localhost:5173`
-- **Database**: `localhost:5432`
+- **Database**: App uses `DATABASE_CONNECTION_STRING` from Doppler (Supabase or external Postgres). Docker Compose does not include an app DB container; it includes `langfuse`, `clickhouse`, `redis`, `minio` for observability.
 
 ### Manual Setup (Without Docker)
 
@@ -106,17 +106,7 @@ If you prefer to run services manually without Docker:
 
 #### Database Setup
 
-For local development, you can either:
-
-1. **Use Docker Compose Supabase service** (recommended):
-   ```bash
-   docker-compose up supabase
-   ```
-
-2. **Use local PostgreSQL**:
-   - Install PostgreSQL 15+
-   - Create database: `postgres`
-   - Update connection string in configuration
+The app uses **`DATABASE_CONNECTION_STRING`** (via Doppler or env) to connect to PostgreSQL. Use Supabase (cloud) or a separate Postgres instance. **Docker Compose does not include a Supabase/Postgres service** for the app. Migrations live in `supabase/migrations/`; apply via Supabase tooling or your project runbook.
 
 ## Project Structure
 
@@ -125,34 +115,36 @@ hit8/
 ├── backend/
 │   ├── app/
 │   │   ├── __init__.py
-│   │   ├── main.py          # FastAPI application entrypoint
-│   │   ├── graph.py         # LangGraph orchestration
-│   │   ├── config.py        # Configuration management
-│   │   ├── config.yaml      # Environment-specific config
-│   │   ├── deps.py          # Authentication dependencies
-│   │   └── database.py      # Supabase client
+│   │   ├── main.py          # Application entrypoint
+│   │   ├── auth.py          # Token verification (verify_google_token)
+│   │   ├── config.py        # Configuration / Pydantic settings
+│   │   ├── api/
+│   │   │   ├── database.py  # Connection pool
+│   │   │   ├── checkpointer.py
+│   │   │   ├── graph_manager.py
+│   │   │   ├── routes/      # chat, graph, config, history, report, etc.
+│   │   │   └── streaming/   # SSE, async_events, etc.
+│   │   └── flows/           # org/project/flow (e.g. opgroeien/poc/chat, report)
 │   ├── tests/
-│   │   ├── conftest.py      # Test configuration
-│   │   ├── unit/            # Unit tests
-│   │   └── integration/     # Integration tests
-│   ├── Dockerfile           # Backend container definition
-│   ├── cloudbuild.yaml      # Cloud Build configuration
-│   └── pyproject.toml        # Python dependencies
+│   │   ├── conftest.py
+│   │   ├── unit/
+│   │   └── integration/
+│   ├── Dockerfile
+│   └── pyproject.toml
 ├── frontend/
 │   ├── src/
-│   │   ├── App.tsx          # Main application component
+│   │   ├── App.tsx
 │   │   ├── components/
-│   │   │   ├── ChatInterface.tsx
-│   │   │   └── ui/          # UI components
-│   │   └── lib/             # Utility functions
+│   │   └── ...
 │   ├── public/
-│   │   └── _redirects       # Cloudflare Pages routing
-│   ├── Dockerfile           # Frontend container definition
-│   ├── package.json         # Node dependencies
-│   └── vite.config.ts       # Vite configuration
-├── docker-compose.yml       # Local development services
-└── .cursor/
-    └── docs/                # Documentation
+│   │   └── _redirects
+│   ├── Dockerfile
+│   ├── package.json
+│   └── vite.config.ts
+├── docker-compose.yaml      # api, web, langfuse, clickhouse, redis, minio
+├── supabase/
+│   └── migrations/
+└── .cursor/docs/
 ```
 
 ## Development Workflow
@@ -208,7 +200,7 @@ doppler run -- npm run dev
 ### Hot Reload Configuration
 
 **Backend:**
-- Configured in `docker-compose.yml` with `--reload` flag
+- Configured in `docker-compose.yaml` with `--reload` flag
 - Volume mount: `./backend:/app` enables file watching
 - Restarts on Python file changes
 
@@ -224,9 +216,10 @@ doppler run -- npm run dev
 The application uses environment variables for configuration. These are managed via Doppler in development.
 
 **Backend Variables:**
+- `DATABASE_CONNECTION_STRING`: Postgres connection string (Supabase or external)
 - `GCP_PROJECT`: Google Cloud Project ID
 - `GOOGLE_IDENTITY_PLATFORM_DOMAIN`: Firebase Auth domain
-- `VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM`: Service account JSON (for Vertex AI)
+- `VERTEX_SERVICE_ACCOUNT` or `VERTEX_HIT8_POC_IAM_GSERVICEACCOUNT_COM`: Service account JSON (Vertex AI)
 - `SUPABASE_SERVICE_ROLE_KEY`: Supabase service role key
 - `ENVIRONMENT`: Set to `dev` or `prod` (defaults to `dev`)
 
@@ -275,38 +268,11 @@ prod:
 
 ## Database Setup
 
-### Local Supabase Instance
-
-The Docker Compose setup includes a local Supabase PostgreSQL container:
-
-**Configuration:**
-- Image: `supabase/postgres:15.1.0.147`
-- Port: `5432`
-- Database: `postgres`
-- User: `postgres`
-- Password: `postgres` (development only)
-
-**Connection:**
-- Host: `localhost`
-- Port: `5432`
-- Database: `postgres`
-
-**Accessing the Database:**
-```bash
-# Via Docker
-docker-compose exec supabase psql -U postgres -d postgres
-
-# Via local psql client
-psql -h localhost -p 5432 -U postgres -d postgres
-```
+The app connects via **`DATABASE_CONNECTION_STRING`** (Doppler or env). Docker Compose does **not** include a Supabase/Postgres container for the app; use Supabase (cloud) or an external Postgres. Ensure Doppler provides `DATABASE_CONNECTION_STRING` for the `api` service.
 
 ### Migrations
 
-Currently, the application does not use database migrations. If migrations are added in the future:
-
-1. Create migration files in `backend/migrations/`
-2. Use a migration tool (e.g., Alembic, Supabase migrations)
-3. Run migrations on startup or via CLI
+Migrations live in **`supabase/migrations/`**. Apply them via Supabase tooling or your project runbook (e.g. `supabase db push` or Supabase Dashboard).
 
 ## Development Tips
 

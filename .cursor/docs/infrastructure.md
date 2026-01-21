@@ -4,48 +4,40 @@
 
 ### Backend: Google Cloud Run
 
-The backend API is deployed on **Google Cloud Run** as a serverless containerized service.
+The backend API is deployed on **Google Cloud Run** as two serverless containerized services: **hit8-api-stg** (staging) and **hit8-api-prd** (production).
 
 **Configuration:**
 - **Region**: `europe-west1`
 - **Memory**: 2Gi
 - **CPU**: 2 vCPU
 - **Timeout**: 300 seconds (5 minutes)
-- **Scaling**:
-  - Min instances: 0 (scales to zero)
-  - Max instances: 10
-  - Auto-scaling enabled
+- **Scaling**: Min 0, max 10 instances; auto-scaling enabled
 - **Platform**: Managed (fully managed by Google)
 - **Authentication**: Unauthenticated (public API with token-based auth)
 
 **Container Registry:**
-- Images stored in **Google Container Registry (GCR)**
-- Image naming: `gcr.io/hit8-poc/hit8-api`
-- Tags: Git SHA and `latest`
+- **Artifact Registry**: `europe-west1-docker.pkg.dev/hit8-poc/backend/api`
+- **Tag format**: `{VERSION}-{SHORT_SHA}` (e.g. `0.4.0-a1b2c3d`)
 
 **Deployment:**
-- Automated via GitHub Actions (see [CI/CD documentation](cicd.md))
-- Build process uses Google Cloud Build with Kaniko
-- Secrets injected via GCP Secret Manager (Doppler secrets JSON)
+- Automated via [GitHub Actions](cicd.md): `docker build` + push to Artifact Registry; `gcloud run services update` for image only. Service config (env, secrets, VPC, scaling) is in Terraform (`infra/`).
+- Secrets injected via GCP Secret Manager (`doppler-hit8-stg`, `doppler-hit8-prd`)
 
 ### Frontend: Cloudflare Pages
 
-The frontend is deployed on **Cloudflare Pages** as a static site.
+The frontend is deployed on **Cloudflare Pages** as a static site via the [GitHub Actions workflow](cicd.md) (Wrangler `pages deploy`).
 
 **Configuration:**
-- **Build Command**: `npm run build:cloudflare`
-- **Build Directory**: `dist/`
-- **Framework Preset**: Vite
+- **Build Command**: `npm run build` (`tsc && vite build`)
+- **Build Output**: `dist/`
 - **Node Version**: 20+
-- **Deployment**: Automatic via GitHub integration
 
 **Routing:**
-- SPA routing handled via `_redirects` file in `public/` directory
-- All routes redirect to `index.html` with 200 status code
+- SPA routing via `_redirects` in `public/`: `/*` → `/index.html` (200)
 
 **Domains:**
 - Production: `https://www.hit8.io`, `https://hit8.io`
-- Fallback: `https://hit8.pages.dev` (Cloudflare Pages default)
+- Fallback: `https://hit8.pages.dev`
 
 ### Database: Supabase
 
@@ -73,59 +65,32 @@ The frontend is deployed on **Cloudflare Pages** as a static site.
 - **Methods**: All (`*`)
 - **Headers**: All (`*`)
 
-**API Endpoints:**
-- Backend API: Deployed on Cloud Run (URL configured in frontend)
-- Health Check: `GET /health`
-- Chat Endpoint: `POST /chat`
+**API URLs:**
+- **Staging**: `https://api-stg.hit8.io`
+- **Production**: `https://api-prd.hit8.io`
+- Health: `GET /health`; Chat: `POST /chat` (see [api-reference](api-reference.md))
 
 ## Development Infrastructure
 
 ### Docker Compose
 
-Local development uses **Docker Compose** to orchestrate multiple services.
+Local development uses **Docker Compose**. Run with **Doppler** for secrets: `doppler run -- docker-compose up`. See [Secrets Management](secrets-management.md) and [development](development.md).
 
 **Services:**
-1. **API Service** (`api`)
-   - Build context: `./backend`
-   - Port: `8000:8000`
-   - Command: `uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload`
-   - Volumes: `./backend:/app` (hot reload)
-   - Depends on: `supabase`
+- **api** — Backend (FastAPI/Uvicorn). Port `8000`; `depends_on: langfuse`. Env (e.g. `DATABASE_CONNECTION_STRING`, `GCP_PROJECT`, `VERTEX_SERVICE_ACCOUNT`, etc.) from Doppler. The app database is **not** in this Compose stack: use `DATABASE_CONNECTION_STRING` pointing to Supabase (cloud) or a separate Postgres.
+- **web** — Frontend (Vite). Port `5173`.
+- **langfuse**, **langfuse-worker** — Observability; depend on clickhouse, redis, minio.
+- **clickhouse**, **redis**, **minio** — Backing services for Langfuse. Langfuse DB: `host.docker.internal:54325` (external Postgres).
 
-2. **Supabase Service** (`supabase`)
-   - Image: `supabase/postgres:15.1.0.147`
-   - Port: `5432:5432`
-   - Database: `postgres`
-   - Password: `postgres` (development only)
+There is **no `supabase` or Postgres container** in `docker-compose.yml` for the app. Migrations live in `supabase/migrations/`; apply via Supabase tooling.
 
-3. **Web Service** (`web`)
-   - Build context: `./frontend`
-   - Port: `5173:5173`
-   - Command: `npm run dev -- --host`
-   - Volumes: `./frontend:/app`, `/app/node_modules` (excluded)
-
-**Configuration:**
-- File: [`docker-compose.yml`](docker-compose.yml)
-- Environment variables: Injected via Doppler (see [Secrets Management](secrets-management.md))
+**Configuration:** [`docker-compose.yaml`](docker-compose.yaml). Environment variables: Doppler; `DATABASE_CONNECTION_STRING` must be supplied for the API.
 
 ### Local Development Servers
 
-**Backend:**
-- Framework: FastAPI with Uvicorn
-- Hot Reload: Enabled via `--reload` flag
-- Port: `8000`
-- Access: `http://localhost:8000`
-
-**Frontend:**
-- Framework: Vite dev server
-- Hot Reload: Enabled by default
-- Port: `5173`
-- Access: `http://localhost:5173`
-
-**Database:**
-- Type: PostgreSQL 15.1.0
-- Port: `5432`
-- Access: `localhost:5432`
+- **Backend**: `http://localhost:8000` (Uvicorn, hot reload)
+- **Frontend**: `http://localhost:5173` (Vite, HMR)
+- **Database**: App uses `DATABASE_CONNECTION_STRING` (Supabase or external Postgres). Langfuse uses its own DB at `host.docker.internal:54325`.
 
 ## Resource Requirements
 
@@ -156,26 +121,26 @@ Local development uses **Docker Compose** to orchestrate multiple services.
 ### Database (Supabase)
 
 **Production:**
-- Managed by Supabase
+- Managed by Supabase; URL in `DATABASE_CONNECTION_STRING` / Doppler
 - Resource limits depend on Supabase plan
 
 **Development:**
-- Local PostgreSQL container
-- Minimal resource usage
+- App uses `DATABASE_CONNECTION_STRING` (Supabase cloud or external Postgres). Docker Compose does not include an app DB container.
 
 ## Service URLs
 
 ### Production
 
 - **Frontend**: `https://www.hit8.io` / `https://hit8.io`
-- **Backend API**: Configured via `VITE_API_URL` environment variable
-- **Database**: `https://dxwwmmhfhsljkhftnzke.supabase.co`
+- **Backend API (staging)**: `https://api-stg.hit8.io`
+- **Backend API (production)**: `https://api-prd.hit8.io`
+- **Database**: `https://dxwwmmhfhsljkhftnzke.supabase.co` (or as in `DATABASE_CONNECTION_STRING`)
 
 ### Development
 
 - **Frontend**: `http://localhost:5173`
 - **Backend API**: `http://localhost:8000`
-- **Database**: `http://localhost:5432`
+- **Database**: per `DATABASE_CONNECTION_STRING` (e.g. Supabase or local Postgres)
 
 ## Scaling Configuration
 

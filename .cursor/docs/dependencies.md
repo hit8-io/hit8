@@ -16,6 +16,10 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # Install dependencies
 cd backend
 uv pip install -e .
+
+# Alternatively: uv sync and uv run (preferred in many workflows)
+uv sync
+uv run pytest   # run tests
 ```
 
 **Lock File**: `backend/uv.lock`

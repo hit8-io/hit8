@@ -52,12 +52,13 @@ doppler run -- npm run dev
 
 ### Secret Storage
 
-**Secret Name**: `doppler-hit8-prd`
+- **Production**: `doppler-hit8-prd` — used by **hit8-api-prd** (Cloud Run).
+- **Staging**: `doppler-hit8-stg` — used by **hit8-api-stg** (Cloud Run). See [infra/gcp.tf](infra/gcp.tf) and [cicd](cicd.md).
 
 **Storage Location**: Google Cloud Secret Manager
 - Project: `hit8-poc`
 - Project Number: `617962194338`
-- Secret Path: `projects/617962194338/secrets/doppler-hit8-prd`
+- Example path: `projects/617962194338/secrets/doppler-hit8-prd`
 
 **Format**: JSON string containing all secrets
 

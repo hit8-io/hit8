@@ -1,25 +1,9 @@
 # Technical Debt
 
-## Checkpointer Selection: MemorySaver vs PostgresSaver
+## Checkpointer: AsyncPostgresSaver and Sync-Only Paths
 
-**Location**: `backend/app/flows/opgroeien/poc/chat/graph.py`
+**Current state**: The app uses **AsyncPostgresSaver** from [`app/api/checkpointer.py`](backend/app/api/checkpointer.py) for persistent checkpoint storage. Graphs (e.g. `backend/app/flows/opgroeien/poc/chat/graph.py`) use the shared checkpointer from `get_checkpointer()`.
 
-We use `MemorySaver` instead of `PostgresSaver` because:
+**Historical note**: Previously, MemorySaver was used in some flows due to async limitations in PostgresSaver (e.g. `aget_tuple()` raising `NotImplementedError`). Those have been addressed; the app now uses AsyncPostgresSaver.
 
-1. **PostgresSaver doesn't fully support async checkpoint operations**
-   - `aget_tuple()` raises `NotImplementedError`
-   - This forced us to use sync `stream()` in background threads
-
-2. **MemorySaver supports both sync and async operations**
-   - Enables future migration to async streaming if needed
-   - Simpler architecture without database dependencies
-
-3. **Trade-off: State is not persisted across restarts**
-   - Acceptable for current use case (stateless conversations)
-   - Can migrate back to PostgresSaver when async support is added
-
-**Action Items**:
-- Monitor LangGraph updates for PostgresSaver async support
-- Consider migration path when `aget_tuple()` is implemented
-- Document any state persistence requirements that emerge
-
+**Remaining sync-only paths**: Some code paths still wrap sync checkpoint (or state) access in `asyncio.to_thread` to avoid blocking the event loop (e.g. in `app/api/routes/report.py`, `app/api/routes/graph.py`). These are documented in-code. If LangGraph improves async coverage for PostgresSaver, those wrappers could be revisited.

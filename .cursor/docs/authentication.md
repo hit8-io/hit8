@@ -73,7 +73,7 @@ The backend verifies ID tokens using the Firebase Admin SDK.
 
 ### Implementation
 
-**File**: [`backend/app/deps.py`](backend/app/deps.py)
+**File**: [`backend/app/auth.py`](backend/app/auth.py)
 
 **Key Components:**
 - Firebase Admin SDK initialization
@@ -185,7 +185,7 @@ const response = await axios.post(
 )
 ```
 
-### Backend: deps.py
+### Backend: auth.py
 
 **HTTPBearer Security:**
 ```python

@@ -148,7 +148,7 @@ graph TB
 - **Connection pooling**: Shared asyncpg connection pool for PostgreSQL
 - **Lifespan management**: FastAPI lifespan initializes pool/checkpointer at startup
 - **Secrets injection**: Doppler secrets loaded from GCP Secret Manager
-- **Auto-scaling**: Min 0, max 3 instances with container concurrency 160
+- **Auto-scaling**: Min 0, max 10 instances with container concurrency 160
 
 ## LangGraph Usage and Viewer
 
@@ -394,7 +394,7 @@ graph TB
 
 - **Image**: Docker image from Artifact Registry
 - **Resources**: 2 CPU, 2Gi memory
-- **Scaling**: Min 0, max 3 instances
+- **Scaling**: Min 0, max 10 instances
 - **Concurrency**: 160 requests per instance
 - **Timeout**: 300 seconds
 - **Network**: VPC egress for all traffic

@@ -302,11 +302,14 @@ async def start_report(
         )
     
     initial_state = {"raw_procedures": procedures}
+    model = payload.get("model")
     config = {
         "configurable": {
             "thread_id": thread_id
         }
     }
+    if model:
+        config["configurable"]["model_name"] = model
     
     if mode == "cloud_run_job":
         # --- Trigger Cloud Run Job ---
@@ -335,6 +338,8 @@ async def start_report(
                 "org": org,
                 "project": project,
             }
+            if model:
+                job_params["model"] = model
             
             overrides = RunJobRequest.Overrides(
                 container_overrides=[
@@ -1294,6 +1299,7 @@ async def execute_report_job(
             thread_id = job_params.get("thread_id")
             org = job_params.get("org")
             project = job_params.get("project")
+            model = job_params.get("model")
         except (json.JSONDecodeError, KeyError) as e:
             raise HTTPException(
                 status_code=400,
@@ -1304,6 +1310,7 @@ async def execute_report_job(
         thread_id = payload.get("thread_id")
         org = payload.get("org")
         project = payload.get("project")
+        model = payload.get("model")
     
     if not all([thread_id, org, project]):
         raise HTTPException(
@@ -1337,6 +1344,8 @@ async def execute_report_job(
             "thread_id": thread_id
         }
     }
+    if model:
+        config["configurable"]["model_name"] = model
     
     # Get the report graph instance
     report_graph = get_graph(org, project, "report")

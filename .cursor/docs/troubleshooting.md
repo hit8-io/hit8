@@ -96,7 +96,7 @@ doppler setup --project hit8 --config dev
 doppler run -- env | grep GCP_PROJECT
 ```
 
-**Production (GCP Secret Manager):**
+**Production (GCP Secret Manager):** Production uses `doppler-hit8-prd`; staging uses `doppler-hit8-stg` (see [infra/gcp.tf](infra/gcp.tf), [cicd](cicd.md)).
 ```bash
 # Verify secret exists
 gcloud secrets describe doppler-hit8-prd --project=hit8-poc
@@ -104,8 +104,8 @@ gcloud secrets describe doppler-hit8-prd --project=hit8-poc
 # Check secret version
 gcloud secrets versions list doppler-hit8-prd --project=hit8-poc
 
-# Verify Cloud Run secret configuration
-gcloud run services describe hit8-api --region=europe-west1 \
+# Verify Cloud Run secret configuration (production; for staging use hit8-api-stg)
+gcloud run services describe hit8-api-prd --region=europe-west1 \
   --format="value(spec.template.spec.containers[0].env)"
 ```
 
@@ -129,6 +129,7 @@ gcloud run services describe hit8-api --region=europe-west1 \
 gcloud secrets versions access latest \
   --secret=doppler-hit8-prd \
   --project=hit8-poc | jq .
+# For staging use --secret=doppler-hit8-stg
 ```
 
 **Check Secret Parsing:**
@@ -213,8 +214,8 @@ project=service_account_info.get("project_id") or settings.gcp_project
 
 **Check Logs:**
 ```bash
-# View Cloud Run logs
-gcloud run services logs read hit8-api --region=europe-west1 \
+# View Cloud Run logs (production; for staging use hit8-api-stg)
+gcloud run services logs read hit8-api-prd --region=europe-west1 \
   --filter="severity>=ERROR"
 ```
 
@@ -231,9 +232,10 @@ gcloud run services logs read hit8-api --region=europe-west1 \
 - Cloud Run timeout is set to 300 seconds (5 minutes)
 - Consider increasing if needed:
   ```bash
-  gcloud run services update hit8-api \
-    --timeout=600 \
-    --region=europe-west1
+gcloud run services update hit8-api-prd \
+  --timeout=600 \
+  --region=europe-west1
+# For staging use hit8-api-stg
   ```
 
 **Optimize Requests:**
@@ -254,14 +256,14 @@ gcloud run services logs read hit8-api --region=europe-west1 \
 
 **Cloud Run Logs:**
 ```bash
-# View recent logs
-gcloud run services logs read hit8-api --region=europe-west1
+# View recent logs (production; for staging use hit8-api-stg)
+gcloud run services logs read hit8-api-prd --region=europe-west1
 
 # Follow logs in real-time
-gcloud run services logs tail hit8-api --region=europe-west1
+gcloud run services logs tail hit8-api-prd --region=europe-west1
 
 # Filter by severity
-gcloud run services logs read hit8-api --region=europe-west1 \
+gcloud run services logs read hit8-api-prd --region=europe-west1 \
   --filter="severity>=ERROR"
 ```
 

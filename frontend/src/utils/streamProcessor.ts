@@ -171,10 +171,11 @@ export function processStreamLine(
       if ('type' in parsed && 'seq' in parsed && 'flow' in parsed && 'payload' in parsed) {
         // New envelope format - extract payload and merge with envelope fields
         const envelope = parsed as StreamEventEnvelope
-        const data: Partial<StreamEvent> & { type?: string; content?: string; node?: string; response?: string; error?: string; error_type?: string; thread_id?: string; run_id?: string } = {
+        const data: Partial<StreamEvent> & { type?: string; content?: string; node?: string; response?: string; error?: string; error_type?: string; thread_id?: string; run_id?: string; ts?: number } = {
           type: envelope.type,
           thread_id: envelope.thread_id,
           run_id: envelope.run_id,
+          ts: envelope.ts,
           ...(envelope.payload || {}),
         }
         return processStreamEvent(data, accumulatedContent, finalResponse, graphEndReceived, hasError, context)

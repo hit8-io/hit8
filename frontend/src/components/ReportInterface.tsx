@@ -2,7 +2,7 @@ import * as React from "react"
 import { FileText, Play, Square, Loader2, CheckCircle, AlertCircle, X } from "lucide-react"
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card"
 import { ScrollArea } from "./ui/scroll-area"
-import { getApiHeaders } from "../utils/api"
+import { getApiHeaders, getAvailableModels } from "../utils/api"
 import GraphView from "./GraphView"
 import ObservabilityWindow from "./ObservabilityWindow"
 import StateView from "./StateView"
@@ -43,6 +43,8 @@ interface ReportInterfaceProps {
   project?: string;
 }
 
+type EventLogEntry = { text: string; ts?: number }
+
 export default function ReportInterface({ token, onExecutionStateUpdate, org, project }: ReportInterfaceProps) {
   const isDev = import.meta.env.DEV;
   const [jobId, setJobId] = React.useState<string | null>(null);
@@ -50,13 +52,15 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
   const [loading, setLoading] = React.useState(false);
   const [executionState, setExecutionState] = React.useState<ExecutionState | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [selectedModel, setSelectedModel] = React.useState<string | null>(null);
+  const [availableModels, setAvailableModels] = React.useState<string[]>([]);
   const [executionMode, setExecutionMode] = React.useState<'local' | 'cloud_run_service' | 'cloud_run_job'>(
     isDev ? 'local' : 'cloud_run_service'
   );
   const [streamEvents, setStreamEvents] = React.useState<StreamEvent[]>([]);
   const [visitedNodes, setVisitedNodes] = React.useState<string[]>([]);
   const [activeNode, setActiveNode] = React.useState<string | null>(null);
-  const [eventLogs, setEventLogs] = React.useState<string[]>([]);
+  const [eventLogs, setEventLogs] = React.useState<EventLogEntry[]>([]);
   const abortControllerRef = React.useRef<AbortController | null>(null);
   const prevStateRef = React.useRef<{ visitedNodes: string[]; activeNode: string | null }>({
     visitedNodes: [],
@@ -68,6 +72,20 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
   const eventLogScrollRef = React.useRef<HTMLDivElement | null>(null);
 
   const API_URL = import.meta.env.VITE_API_URL;
+
+  // Fetch available models on mount
+  React.useEffect(() => {
+    getAvailableModels(token)
+      .then((models) => {
+        setAvailableModels(models);
+        if (models.length > 0) {
+          setSelectedModel((prev) => prev || models[0]);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to fetch available models:", err);
+      });
+  }, [token]);
 
   // Queue state updates to avoid calling callbacks during render
   const queueStateUpdate = React.useCallback((state: ExecutionState) => {
@@ -86,7 +104,7 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
     setStatus(prev => {
       const newStatus: ReportStatus = {
         ...prev,
-        status: reportState.final_report ? 'completed' : (prev?.status || 'running'),
+        status: reportState.final_report ? 'completed' : 'running',
         progress: {
           chapters_completed: reportState.chapters?.length || 0,
           recent_logs: prev?.progress?.recent_logs || [],
@@ -246,7 +264,8 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
         method: 'POST',
         headers: getApiHeaders(token),
         body: JSON.stringify({
-          execution_mode: executionMode
+          execution_mode: executionMode,
+          ...(selectedModel && { model: selectedModel }),
         }),
         signal: abortControllerRef.current.signal,
       })
@@ -280,6 +299,8 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
         // Set a temporary jobId that will be updated when we receive graph_start
         const tempJobId = crypto.randomUUID()
         setJobId(tempJobId)
+        // Optimistically set status to 'running' so the Stop button shows immediately
+        setStatus((prev) => ({ ...prev, status: 'running' as const }))
 
         // Initialize execution state
         const initialExecutionState: ExecutionState = {
@@ -490,32 +511,38 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
   React.useEffect(() => {
     // When report is completed, prefer logs from status (most complete and persistent)
     if (status?.status === 'completed' && status?.progress?.recent_logs && Array.isArray(status.progress.recent_logs) && status.progress.recent_logs.length > 0) {
-      setEventLogs(status.progress.recent_logs)
+      setEventLogs(status.progress.recent_logs.map((s) => ({ text: s })))
       return
     }
     
     // Process stream events for both local and cloud_run_service modes (both use streaming)
     if ((executionMode === 'local' || executionMode === 'cloud_run_service') && streamEvents.length > 0) {
       // Build logs by processing events in order and replacing start with end events
-      const logs: string[] = []
-      const nodeLogIndices = new Map<string, number>() // Track log index for each node/entity
-      const llmLogIndices = new Map<string, number>() // Track log index for each LLM call
-      
+      const logs: EventLogEntry[] = []
+      const nodeLogIndices = new Map<string, number>()
+      const llmLogIndices = new Map<string, number>()
+      let llmFallback = 0
+
+      const getTs = (e: StreamEvent): number | undefined => {
+        const x = e as { ts?: number }
+        return typeof x?.ts === 'number' ? x.ts : undefined
+      }
+
       const handleGraphEvent = (event: StreamEvent) => {
         if (event.type === 'graph_start') {
           const logIndex = logs.length
-          logs.push('Starting: LangGraph')
+          logs.push({ text: 'Starting: LangGraph', ts: getTs(event) })
           nodeLogIndices.set('LangGraph', logIndex)
         } else if (event.type === 'graph_end') {
           const existingIndex = nodeLogIndices.get('LangGraph')
           if (existingIndex !== undefined && existingIndex < logs.length) {
-            logs[existingIndex] = 'Completed: LangGraph'
+            logs[existingIndex] = { text: 'Completed: LangGraph', ts: getTs(event) }
           } else {
-            logs.push('Completed: LangGraph')
+            logs.push({ text: 'Completed: LangGraph', ts: getTs(event) })
           }
         }
       }
-      
+
       const handleNodeEvent = (event: StreamEvent) => {
         if (event.type === 'node_start' && 'node' in event) {
           const nodeName = event.node || 'unknown'
@@ -526,17 +553,17 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
             if (inputPreview) {
               logEntry += `\n  Input: ${inputPreview}`
             }
-            logs.push(logEntry)
+            logs.push({ text: logEntry, ts: getTs(event) })
             nodeLogIndices.set(nodeName, logIndex)
           }
         } else if (event.type === 'node_end' && 'node' in event) {
           const nodeName = event.node || 'unknown'
           const outputPreview = (event as { output_preview?: string }).output_preview
           const existingIndex = nodeLogIndices.get(nodeName)
-          
+
           if (existingIndex !== undefined && existingIndex < logs.length) {
-            const existingLog = logs[existingIndex]
-            const existingLines = existingLog.split('\n')
+            const existing = logs[existingIndex]
+            const existingLines = existing.text.split('\n')
             let logEntry = `Completed: ${nodeName}`
             if (existingLines.length > 1 && existingLines[1].startsWith('  Input:')) {
               logEntry += `\n${existingLines[1]}`
@@ -544,42 +571,37 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
             if (outputPreview) {
               logEntry += `\n  Output: ${outputPreview}`
             }
-            logs[existingIndex] = logEntry
+            logs[existingIndex] = { text: logEntry, ts: getTs(event) }
           } else {
             let logEntry = `Completed: ${nodeName}`
             if (outputPreview) {
               logEntry += `\n  Output: ${outputPreview}`
             }
-            logs.push(logEntry)
+            logs.push({ text: logEntry, ts: getTs(event) })
           }
         }
       }
-      
+
       const handleLLMEvent = (event: StreamEvent) => {
         if (event.type === 'llm_start' && 'model' in event) {
           const modelName = event.model || 'unknown'
           const inputPreview = event.input_preview || ''
-          const llmKey = `llm_${modelName}_${logs.length}`
-          const logIndex = logs.length
+          const runId = 'run_id' in event && typeof event.run_id === 'string' && event.run_id ? event.run_id : null
+          const key = runId ?? `__fallback_${llmFallback++}`
           let logEntry = `Starting: model (${modelName})`
           if (inputPreview) {
             logEntry += `\n  Input: ${inputPreview}`
           }
-          logs.push(logEntry)
-          llmLogIndices.set(llmKey, logIndex)
+          logs.push({ text: logEntry, ts: getTs(event) })
+          llmLogIndices.set(key, logs.length - 1)
         } else if (event.type === 'llm_end' && 'model' in event) {
           const modelName = event.model || 'unknown'
           const outputPreview = event.output_preview || ''
-          let existingIndex: number | undefined
-          for (const [key, index] of llmLogIndices.entries()) {
-            if (key.startsWith(`llm_${modelName}_`) && (existingIndex === undefined || index > existingIndex)) {
-              existingIndex = index
-            }
-          }
-          
-          if (existingIndex !== undefined && existingIndex < logs.length) {
-            const existingLog = logs[existingIndex]
-            const existingLines = existingLog.split('\n')
+          const rid = 'run_id' in event && typeof event.run_id === 'string' && event.run_id ? event.run_id : undefined
+
+          const applyCompleted = (idx: number) => {
+            const existing = logs[idx]
+            const existingLines = existing.text.split('\n')
             let logEntry = `Completed: model (${modelName})`
             if (existingLines.length > 1 && existingLines[1].startsWith('  Input:')) {
               logEntry += `\n${existingLines[1]}`
@@ -587,14 +609,31 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
             if (outputPreview) {
               logEntry += `\n  Output: ${outputPreview}`
             }
-            logs[existingIndex] = logEntry
-          } else {
-            let logEntry = `Completed: model (${modelName})`
-            if (outputPreview) {
-              logEntry += `\n  Output: ${outputPreview}`
-            }
-            logs.push(logEntry)
+            logs[idx] = { text: logEntry, ts: getTs(event) }
           }
+
+          let existingIndex: number | undefined
+
+          if (rid !== undefined && llmLogIndices.has(rid)) {
+            existingIndex = llmLogIndices.get(rid)!
+            llmLogIndices.delete(rid)
+            applyCompleted(existingIndex)
+            return
+          }
+
+          const fallbackEntries = [...llmLogIndices.entries()].filter(([k]) => k.startsWith('__fallback_'))
+          if (fallbackEntries.length > 0) {
+            const [key, idx] = fallbackEntries.reduce((a, b) => (a[1] < b[1] ? a : b))
+            llmLogIndices.delete(key)
+            applyCompleted(idx)
+            return
+          }
+
+          let logEntry = `Completed: model (${modelName})`
+          if (outputPreview) {
+            logEntry += `\n  Output: ${outputPreview}`
+          }
+          logs.push({ text: logEntry, ts: getTs(event) })
         }
       }
       
@@ -610,7 +649,7 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
       
       setEventLogs(logs)
     } else if (status?.progress?.recent_logs) {
-      setEventLogs(status.progress.recent_logs)
+      setEventLogs(status.progress.recent_logs.map((s) => ({ text: s })))
     }
   }, [streamEvents, status, executionMode])
 
@@ -656,7 +695,27 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
             <FileText className="h-5 w-5" />
             Report
           </CardTitle>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-4">
+            {availableModels.length > 0 && (
+              <div className="flex items-center gap-2">
+                <label htmlFor="report-model-select" className="text-sm text-muted-foreground">
+                  Model:
+                </label>
+                <select
+                  id="report-model-select"
+                  value={selectedModel || ""}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  disabled={loading}
+                  className="px-2 py-1 text-sm border border-input bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {availableModels.map((model) => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             {isDev ? (
               <span className="text-sm text-muted-foreground px-2 py-1">Local</span>
             ) : (
@@ -748,12 +807,22 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
                   <div className="flex flex-col divide-y bg-muted/30">
                     {eventLogs.length > 0 ? (
                       eventLogs.map((log, i) => {
-                        // Check if log entry starts with "Completed:" (case-insensitive)
-                        const isCompleted = log.toLowerCase().startsWith('completed:') || log.toLowerCase().includes('finished')
-                        // Check if log contains newlines (multi-line format)
-                        const logLines = log.split('\n')
+                        // Prefer stream ts (ms); else parse [HH:mm:ss] from backend log format
+                        const timeMatch = log.text.match(/^\[(\d{2}:\d{2}:\d{2})\]\s+/)
+                        const timeStr =
+                          log.ts != null
+                            ? new Date(log.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+                            : timeMatch
+                              ? timeMatch[1]
+                              : null
+                        const message = timeMatch && log.ts == null ? log.text.slice(timeMatch[0].length) : log.text
+                        const isCompleted =
+                          status?.status === 'completed' ||
+                          message.toLowerCase().startsWith('completed:') ||
+                          message.toLowerCase().includes('finished')
+                        const logLines = message.split('\n')
                         const isMultiLine = logLines.length > 1
-                        
+
                         return (
                           <div key={i} className="px-4 py-2 flex items-start gap-3 text-xs">
                             {isCompleted ? (
@@ -771,10 +840,10 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
                                   ))}
                                 </div>
                               ) : (
-                                <span className="break-words">{log}</span>
+                                <span className="break-words">{message}</span>
                               )}
                             </div>
-                            <span className="text-muted-foreground font-mono flex-shrink-0 text-[10px]">{new Date().toLocaleTimeString()}</span>
+                            <span className="text-muted-foreground font-mono flex-shrink-0 text-[10px]">{timeStr ?? '—'}</span>
                           </div>
                         )
                       })

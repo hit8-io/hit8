@@ -3,10 +3,11 @@ Nodes for the Report Engine Map-Reduce Graph.
 """
 import json
 from datetime import datetime
-from typing import Any, List, Dict, TypedDict
+from typing import Any, List, Dict, Optional, TypedDict
 
 import structlog
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableConfig
 from langchain.agents import create_agent
 from langgraph.types import Send
 
@@ -16,6 +17,13 @@ from app.flows.opgroeien.poc.chat.tools.get_procedure import get_procedure
 from app.flows.opgroeien.poc.chat.tools.get_regelgeving import get_regelgeving
 
 logger = structlog.get_logger(__name__)
+
+
+def _log_ts(msg: str) -> str:
+    """Prefix a log message with [HH:mm:ss] for event log display."""
+    return f"[{datetime.now().strftime('%H:%M:%S')}] {msg}"
+
+
 from app.flows.common import get_agent_model, _wrap_with_retry
 from app.prompts.loader import load_prompt
 from app.flows.opgroeien.poc.constants import MAX_PARALLEL_WORKERS
@@ -176,7 +184,7 @@ def splitter_node(state: ReportState):
         "cluster_status": cluster_status,  # Initialize status tracking
         "pending_clusters": remaining_clusters,
         "batch_count": 1,
-        "logs": [f"Splitter: Processing {len(first_batch)} clusters in first batch, {len(remaining_clusters)} remaining"]
+        "logs": [_log_ts(f"Splitter: Processing {len(first_batch)} clusters in first batch, {len(remaining_clusters)} remaining")]
     }
     
     # Return state update dict with Send objects for routing
@@ -199,11 +207,17 @@ def splitter_node(state: ReportState):
     }
 
 # --- Node 2: Analyst (Worker) ---
-async def analyst_node(input_data: ClusterInput):
+async def analyst_node(input_data: ClusterInput, config: Optional[RunnableConfig] = None):
     """
     Analyzes a SINGLE cluster using the Chat Tool and direct lookup tools.
     """
-    llm = get_agent_model()
+    model_name = None
+    if config:
+        if hasattr(config, "configurable") and isinstance(getattr(config, "configurable", None), dict):
+            model_name = config.configurable.get("model_name")
+        elif isinstance(config, dict):
+            model_name = (config.get("configurable") or {}).get("model_name")
+    llm = get_agent_model(model_name=model_name)
     
     # GIVE TOOLS TO THE ANALYST
     # 1. Bridge to general chat knowledge
@@ -256,8 +270,6 @@ async def analyst_node(input_data: ClusterInput):
     
     # Update cluster_status to mark this cluster as completed
     # This ensures checkpoint state is authoritative
-    from datetime import datetime
-    
     cluster_status_update = {
         file_id: {
             "status": "completed",
@@ -281,7 +293,7 @@ async def analyst_node(input_data: ClusterInput):
         "chapters": [chapter_text],
         "chapters_by_file_id": chapters_by_file_id_update,
         "cluster_status": cluster_status_update,
-        "logs": [log_entry]
+        "logs": [_log_ts(log_entry)]
     }
 
 # --- Node 2.5: Batch Processor (Handles subsequent batches) ---
@@ -326,7 +338,7 @@ def batch_processor_node(state: ReportState):
             )
             # Don't route to editor yet - wait for more state updates
             return {
-                "logs": [f"Batch processor: Waiting for {len(missing_chapters)} chapters to complete (missing: {', '.join(missing_chapters)})"]
+                "logs": [_log_ts(f"Batch processor: Waiting for {len(missing_chapters)} chapters to complete (missing: {', '.join(missing_chapters)})")]
             }
         
         logger.info(
@@ -338,7 +350,7 @@ def batch_processor_node(state: ReportState):
         
         # All chapters present, route to editor
         return {
-            "logs": ["Batch processor: All clusters processed, routing to editor"]
+            "logs": [_log_ts("Batch processor: All clusters processed, routing to editor")]
         }
     
     # Check MAX_BATCHES limit (dev environment only)
@@ -374,7 +386,7 @@ def batch_processor_node(state: ReportState):
                 chapters_count=len(chapters_by_file_id),
             )
             return {
-                "logs": [f"Batch processor: MAX_BATCHES limit reached ({MAX_BATCHES}), but waiting for {len(missing_chapters)} chapters to complete"]
+                "logs": [_log_ts(f"Batch processor: MAX_BATCHES limit reached ({MAX_BATCHES}), but waiting for {len(missing_chapters)} chapters to complete")]
             }
         
         logger.info(
@@ -385,7 +397,7 @@ def batch_processor_node(state: ReportState):
             chapters_count=len(chapters_by_file_id),
         )
         return {
-            "logs": [f"Batch processor: MAX_BATCHES limit reached ({MAX_BATCHES}), routing to editor with {len(pending)} clusters remaining"]
+            "logs": [_log_ts(f"Batch processor: MAX_BATCHES limit reached ({MAX_BATCHES}), routing to editor with {len(pending)} clusters remaining")]
         }
     
     # Process next batch
@@ -412,7 +424,7 @@ def batch_processor_node(state: ReportState):
         "cluster_status": cluster_status,
         "pending_clusters": remaining,
         "batch_count": new_batch_count,
-        "logs": [f"Batch processor: Processing batch {new_batch_count} ({len(next_batch)} clusters), {len(remaining)} remaining"]
+        "logs": [_log_ts(f"Batch processor: Processing batch {new_batch_count} ({len(next_batch)} clusters), {len(remaining)} remaining")]
     }
     
     # Return Send objects for next batch
@@ -427,7 +439,7 @@ def batch_processor_node(state: ReportState):
     }
 
 # --- Node 3: Editor (Reducer) ---
-async def editor_node(state: ReportState):
+async def editor_node(state: ReportState, config: Optional[RunnableConfig] = None):
     """
     Aggregates all chapters into the final report.
     Uses chapters_by_file_id as the single source of truth for all chapters.
@@ -484,7 +496,7 @@ async def editor_node(state: ReportState):
         )
         return {
             "final_report": "No procedures were provided to generate a report. Please select procedures before starting report generation.",
-            "logs": ["Editor finished: No chapters to process."]
+            "logs": [_log_ts("Editor finished: No chapters to process.")]
         }
     
     logger.info(
@@ -493,6 +505,14 @@ async def editor_node(state: ReportState):
         file_ids=list(chapters_by_file_id.keys()),
         full_text_length=len(full_text),
     )
+    
+    # Extract model_name from config if provided
+    model_name = None
+    if config:
+        if hasattr(config, "configurable") and isinstance(getattr(config, "configurable", None), dict):
+            model_name = config.configurable.get("model_name")
+        elif isinstance(config, dict):
+            model_name = (config.get("configurable") or {}).get("model_name")
     
     # Use model with high output token limit for long reports
     # Editor node needs higher limits to generate complete reports
@@ -507,9 +527,9 @@ async def editor_node(state: ReportState):
         max_output_tokens = constants.CONSTANTS.get("EDITOR_NODE_MAX_OUTPUT_TOKENS_VERTEX")
     
     if max_output_tokens is not None:
-        llm = get_agent_model(max_output_tokens=max_output_tokens)
+        llm = get_agent_model(model_name=model_name, max_output_tokens=max_output_tokens)
     else:
-        llm = get_agent_model()
+        llm = get_agent_model(model_name=model_name)
     
     # Format date
     formatted_date = datetime.now().strftime("%d %B %Y")
@@ -555,5 +575,5 @@ async def editor_node(state: ReportState):
     
     return {
         "final_report": final_report_text,
-        "logs": [f"Editor finished final report with {len(chapters_list)} chapters."]
+        "logs": [_log_ts(f"Editor finished final report with {len(chapters_list)} chapters.")]
     }
