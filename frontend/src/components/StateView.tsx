@@ -1,4 +1,4 @@
-import { FileText, BookOpen, FileCheck, Loader2, Download } from "lucide-react"
+import { FileText, BookOpen, FileCheck, Loader2, Download, AlertCircle } from "lucide-react"
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card"
 import { ScrollArea } from "./ui/scroll-area"
 import { Progress } from "./ui/progress"
@@ -53,7 +53,7 @@ export default function StateView({ state, executionState, token, threadId }: St
     output_preview?: string
     metadata?: Record<string, unknown>
   }>>([])
-  const [clusterStatus, setClusterStatus] = useState<Record<string, { status: string; started_at?: string; ended_at?: string; error?: string }>>({})
+  const [clusterStatus, setClusterStatus] = useState<Record<string, { status: string; started_at?: string; ended_at?: string; error?: string; retry_count?: number }>>({})
 
   // Extract task_history and cluster_status from state_snapshot events
   // Compute directly from streamEvents to avoid setState in useEffect
@@ -69,7 +69,7 @@ export default function StateView({ state, executionState, token, threadId }: St
         input_preview?: string
         output_preview?: string
         metadata?: Record<string, unknown>
-      }>; report_state?: { cluster_status?: Record<string, { status: string; started_at?: string; ended_at?: string; error?: string }> } } =>
+      }>; report_state?: { cluster_status?: Record<string, { status: string; started_at?: string; ended_at?: string; error?: string; retry_count?: number }> } } =>
         e.type === 'state_snapshot'
     )
     return snapshots.length > 0 ? snapshots[snapshots.length - 1] : null
@@ -95,7 +95,7 @@ export default function StateView({ state, executionState, token, threadId }: St
       }
       if (latestSnapshotForState.report_state?.cluster_status) {
         // Type assertion: cluster_status is already validated
-        setClusterStatus(latestSnapshotForState.report_state.cluster_status as Record<string, { status: string; started_at?: string; ended_at?: string; error?: string }>)
+        setClusterStatus(latestSnapshotForState.report_state.cluster_status as Record<string, { status: string; started_at?: string; ended_at?: string; error?: string; retry_count?: number }>)
       }
     }
   }, [latestSnapshotForState])
@@ -456,10 +456,25 @@ export default function StateView({ state, executionState, token, threadId }: St
                       const isCompleted = status === 'completed'
                       const isActive = status === 'active'
                       
+                      // Get cluster status from clusterStatus map (by file_id)
+                      const fileId = cluster?.file_id
+                      const clusterStatusInfo = fileId ? clusterStatus[fileId] : null
+                      const clusterStatusValue = clusterStatusInfo?.status || status
+                      const retryCount = clusterStatusInfo?.retry_count || 0
+                      const isFailed = clusterStatusValue === 'failed'
+                      const hasRetries = retryCount > 0
+                      
                       // Determine background and border colors
+                      // Priority: failed (red) > retries (orange) > active (green) > completed (blue) > pending (gray)
                       let bgClass: string
                       let borderClass: string
-                      if (isActive) {
+                      if (isFailed) {
+                        bgClass = 'bg-red-50 dark:bg-red-950'
+                        borderClass = 'border-red-300 dark:border-red-700'
+                      } else if (hasRetries) {
+                        bgClass = 'bg-orange-50 dark:bg-orange-950'
+                        borderClass = 'border-orange-300 dark:border-orange-700'
+                      } else if (isActive) {
                         bgClass = 'bg-green-50 dark:bg-green-950'
                         borderClass = 'border-green-300 dark:border-green-700'
                       } else if (isCompleted) {
@@ -474,7 +489,15 @@ export default function StateView({ state, executionState, token, threadId }: St
                       let badgeBgClass: string
                       let badgeTextClass: string
                       let statusText: string
-                      if (isActive) {
+                      if (isFailed) {
+                        badgeBgClass = 'bg-red-200 dark:bg-red-800'
+                        badgeTextClass = 'text-red-800 dark:text-red-200'
+                        statusText = 'Failed'
+                      } else if (hasRetries) {
+                        badgeBgClass = 'bg-orange-200 dark:bg-orange-800'
+                        badgeTextClass = 'text-orange-800 dark:text-orange-200'
+                        statusText = `Retrying (${retryCount})`
+                      } else if (isActive) {
                         badgeBgClass = 'bg-green-200 dark:bg-green-800'
                         badgeTextClass = 'text-green-800 dark:text-green-200'
                         statusText = 'Processing'
@@ -501,8 +524,10 @@ export default function StateView({ state, executionState, token, threadId }: St
                         >
                           <div className="flex items-center justify-between mb-1">
                             <div className="font-semibold flex items-center gap-2">
-                              {isActive && <Loader2 className="h-3 w-3 animate-spin text-green-600" />}
-                              {isCompleted && <FileCheck className="h-3 w-3 text-blue-600" />}
+                              {isFailed && <AlertCircle className="h-3 w-3 text-red-600" />}
+                              {hasRetries && !isFailed && <Loader2 className="h-3 w-3 animate-spin text-orange-600" />}
+                              {isActive && !hasRetries && !isFailed && <Loader2 className="h-3 w-3 animate-spin text-green-600" />}
+                              {isCompleted && !hasRetries && !isFailed && <FileCheck className="h-3 w-3 text-blue-600" />}
                               {clusterName}
                             </div>
                             <div className={`text-xs px-2 py-0.5 rounded ${badgeBgClass} ${badgeTextClass}`}>

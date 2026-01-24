@@ -16,6 +16,7 @@ services:
       "
     volumes:
       - ./backend:/app
+      - ./.cursor:/app/.cursor
     ports:
       - "8000:8000"
       - "8888:8888"
@@ -24,6 +25,7 @@ services:
         condition: service_started
     environment:
       - ENVIRONMENT=dev
+      - DEBUG_LOG_PATH=/app/.cursor/debug.log
       - VERTEX_SERVICE_ACCOUNT=${VERTEX_SERVICE_ACCOUNT}
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
       - GCP_PROJECT=${GCP_PROJECT}

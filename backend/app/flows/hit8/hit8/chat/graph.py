@@ -11,7 +11,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, StateGraph
 
 from app.api.checkpointer import get_checkpointer
-from app.flows.common import get_agent_model, _wrap_with_retry
+from app.flows.common import get_agent_model, execute_llm_call_async
 from app.flows.hit8.hit8 import constants as flow_constants
 from app.config import settings
 
@@ -26,7 +26,7 @@ class AgentState(TypedDict):
     messages: Annotated[list[BaseMessage], "The conversation messages"]
 
 
-def generate_node(
+async def generate_node(
     state: AgentState, 
     config: RunnableConfig | None = None
 ) -> AgentState:
@@ -67,10 +67,32 @@ def generate_node(
     config_dict["metadata"]["org"] = flow_constants.ORG
     config_dict["metadata"]["project"] = flow_constants.PROJECT
     
-    # Apply retry wrapper for direct model invocation
-    model_with_retry = _wrap_with_retry(model)
-    # Generate response with metadata injection
-    response = model_with_retry.invoke([last_message], config=config_dict)
+    # Get provider from model config
+    provider = None
+    if model_name:
+        from app.flows.common import get_provider_for_model
+        provider = get_provider_for_model(model_name=model_name)
+    
+    # Prepare call context for logging
+    call_context = {
+        "node": "generate_node",
+        "flow": "hit8_chat",
+    }
+    if model_name:
+        call_context["model_name"] = model_name
+    if provider:
+        call_context["provider"] = provider
+    
+    # Helper coroutine for LLM invocation
+    async def _generate_llm_call():
+        """Execute LLM call for generate node."""
+        return await model.ainvoke([last_message], config=config_dict)
+    
+    # Use generic wrapper for flow control
+    response = await execute_llm_call_async(
+        _generate_llm_call,
+        call_context=call_context,
+    )
     state["messages"].append(response)
     
     return state

@@ -15,7 +15,8 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, Field
 
-from app.flows.common import get_tool_model, _wrap_with_retry
+from app.api.observability import _current_model_name
+from app.flows.common import get_tool_model, execute_llm_call_async
 from app.flows.opgroeien.poc import constants as flow_constants
 from app.prompts.loader import load_prompt
 
@@ -82,7 +83,7 @@ class ExtractKnowledgeInput(BaseModel):
     )
 
 
-def _extract_entities_impl(chatInput: str, thread_id: str | None = None, callbacks: list[Any] | None = None) -> str:
+async def _extract_entities_impl(chatInput: str, thread_id: str | None = None, callbacks: list[Any] | None = None) -> str:
     """
     Extract entities from text using LLM with function calling.
     
@@ -114,11 +115,12 @@ def _extract_entities_impl(chatInput: str, thread_id: str | None = None, callbac
             }, ensure_ascii=False)
         
         # Get model and bind the extraction function
-        # Bind Pydantic model directly - LangChain will use the class name as function name
-        # We'll check for both "ExtractKnowledgeInput" and "extract_knowledge" in the response
+        # Align with parent flow's model when set (e.g. report analyst, chat) so one run uses one LLM
+        parent_model = _current_model_name.get()
         model = get_tool_model(
             thinking_level=flow_constants.ENTITY_EXTRACTION_THINKING_LEVEL,
             temperature=flow_constants.ENTITY_EXTRACTION_TEMPERATURE,
+            model_name=parent_model,
         )
         # Get model name for observability tracking
         model_name = getattr(model, "model", None) or getattr(model, "model_name", "unknown")
@@ -126,8 +128,6 @@ def _extract_entities_impl(chatInput: str, thread_id: str | None = None, callbac
             [ExtractKnowledgeInput],
             tool_choice="any"  # Force function call (equivalent to "ANY" in JSON spec)
         )
-        # Apply retry wrapper after binding tools
-        model_with_tools = _wrap_with_retry(model_with_tools)
         
         # Load system prompt from YAML
         prompt_obj = load_prompt("opgroeien/poc/extract_system_prompt")
@@ -159,11 +159,37 @@ def _extract_entities_impl(chatInput: str, thread_id: str | None = None, callbac
                     error_type=type(e).__name__,
                 )
         
-        # Invoke model with callbacks if provided (for Langfuse logging)
-        invoke_config = None
-        if callbacks:
-            invoke_config = {"callbacks": callbacks}
-        response = model_with_tools.invoke(messages, config=invoke_config)
+        # Get provider from model config
+        provider = None
+        if model_name:
+            from app.flows.common import get_provider_for_model
+            provider = get_provider_for_model(model_name=model_name)
+        
+        # Prepare call context for logging
+        call_context = {
+            "node": "extract_entities",
+            "flow": "chat",
+            "thread_id": thread_id,
+            "input_length": len(chatInput),
+        }
+        if model_name:
+            call_context["model_name"] = model_name
+        if provider:
+            call_context["provider"] = provider
+        
+        # Helper coroutine for LLM invocation
+        async def _extract_llm_call():
+            """Execute LLM call for entity extraction."""
+            invoke_config = None
+            if callbacks:
+                invoke_config = {"callbacks": callbacks}
+            return await model_with_tools.ainvoke(messages, config=invoke_config)
+        
+        # Use generic wrapper for flow control
+        response = await execute_llm_call_async(
+            _extract_llm_call,
+            call_context=call_context,
+        )
         
         # Extract token usage from response
         input_tokens, output_tokens, thinking_tokens = (0, 0, None)

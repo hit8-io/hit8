@@ -29,8 +29,14 @@ Doppler Secrets Reference
 
 from __future__ import annotations
 
+import asyncio
 import os
+import threading
 from typing import Any, Literal
+
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 ENVIRONMENT: Literal["dev", "stg", "prd"] = os.getenv("ENVIRONMENT", "dev")
 
@@ -44,14 +50,14 @@ CONSTANTS: dict[str, Any] = {
         {
             "MODEL_NAME": "gemini-2.5-pro",
             "PROVIDER": "vertex",
-            "LOCATION": "europe-west1",
+            "LOCATION": "global",
             "THINKING_LEVEL": None,
             "TEMPERATURE": 0.3,
         },
         {
             "MODEL_NAME": "gemini-2.5-flash",
             "PROVIDER": "vertex",
-            "LOCATION": "europe-west1",
+            "LOCATION": "global",
             "THINKING_LEVEL": None,
             "TEMPERATURE": 0.3,
         },
@@ -68,7 +74,7 @@ CONSTANTS: dict[str, Any] = {
             "LOCATION": "global",
             "THINKING_LEVEL": None,
             "TEMPERATURE": None,
-        }
+        },
     ],
     "CORS_ALLOW_CREDENTIALS": True,
     "ACCOUNT": "hit8",
@@ -80,6 +86,13 @@ CONSTANTS: dict[str, Any] = {
     "LLM_RETRY_STOP_AFTER_ATTEMPT": 10,
     "LLM_RETRY_MAX_INTERVAL": 60,
     "LLM_RETRY_INITIAL_INTERVAL": 1.0,
+    "REPORT_MAX_PARALLEL_WORKERS": 1,  # Process 1 chapter at a time (Pro models have strict 5 RPM limit)
+    "REPORT_LLM_CONCURRENCY": 1,  # Allow 1 concurrent LLM call for reports (Pro models: 5 RPM requires sequential processing)
+    "REPORT_CONSULT_LLM_CONCURRENCY": 2,  # Allow 2 concurrent consult calls (nested chat graphs)
+    "ANALYST_AGENT_MAX_ITERATIONS": 30,
+    "ANALYST_NODE_TIMEOUT": 120.0,  # Timeout for analyst node execution (seconds)
+    "ANALYST_NODE_MAX_RETRIES": 3,  # Maximum number of retries for failed analyst nodes (default: 3 retries = 4 total attempts)
+    "GRAPH_RECURSION_LIMIT": 50,  # Maximum number of graph steps to prevent infinite loops (agent -> tool -> agent -> ...)
     "LLM_PROVIDER": [
         {
             "PROVIDER": "vertex",
@@ -104,16 +117,44 @@ if ENVIRONMENT == "dev":
                 {
                     "MODEL_NAME": "gemini-2.0-flash-lite-001",
                     "PROVIDER": "vertex",
-                    "LOCATION": "europe-west1",
+                    "LOCATION": "global",
+                    "THINKING_LEVEL": None,
+                    "TEMPERATURE": 0.3,
+                },
+                # {
+                #     "MODEL_NAME": "llama3.1:8b",
+                #     "PROVIDER": "ollama",
+                #     "LOCATION": None,
+                #     "THINKING_LEVEL": None,
+                #     "TEMPERATURE": 0.3,
+                # },
+                {
+                    "MODEL_NAME": "gemini-2.5-pro",
+                    "PROVIDER": "vertex",
+                    "LOCATION": "global",
                     "THINKING_LEVEL": None,
                     "TEMPERATURE": 0.3,
                 },
                 {
-                    "MODEL_NAME": "llama3.1:8b",
-                    "PROVIDER": "ollama",
-                    "LOCATION": None,
+                    "MODEL_NAME": "gemini-2.5-flash",
+                    "PROVIDER": "vertex",
+                    "LOCATION": "global",
                     "THINKING_LEVEL": None,
                     "TEMPERATURE": 0.3,
+                },
+                {
+                    "MODEL_NAME": "gemini-3-pro-preview",
+                    "PROVIDER": "vertex",
+                    "LOCATION": "global",
+                    "THINKING_LEVEL": None,
+                    "TEMPERATURE": None,
+                },
+                {
+                    "MODEL_NAME": "gemini-3-flash-preview",
+                    "PROVIDER": "vertex",
+                    "LOCATION": "global",
+                    "THINKING_LEVEL": None,
+                    "TEMPERATURE": None,
                 },
             ],
             "LOG_FORMAT": "console",
@@ -154,3 +195,32 @@ if ENVIRONMENT == "prd":
             ],
         }
     )
+
+# ============================================================================
+# Flow Control Constants (Module Level)
+# ============================================================================
+# Centralized flow control constants for concurrency management.
+# Rate limiting and token management are now handled by LiteLLM Router.
+
+# Concurrency Control
+# Maximum number of concurrent analyst nodes (protects Cloud Run instance RAM/CPU)
+# LiteLLM Router handles rate limiting, but Pro models have strict 5 RPM limit
+# Flash models: 5M TPM, 60 RPM - can handle 3-5 concurrent requests
+# Pro models: 250k TPM, 5 RPM - must use 1 concurrent request to avoid 429 errors
+# Router's in-memory rate limiting may not perfectly prevent 429s, so we're conservative
+MAX_CONCURRENT_ANALYSTS: int = 1
+
+# Timeout Configuration
+# Timeout for analyst node execution (seconds)
+# Default: 90s (safe upper bound for complex LLM tasks with CoT)
+ANALYST_TIMEOUT_SECONDS: float = 90.0
+
+# Retry Configuration
+# Maximum number of retries for failed analyst nodes
+# Default: 3 retries = 4 total attempts
+# Note: LiteLLM Router handles most retries automatically
+ANALYST_MAX_RETRIES: int = 3
+
+# Global Flow Control Instances
+# Semaphore for concurrency control
+ANALYST_SEMAPHORE: asyncio.Semaphore = asyncio.Semaphore(MAX_CONCURRENT_ANALYSTS)

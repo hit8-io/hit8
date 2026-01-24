@@ -3,193 +3,565 @@ Shared utilities for LangGraph flows.
 """
 from __future__ import annotations
 
+import asyncio
 import json
-import sys
+import random
 import threading
-from typing import Any
+import time
+from typing import Any, Callable, Coroutine
 
 import structlog
 import httpx
 from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable
-from google.auth import credentials
-from google.oauth2 import service_account
+from litellm.exceptions import RateLimitError
 
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_google_genai.chat_models import ChatGoogleGenerativeAIError
+from langchain_community.chat_models import ChatLiteLLM
 from langchain_core.language_models import BaseChatModel
-from langchain_core.runnables.retry import RunnableRetry
+from langchain_core.messages import BaseMessage
 from langfuse import Langfuse
 from langfuse.langchain import CallbackHandler
+from tenacity import (
+    retry,
+    wait_random_exponential,
+    stop_after_attempt,
+    retry_if_exception_type,
+)
+import tiktoken
 
 from app import constants
 from app.config import settings
-
-# Optional import for dev mode only (Ollama)
-try:
-    from langchain_ollama import ChatOllama
-except ImportError:
-    ChatOllama = None  # type: ignore
+from app.llm_router import router
+from app.constants import (
+    ANALYST_SEMAPHORE,
+    ANALYST_TIMEOUT_SECONDS,
+    ANALYST_MAX_RETRIES,
+)
 
 logger = structlog.get_logger(__name__)
 
-ClientError = None
-try:
-    # Try direct import
-    from google.genai.errors import ClientError
-except ImportError:
-    # Try finding it in sys.modules
-    for name, module in sys.modules.items():
-        if "google" in name and "genai" in name and "errors" in name:
-            if hasattr(module, "ClientError"):
-                ClientError = getattr(module, "ClientError")
-                logger.info(f"Found ClientError in {name}")
-                break
 
-if ClientError is None:
-    logger.error("CRITICAL: Could not find ClientError class. Retries will fail.")
+# Application-level rate limiter for Pro models (strict 5 RPM = 12 seconds between requests)
+# LiteLLM Router's in-memory rate limiting isn't reliable for strict limits
+_pro_model_rate_limiter: dict[str, float] = {}  # model_name -> last_request_timestamp
+_pro_model_rate_limiter_lock: asyncio.Lock | None = None
+_pro_model_rate_limiter_lock_sync = threading.Lock()
+_PRO_MODEL_MIN_INTERVAL_SECONDS = 12.0  # 5 RPM = 60/5 = 12 seconds minimum between requests
 
 
-OAUTH_SCOPE_CLOUD_PLATFORM = "https://www.googleapis.com/auth/cloud-platform"
+def _get_pro_model_rate_limiter_lock() -> asyncio.Lock:
+    """Get or create the async lock for Pro model rate limiting. Lazy-initialized."""
+    global _pro_model_rate_limiter_lock
+    if _pro_model_rate_limiter_lock is None:
+        with _pro_model_rate_limiter_lock_sync:
+            if _pro_model_rate_limiter_lock is None:
+                _pro_model_rate_limiter_lock = asyncio.Lock()
+    return _pro_model_rate_limiter_lock
 
 
-def is_retryable_vertex_error(exception: Exception) -> bool:
-    """Return True if the exception looks like a Vertex 429/503 error.
+async def _wait_for_pro_model_rate_limit(model_name: str | None) -> None:
+    """Wait if needed to enforce 5 RPM limit for Pro models.
     
-    This function checks both exception types and error messages to catch
-    Vertex AI rate limiting errors that might be wrapped or have different formats.
+    Pro models (gemini-2.5-pro, gemini-3-pro-preview) have a strict 5 RPM limit.
+    This function ensures at least 12 seconds between requests for these models.
     
     Args:
-        exception: The exception to check
+        model_name: Model name to check (e.g., "gemini-2.5-pro")
+    """
+    if not model_name:
+        return
+    
+    # Only apply to Pro models
+    if "gemini-2.5-pro" not in model_name and "gemini-3-pro-preview" not in model_name:
+        return
+    
+    lock = _get_pro_model_rate_limiter_lock()
+    async with lock:
+        last_request_time = _pro_model_rate_limiter.get(model_name, 0.0)
+        current_time = time.time()
+        time_since_last = current_time - last_request_time
+        
+        if time_since_last < _PRO_MODEL_MIN_INTERVAL_SECONDS:
+            wait_time = _PRO_MODEL_MIN_INTERVAL_SECONDS - time_since_last
+            logger.debug(
+                "pro_model_rate_limit_wait",
+                model_name=model_name,
+                wait_time_seconds=wait_time,
+                time_since_last_request=time_since_last,
+            )
+            await asyncio.sleep(wait_time)
+        
+        # Update last request time
+        _pro_model_rate_limiter[model_name] = time.time()
+
+
+def _count_tokens_from_messages(messages: list[BaseMessage] | list[dict[str, Any]] | Any, model_name: str | None = None) -> int | None:
+    """Count input tokens from messages.
+    
+    Uses tiktoken to count tokens. For Vertex AI models, uses cl100k_base encoding
+    (same as GPT-4).
+    
+    Args:
+        messages: List of messages (BaseMessage objects or dicts) or single message
+        model_name: Optional model name to determine encoding (defaults to cl100k_base)
         
     Returns:
-        True if this exception should trigger a retry
+        Number of input tokens, or None if counting failed
     """
-    # Check exception types first
-    if isinstance(exception, (ResourceExhausted, ServiceUnavailable)):
-        return True
-    
-    # Check for ClientError (newer Google GenAI SDK)
     try:
-        if isinstance(exception, ClientError):
-            return True
-    except (NameError, AttributeError, TypeError):
-        # ClientError might not be defined
-        pass
+        # Use cl100k_base encoding (GPT-4/Vertex AI compatible)
+        # For most Vertex AI models, this is a reasonable approximation
+        encoding = tiktoken.get_encoding("cl100k_base")
+        
+        total_tokens = 0
+        
+        # Handle different message formats
+        if not isinstance(messages, list):
+            messages = [messages]
+        
+        for msg in messages:
+            # Extract content from message
+            content = ""
+            if isinstance(msg, dict):
+                content = str(msg.get('content', ''))
+            elif hasattr(msg, 'content'):
+                content = str(msg.content)
+            else:
+                content = str(msg)
+            
+            # Count tokens in content
+            if content:
+                content_tokens = len(encoding.encode(content))
+                total_tokens += content_tokens
+            else:
+                # If no content, log a warning (this shouldn't happen normally)
+                logger.debug(
+                    "token_counting_empty_content",
+                    message_type=type(msg).__name__,
+                )
+            
+            # Add overhead for message formatting (role, etc.)
+            # Rough estimate: ~4 tokens per message for formatting
+            # Note: This is a minimal overhead estimate
+            total_tokens += 4
+        
+        return total_tokens
+    except Exception as e:
+        logger.debug(
+            "token_counting_failed",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return None
+
+
+def _extract_messages_from_args(args: tuple[Any, ...], kwargs: dict[str, Any]) -> list[BaseMessage] | list[dict[str, Any]] | Any | None:
+    """Extract messages from coroutine arguments.
     
-    # Check for ChatGoogleGenerativeAIError (LangChain wrapper)
-    # This wraps ClientError, so we need to check the message
-    if isinstance(exception, ChatGoogleGenerativeAIError):
-        msg = str(exception)
-        if "429" in msg or "Resource exhausted" in msg or "Too Many Requests" in msg:
-            return True
+    Messages are typically the first positional argument or in 'messages' keyword.
     
-    # Check error message for 429/Resource exhausted indicators (fallback)
-    msg = str(exception)
-    return (
-        "429" in msg or
-        "Resource exhausted" in msg or
-        "Too Many Requests" in msg or
-        "503" in msg or
-        "Service Unavailable" in msg
-    )
+    Args:
+        args: Positional arguments passed to coroutine
+        kwargs: Keyword arguments passed to coroutine
+        
+    Returns:
+        Messages if found, None otherwise
+    """
+    # Try keyword argument first
+    if 'messages' in kwargs:
+        return kwargs['messages']
+    
+    # Try first positional argument (most common pattern: model.ainvoke(messages, config=...))
+    if args and len(args) > 0:
+        first_arg = args[0]
+        # Check if it looks like messages (list of BaseMessage or dicts)
+        if isinstance(first_arg, list):
+            return first_arg
+        # Could be a single message
+        if hasattr(first_arg, 'content') or isinstance(first_arg, dict):
+            return [first_arg]
+    
+    return None
+
 
 # Global singletons
 _langfuse_client: Langfuse | None = None
 _langfuse_lock = threading.Lock()
-_agent_model: BaseChatModel | None = None
-_agent_model_lock = threading.Lock()
-_tool_model: BaseChatModel | None = None
-_tool_model_lock = threading.Lock()
-_credentials: credentials.Credentials | None = None
-_project_id: str | None = None
-_credentials_lock = threading.Lock()
+_llm_cache: dict[tuple[Any, ...], BaseChatModel] = {}
+_llm_cache_lock = threading.Lock()
+_report_llm_semaphore: asyncio.Semaphore | None = None
+_report_llm_semaphore_lock = threading.Lock()
+_consult_llm_semaphore: asyncio.Semaphore | None = None
+_consult_llm_semaphore_lock = threading.Lock()
 
 
-def _get_vertex_credentials() -> tuple[credentials.Credentials, str]:
-    """Get or create Vertex AI credentials and project ID (cached)."""
-    global _credentials, _project_id
-    if _credentials is None or _project_id is None:
-        with _credentials_lock:
-            if _credentials is None or _project_id is None:
-                service_account_info = json.loads(settings.VERTEX_SERVICE_ACCOUNT)
-                _project_id = service_account_info["project_id"]
-                _credentials = service_account.Credentials.from_service_account_info(
-                    service_account_info,
-                    scopes=[OAUTH_SCOPE_CLOUD_PLATFORM],
-                )
-    return _credentials, _project_id
+def get_report_llm_semaphore() -> asyncio.Semaphore:
+    """Return a semaphore that limits concurrent report LLM calls (analyst + editor). Lazy-initialized."""
+    global _report_llm_semaphore
+    if _report_llm_semaphore is None:
+        with _report_llm_semaphore_lock:
+            if _report_llm_semaphore is None:
+                n = constants.CONSTANTS.get("REPORT_LLM_CONCURRENCY", 2)
+                _report_llm_semaphore = asyncio.Semaphore(max(n, 1))
+    return _report_llm_semaphore
 
 
-def _wrap_with_retry(runnable: Any, provider: str | None = None) -> Any:
-    """Wrap a runnable (model or agent) with retry logic based on provider.
+def get_consult_llm_semaphore() -> asyncio.Semaphore:
+    """Return a semaphore that limits concurrent consult_general_knowledge (nested chat graph) invocations. Lazy-initialized."""
+    global _consult_llm_semaphore
+    if _consult_llm_semaphore is None:
+        with _consult_llm_semaphore_lock:
+            if _consult_llm_semaphore is None:
+                n = constants.CONSTANTS.get("REPORT_CONSULT_LLM_CONCURRENCY", 1)
+                _consult_llm_semaphore = asyncio.Semaphore(max(n, 1))
+    return _consult_llm_semaphore
+
+
+
+
+def _gather_error_context(
+    exception: Exception | None,
+    semaphore: asyncio.Semaphore | None,
+    call_context: dict[str, Any],
+) -> dict[str, Any]:
+    """Gather comprehensive error context for detailed logging."""
+    context = dict(call_context)
+    
+    # Extract error information
+    if exception:
+        error_msg = str(exception)
+        context["error_message"] = error_msg
+        context["error_type"] = type(exception).__name__
+        context["error_repr"] = repr(exception)
+        
+        # Extract status code
+        status_code = None
+        if hasattr(exception, 'status_code'):
+            status_code = exception.status_code
+        elif hasattr(exception, 'status'):
+            status_code = getattr(exception, 'status', None)
+        context["status_code"] = status_code
+        
+        # Extract details from ResourceExhausted
+        if isinstance(exception, ResourceExhausted):
+            if hasattr(exception, 'message'):
+                context["resource_exhausted_message"] = str(exception.message)
+            if hasattr(exception, 'details'):
+                context["resource_exhausted_details"] = str(exception.details)
+    
+    # Add semaphore state
+    if semaphore is not None:
+        try:
+            context["semaphore_available"] = semaphore._value if hasattr(semaphore, '_value') else None
+        except Exception:
+            pass  # Don't fail if we can't get semaphore state
+    
+    return context
+
+
+async def execute_llm_call_async(
+    coro: Callable[..., Coroutine[Any, Any, Any]],
+    *args: Any,
+    semaphore: asyncio.Semaphore | None = None,
+    timeout_seconds: float | None = None,
+    max_retries: int | None = None,
+    retry_exception_types: tuple[type[Exception], ...] | None = None,
+    call_context: dict[str, Any] | None = None,
+    **kwargs: Any,
+) -> Any:
+    """
+    Simplified async wrapper for LLM calls.
+    
+    LiteLLM Router handles:
+    - Token quota (TPM)
+    - Rate limiting (RPM)
+    - Automatic retries (5xx errors)
+    - Cooldown on failures
+    
+    This wrapper only handles:
+    - Semaphore (concurrency control)
+    - Timeout (prevent stalling)
+    - Network-level retries (optional, LiteLLM handles most)
     
     Args:
-        runnable: The runnable to wrap (can be a model, bound model, or agent executor)
-        provider: LLM provider ("vertex" or "ollama"). If None, uses first LLM config.
+        coro: Async callable (coroutine function) to execute
+        *args: Positional arguments to pass to coro
+        semaphore: Optional semaphore for concurrency control (default: ANALYST_SEMAPHORE)
+        timeout_seconds: Optional timeout in seconds (default: 600.0 = 10 minutes)
+        max_retries: Optional max retry attempts (default: ANALYST_MAX_RETRIES, but LiteLLM handles most)
+        retry_exception_types: Optional tuple of exception types to retry (default: ResourceExhausted, ServiceUnavailable)
+        call_context: Optional dict with context for logging (e.g., {"file_id": "...", "node": "..."})
+        **kwargs: Keyword arguments to pass to coro
         
     Returns:
-        Runnable wrapped with retry logic
+        Result from coro execution
+        
+    Raises:
+        asyncio.TimeoutError: If execution exceeds timeout
+        Exception: If all retries are exhausted or non-retryable exception occurs
     """
-    # Get provider from config if not provided
-    if provider is None:
-        llm_config = _get_first_available_llm_config()
-        provider = llm_config["PROVIDER"]
+    # Use defaults from constants if not provided
+    if semaphore is None:
+        semaphore = ANALYST_SEMAPHORE
     
-    if provider == "ollama":
-        # Ollama: retry on connection errors and timeouts
-        return RunnableRetry(
-            bound=runnable,
-            retry_exception_types=(
-                ConnectionError,
-                ConnectionRefusedError,
-                TimeoutError,
-                httpx.ConnectError,
-                httpx.ReadTimeout,
-                httpx.HTTPError,  # Catch-all for other httpx errors
-            ),
-            max_attempt_number=constants.CONSTANTS.get("LLM_RETRY_STOP_AFTER_ATTEMPT", 10),
-            wait_exponential_jitter=True,
-            exponential_jitter_params={
-                "initial": constants.CONSTANTS.get("LLM_RETRY_INITIAL_INTERVAL", 1.0),
-                "max": constants.CONSTANTS.get("LLM_RETRY_MAX_INTERVAL", 60),
-                "multiplier": 2,
-            },
+    call_context = call_context or {}
+    
+    # Calculate dynamic timeout based on input tokens if available
+    # If timeout_seconds is None, calculate based on input tokens
+    if timeout_seconds is None:
+        input_tokens = call_context.get("input_tokens")
+        if input_tokens and input_tokens > 0:
+            # Dynamic timeout calculation (realistic estimates based on Gemini performance):
+            # - Base timeout: 60 seconds (1 minute) for small requests
+            # - Input processing: ~0.002 seconds per token (2ms per token - realistic for Gemini)
+            # - Output generation: ~0.015 seconds per expected output token (15ms per token - realistic for Gemini)
+            #   (estimate 20% of input tokens as output)
+            # - Buffer: 60 seconds (1 minute) for network/processing overhead
+            # - Rate limiter wait: 12 seconds (for Pro models)
+            # - Safety margin: 2x multiplier for retries and variability
+            
+            estimated_output_tokens = int(input_tokens * 0.2)  # Estimate 20% output
+            input_processing_time = input_tokens * 0.002  # ~2ms per input token (realistic)
+            output_generation_time = estimated_output_tokens * 0.015  # ~15ms per output token (realistic)
+            base_timeout = 60.0  # Base 1 minute
+            buffer = 60.0  # 1 minute buffer
+            rate_limiter_buffer = 12.0  # Rate limiter wait time
+            
+            # Calculate base timeout
+            calculated_timeout = base_timeout + input_processing_time + output_generation_time + buffer + rate_limiter_buffer
+            
+            # Apply 2x safety margin for retries and variability
+            calculated_timeout = calculated_timeout * 2.0
+            
+            # Cap at 30 minutes (1800s) - realistic max for even very large requests
+            # Minimum 2 minutes (120s) for very small inputs
+            timeout_seconds = max(120.0, min(calculated_timeout, 1800.0))
+            
+            logger.debug(
+                "dynamic_timeout_calculated",
+                input_tokens=input_tokens,
+                estimated_output_tokens=estimated_output_tokens,
+                calculated_timeout=calculated_timeout,
+                final_timeout=timeout_seconds,
+                **{k: v for k, v in call_context.items() if k != "input_tokens"},
+            )
+        else:
+            # Default timeout: 10 minutes (600s) if no token info available
+            timeout_seconds = 600.0
+    
+    # Default retry configuration (LiteLLM handles most retries, this is for network errors)
+    if max_retries is None:
+        max_retries = ANALYST_MAX_RETRIES
+    
+    if retry_exception_types is None:
+        # Include RateLimitError from LiteLLM for proper retry handling
+        retry_exception_types = (ResourceExhausted, ServiceUnavailable, RateLimitError)
+    
+    # Simple retry wrapper for network-level errors (LiteLLM handles API-level retries)
+    async def _before_retry_sleep(retry_state):
+        """Handle retry sleep with logging."""
+        exception = retry_state.outcome.exception() if retry_state.outcome else None
+        if exception:
+            _log_retry_attempt(retry_state, call_context)
+    
+    @retry(
+        wait=wait_random_exponential(multiplier=2, max=120),
+        stop=stop_after_attempt(max_retries),
+        retry=retry_if_exception_type(retry_exception_types),
+        reraise=True,
+        before_sleep=_before_retry_sleep,
+        after=lambda retry_state: _log_retry_success(retry_state, call_context),
+    )
+    async def _execute():
+        """Execute coro. LiteLLM Router handles rate limiting and retries."""
+        logger.debug(
+            "llm_call_executing",
+            **call_context,
         )
-    elif provider == "vertex":
-        # Vertex AI: retry on 429 errors that slip through internal retries
-        # LangChain wraps ClientError into ChatGoogleGenerativeAIError, so we need to catch both
-        # Build exception types list with all known Vertex AI error types
-        exception_types = [
-            ResourceExhausted,
-            ServiceUnavailable,
-            ChatGoogleGenerativeAIError,  # LangChain wrapper that contains 429 errors
-        ]
+        result = await coro(*args, **kwargs)
+        logger.debug(
+            "llm_call_completed",
+            **call_context,
+        )
+        return result
+    
+    # Semaphore (concurrency control)
+    sem_wait_start = time.time()
+    
+    # Log semaphore state before acquisition
+    semaphore_info = {}
+    if hasattr(semaphore, '_value'):
+        semaphore_info["available_slots"] = semaphore._value
+    if hasattr(semaphore, '_waiters') and semaphore._waiters is not None:
+        semaphore_info["waiting_count"] = len(semaphore._waiters)
+    if hasattr(semaphore, '_initial_value'):
+        semaphore_info["total_slots"] = semaphore._initial_value
+    
+    logger.debug(
+        "llm_semaphore_acquiring",
+        semaphore_info=semaphore_info,
+        **call_context,
+    )
+    
+    async with semaphore:
+        sem_wait_time = time.time() - sem_wait_start
+        if sem_wait_time > 0.1:  # Only log if we actually waited
+            updated_info = {}
+            if hasattr(semaphore, '_value'):
+                updated_info["available_slots_after"] = semaphore._value
+            if hasattr(semaphore, '_waiters') and semaphore._waiters is not None:
+                updated_info["waiting_count_after"] = len(semaphore._waiters)
+            
+            logger.warning(
+                "llm_semaphore_waiting",
+                wait_time_seconds=sem_wait_time,
+                semaphore_info_before=semaphore_info,
+                semaphore_info_after=updated_info,
+                **call_context,
+            )
+        else:
+            updated_info = {}
+            if hasattr(semaphore, '_value'):
+                updated_info["available_slots_after"] = semaphore._value
+            if hasattr(semaphore, '_waiters') and semaphore._waiters is not None:
+                updated_info["waiting_count_after"] = len(semaphore._waiters)
+            
+            logger.debug(
+                "llm_semaphore_acquired",
+                semaphore_info_before=semaphore_info,
+                semaphore_info_after=updated_info,
+                **call_context,
+            )
         
-        # Add ClientError if available (the underlying error type)
-        if ClientError is not None:
-            exception_types.append(ClientError)
+        # Enforce Pro model rate limit (5 RPM = 12 seconds between requests)
+        # This is in addition to LiteLLM Router's rate limiting
+        model_name = call_context.get("model_name") or call_context.get("parent_model")
+        await _wait_for_pro_model_rate_limit(model_name)
         
-        # Manually construct RunnableRetry with exception types
-        # The custom filter function is_retryable_vertex_error() is available
-        # for future use or debugging, but RunnableRetry uses exception types directly
-        return RunnableRetry(
-            bound=runnable,
-            retry_exception_types=tuple(exception_types),
-            max_attempt_number=constants.CONSTANTS.get("LLM_RETRY_STOP_AFTER_ATTEMPT", 10),
-            wait_exponential_jitter=True,
-            exponential_jitter_params={
-                "initial": constants.CONSTANTS.get("LLM_RETRY_INITIAL_INTERVAL", 1.0),
-                "max": constants.CONSTANTS.get("LLM_RETRY_MAX_INTERVAL", 60),
-                "multiplier": 2,
-            },
+        # Execute with timeout and optional retry
+        try:
+            return await asyncio.wait_for(
+                _execute(),
+                timeout=timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            error_details = _gather_error_context(
+                exception=None,
+                semaphore=semaphore,
+                call_context=call_context,
+            )
+            error_details["timeout_seconds"] = timeout_seconds
+            
+            logger.error(
+                "llm_call_timeout",
+                **error_details,
+            )
+            raise
+        except retry_exception_types as e:
+            error_details = _gather_error_context(
+                exception=e,
+                semaphore=semaphore,
+                call_context=call_context,
+            )
+            
+            is_rate_limit = (
+                error_details.get("status_code") == 429 or
+                "429" in error_details.get("error_message", "") or
+                "rate limit" in error_details.get("error_message", "").lower() or
+                "resource exhausted" in error_details.get("error_message", "").lower() or
+                isinstance(e, ResourceExhausted)
+            )
+            
+            if is_rate_limit:
+                logger.error(
+                    "llm_rate_limit_error_detected",
+                    **error_details,
+                )
+            else:
+                logger.error(
+                    "llm_call_error",
+                    **error_details,
+                )
+            raise
+
+
+def _log_retry_attempt(retry_state, call_context: dict[str, Any]):
+    """Log retry attempt with extensive details.
+    
+    This logs INTERNAL retries (handled by tenacity within execute_llm_call_async).
+    Graph-level retries are logged separately in batch_processor_node.
+    """
+    attempt = retry_state.attempt_number
+    exception = retry_state.outcome.exception() if retry_state.outcome else None
+    wait_time = retry_state.next_action.sleep if hasattr(retry_state, 'next_action') else None
+    
+    error_msg = str(exception) if exception else "Unknown error"
+    status_code = None
+    if exception and hasattr(exception, 'status_code'):
+        status_code = exception.status_code
+    elif exception and hasattr(exception, 'status'):
+        status_code = getattr(exception, 'status', None)
+    
+    is_rate_limit = (
+        status_code == 429 or
+        "429" in error_msg or
+        "rate limit" in error_msg.lower() or
+        "resource exhausted" in error_msg.lower() or
+        isinstance(exception, ResourceExhausted) if exception else False
+    )
+    
+    # input_tokens is already in call_context, so we don't need to pass it separately
+    if is_rate_limit:
+        logger.warning(
+            "llm_rate_limit_retry_internal",
+            retry_type="internal",  # Internal retry (tenacity)
+            retry_attempt=attempt,
+            max_retries=retry_state.retry_object.stop.max_attempt_number if hasattr(retry_state.retry_object, 'stop') else None,
+            wait_time_seconds=wait_time,
+            error_message=error_msg,
+            error_type=type(exception).__name__ if exception else "Unknown",
+            **call_context,
         )
     else:
-        # Unknown provider - return unwrapped
         logger.warning(
-            "unknown_llm_provider",
-            provider=provider,
+            "llm_call_retry_internal",
+            retry_type="internal",  # Internal retry (tenacity)
+            retry_attempt=attempt,
+            wait_time_seconds=wait_time,
+            error_message=error_msg,
+            error_type=type(exception).__name__ if exception else "Unknown",
+            **call_context,
         )
-        return runnable
+
+
+def _log_retry_success(retry_state, call_context: dict[str, Any]):
+    """Log successful completion after internal retries.
+    
+    This logs success after INTERNAL retries (handled by tenacity).
+    Graph-level retry success is logged separately in batch_processor_node.
+    """
+    if retry_state.attempt_number > 1:
+        logger.info(
+            "llm_call_retry_success_internal",
+            retry_type="internal",  # Internal retry (tenacity)
+            total_attempts=retry_state.attempt_number,
+            **call_context,
+        )
+
+
+def get_provider_for_model(model_name: str | None = None) -> str:
+    """Get provider name for a given model name.
+    
+    Args:
+        model_name: Optional model name. If None, uses first available model.
+        
+    Returns:
+        Provider name ("vertex" or "ollama")
+    """
+    try:
+        llm_config = _get_first_available_llm_config(model_name=model_name)
+        return llm_config.get("PROVIDER", "vertex")
+    except Exception:
+        return "vertex"  # Default to vertex on error
 
 
 def _get_first_available_llm_config(model_name: str | None = None) -> dict[str, Any]:
@@ -253,112 +625,84 @@ def _create_model(
     log_name: str,
     max_output_tokens: int | None = None,
 ) -> BaseChatModel:
-    """Create a ChatModel instance (Vertex AI or Ollama).
+    """Create a ChatModel instance using LiteLLM Router.
     
     Args:
-        model_name: Model name/identifier
-        provider: LLM provider ("vertex" or "ollama")
-        location: Location/region for Vertex AI (None for Ollama)
-        thinking_level: Optional thinking level for Vertex AI models
+        model_name: Model name/identifier (must match router model_name)
+        provider: LLM provider ("vertex" or "ollama") - kept for compatibility, not used
+        location: Location/region - kept for compatibility, not used (router handles it)
+        thinking_level: Optional thinking level - kept for compatibility, not used
         temperature: Optional temperature override
         log_name: Name for logging purposes
-        max_output_tokens: Optional max output tokens (for Vertex AI) or num_predict (for Ollama)
+        max_output_tokens: Optional max output tokens
     """
-    model: BaseChatModel
+    # Map model names to LiteLLM router model names
+    # Router uses model_name from model_list configuration
+    router_model_name = model_name
     
-    # Switch provider based on config
-    if provider == "ollama":
-        if ChatOllama is None:
-            raise ImportError(
-                "langchain-ollama is required for Ollama provider. "
-                "Install it with: uv add --dev langchain-ollama"
-            )
-        
-        # Get provider config, fallback to legacy settings for backward compatibility
-        provider_config = _get_provider_config("ollama")
-        ollama_base_url = provider_config.get("OLLAMA_BASE_URL") or settings.OLLAMA_BASE_URL
-        ollama_keep_alive = provider_config.get("OLLAMA_KEEP_ALIVE") or settings.OLLAMA_KEEP_ALIVE or "0"
-        ollama_num_ctx = provider_config.get("OLLAMA_NUM_CTX") or settings.OLLAMA_NUM_CTX
-        
-        if not ollama_base_url:
-            raise ValueError("OLLAMA_BASE_URL is required when provider is 'ollama'")
-        
-        chat_kwargs: dict[str, Any] = {
-            "model": model_name,
-            "temperature": temperature if temperature is not None else 0.0,
-            "base_url": ollama_base_url,
-            "keep_alive": ollama_keep_alive,  # Configurable: "0" unloads immediately, "5m" keeps for 5 minutes, etc.
-        }
-        
-        # Only set num_ctx if configured (optional parameter)
-        if ollama_num_ctx is not None:
-            chat_kwargs["num_ctx"] = ollama_num_ctx
-        
-        # Only set num_predict if max_output_tokens is provided (otherwise use ChatOllama default)
-        if max_output_tokens is not None:
-            chat_kwargs["num_predict"] = max_output_tokens
-        
-        model = ChatOllama(**chat_kwargs)
-        
-        log_data = {
-            "model": model_name,
-            "url": ollama_base_url,
-        }
-        if ollama_num_ctx is not None:
-            log_data["num_ctx"] = ollama_num_ctx
-        if max_output_tokens is not None:
-            log_data["num_predict"] = max_output_tokens
-        
-        logger.info(f"{log_name}_initialized_ollama", **log_data)
-    elif provider == "vertex":
-        # Vertex AI Logic
-        creds, project_id = _get_vertex_credentials()
-        
-        model_kwargs: dict[str, Any] = {"provider": "vertexai"}
-        if thinking_level is not None:
-            model_kwargs["thinking_level"] = thinking_level
-        
-        # Get provider config, fallback to legacy settings for backward compatibility
-        provider_config = _get_provider_config("vertex")
-        vertex_ai_max_retries = provider_config.get("VERTEX_AI_MAX_RETRIES") or constants.CONSTANTS.get("VERTEX_AI_MAX_RETRIES", 6)
-        
-        # temperature and max_output_tokens should be passed directly to ChatGoogleGenerativeAI, not in model_kwargs
-        # Use location from config, fallback to settings for backward compatibility
-        vertex_location = location or settings.VERTEX_AI_LOCATION or "europe-west1"
-        
-        model_kwargs_for_constructor: dict[str, Any] = {
-            "model": model_name,
-            "model_kwargs": model_kwargs,
-            "project": project_id,
-            "location": vertex_location,
-            "credentials": creds,
-            "max_retries": vertex_ai_max_retries,
-        }
-        
-        # Add temperature as a direct parameter if provided
-        if temperature is not None:
-            model_kwargs_for_constructor["temperature"] = temperature
-        
-        # Add max_output_tokens as a direct parameter if provided (for long reports)
-        if max_output_tokens is not None:
-            model_kwargs_for_constructor["max_output_tokens"] = max_output_tokens
-        
-        model = ChatGoogleGenerativeAI(**model_kwargs_for_constructor)
-        
-        log_data = {
-            "model": model_name,
-            "max_retries": constants.CONSTANTS.get("VERTEX_AI_MAX_RETRIES", 6),
-        }
-        if thinking_level is not None:
-            log_data["thinking_level"] = thinking_level
-        elif temperature is not None:
-            log_data["temperature"] = temperature
-        if max_output_tokens is not None:
-            log_data["max_output_tokens"] = max_output_tokens
-        
-        logger.info(f"{log_name}_initialized", **log_data)
+    # Handle thinking models (Gemini 3.0) - set temperature to None
+    if "gemini-3" in model_name or "preview" in model_name:
+        temperature = None
+    
+    # Build model_kwargs
+    model_kwargs: dict[str, Any] = {
+        "user": "hit8-analyst"  # Tag for logging
+    }
+    
+    # Add max_output_tokens if provided
+    if max_output_tokens is not None:
+        model_kwargs["max_tokens"] = max_output_tokens
+    
+    # Create ChatLiteLLM with router
+    model = ChatLiteLLM(
+        router=router,
+        model=router_model_name,  # Maps to 'model_name' in router list
+        temperature=temperature,
+        max_retries=0,  # Disable internal retries; Router handles it
+        model_kwargs=model_kwargs,
+    )
+    
+    logger.info(
+        f"{log_name}_initialized_litellm",
+        model=router_model_name,
+        temperature=temperature,
+        max_output_tokens=max_output_tokens,
+    )
     
     return model
+
+
+def get_llm(
+    *,
+    model_name: str | None = None,
+    thinking_level: str | None = None,
+    temperature: float | None = None,
+    max_output_tokens: int | None = None,
+    log_name: str = "llm",
+) -> BaseChatModel:
+    """
+    Get or create a cached ChatModel by (model_name, thinking_level, temperature, max_output_tokens).
+    All LLM vending goes through this singleton cache.
+    """
+    llm_config = _get_first_available_llm_config(model_name=model_name)
+    resolved_model_name = llm_config["MODEL_NAME"]
+    resolved_thinking = thinking_level or llm_config.get("THINKING_LEVEL") or constants.CONSTANTS.get("LLM_THINKING_LEVEL")
+    resolved_temp = temperature if temperature is not None else (llm_config.get("TEMPERATURE") if llm_config.get("TEMPERATURE") is not None else constants.CONSTANTS.get("LLM_TEMPERATURE"))
+    key = (resolved_model_name, resolved_thinking, resolved_temp, max_output_tokens)
+    with _llm_cache_lock:
+        if key in _llm_cache:
+            return _llm_cache[key]
+        m = _create_model(
+            model_name=resolved_model_name,
+            provider=llm_config["PROVIDER"],
+            location=llm_config.get("LOCATION"),
+            thinking_level=resolved_thinking,
+            temperature=resolved_temp,
+            max_output_tokens=max_output_tokens,
+            log_name=log_name,
+        )
+        _llm_cache[key] = m
+        return m
 
 
 def get_langfuse_client() -> Langfuse | None:
@@ -402,79 +746,31 @@ def get_agent_model(
     model_name: str | None = None,
 ) -> BaseChatModel:
     """
-    Get or create cached model for agent (shared across flows).
-    
-    Args:
-        thinking_level: Optional override. If None, uses LLM_THINKING_LEVEL from constants.
-        temperature: Optional override. If None, uses LLM_TEMPERATURE from constants.
-            Only used if thinking_level is not set.
-        max_output_tokens: Optional max output tokens. If provided, creates a new model instance
-            instead of using the cached one (for cases like editor node that need higher limits).
-        model_name: Optional model name to use. If provided, creates a new model instance
-            instead of using the cached one (for user-selected models).
+    Get or create cached model for agent (shared across flows). Delegates to get_llm.
     """
-    # Get LLM config (either specific model or first available)
-    llm_config = _get_first_available_llm_config(model_name=model_name)
-    
-    # If max_output_tokens or model_name is specified, create a new model instance (don't use cache)
-    # This allows editor node to use higher output limits and user-selected models
-    if max_output_tokens is not None or model_name is not None:
-        final_thinking_level = thinking_level or llm_config.get("THINKING_LEVEL") or constants.CONSTANTS.get("LLM_THINKING_LEVEL")
-        final_temperature = temperature or llm_config.get("TEMPERATURE") or constants.CONSTANTS.get("LLM_TEMPERATURE")
-        return _create_model(
-            model_name=llm_config["MODEL_NAME"],
-            provider=llm_config["PROVIDER"],
-            location=llm_config.get("LOCATION"),
-            thinking_level=final_thinking_level,
-            temperature=final_temperature,
-            log_name="agent_model",
-            max_output_tokens=max_output_tokens,
-        )
-    
-    # Use cached model for normal cases
-    global _agent_model
-    if _agent_model is None:
-        with _agent_model_lock:
-            if _agent_model is None:
-                final_thinking_level = thinking_level or llm_config.get("THINKING_LEVEL") or constants.CONSTANTS.get("LLM_THINKING_LEVEL")
-                final_temperature = temperature or llm_config.get("TEMPERATURE") or constants.CONSTANTS.get("LLM_TEMPERATURE")
-                _agent_model = _create_model(
-                    model_name=llm_config["MODEL_NAME"],
-                    provider=llm_config["PROVIDER"],
-                    location=llm_config.get("LOCATION"),
-                    thinking_level=final_thinking_level,
-                    temperature=final_temperature,
-                    log_name="agent_model",
-                )
-    return _agent_model
+    return get_llm(
+        model_name=model_name,
+        thinking_level=thinking_level,
+        temperature=temperature,
+        max_output_tokens=max_output_tokens,
+        log_name="agent_model",
+    )
 
 
 def get_tool_model(
     thinking_level: str | None = None,
     temperature: float | None = None,
+    model_name: str | None = None,
 ) -> BaseChatModel:
     """
-    Get or create cached model for tool operations.
-    
-    Args:
-        thinking_level: Optional override. If None, uses LLM_THINKING_LEVEL from constants.
-        temperature: Optional override. If None, uses LLM_TEMPERATURE from constants.
-            Only used if thinking_level is not set.
+    Get or create cached model for tool operations. Delegates to get_llm.
+    If model_name is None, uses the first available LLM config (caller can pass
+    _current_model_name.get() to align with the parent flow's model).
     """
-    global _tool_model
-    if _tool_model is None:
-        with _tool_model_lock:
-            if _tool_model is None:
-                llm_config = _get_first_available_llm_config()
-                final_thinking_level = thinking_level or llm_config.get("THINKING_LEVEL") or constants.CONSTANTS.get("LLM_THINKING_LEVEL")
-                final_temperature = temperature or llm_config.get("TEMPERATURE") or constants.CONSTANTS.get("LLM_TEMPERATURE")
-                _tool_model = _create_model(
-                    model_name=llm_config["MODEL_NAME"],
-                    provider=llm_config["PROVIDER"],
-                    location=llm_config.get("LOCATION"),
-                    thinking_level=final_thinking_level,
-                    temperature=final_temperature,
-                    log_name="tool_model",
-                )
-    return _tool_model
+    return get_llm(
+        model_name=model_name,
+        thinking_level=thinking_level,
+        temperature=temperature,
+        log_name="tool_model",
+    )
 

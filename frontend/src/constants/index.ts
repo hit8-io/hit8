@@ -1,6 +1,6 @@
 // Timeouts and delays (in milliseconds)
-export const STREAM_TIMEOUT = 600000 // 600 seconds (10 minutes) for long-running reports
-export const STREAM_INACTIVITY_TIMEOUT = 60000 // 60 seconds (increased for report generation)
+export const STREAM_TIMEOUT = 7200000 // 7200 seconds (2 hours) for long-running reports with retries and rate limiting
+export const STREAM_INACTIVITY_TIMEOUT = 1200000 // 1200 seconds (20 minutes) - increased to handle long LLM calls (up to 1 hour per chapter) and rate limiting delays
 export const CHAT_CLEANUP_DELAY = 1000 // 1 second
 export const POPOVER_CLOSE_DELAY = 100 // 100ms
 export const ERROR_AUTO_DISMISS_DELAY = 10000 // 10 seconds
@@ -23,4 +23,3 @@ export const CONTENT_PREVIEW_LENGTH = 100
 export const CONTENT_PREVIEW_SHORT = 60
 export const ARGS_PREVIEW_LENGTH = 100
 export const TOOL_CALL_PREVIEW_LENGTH = 30
-

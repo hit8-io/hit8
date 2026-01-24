@@ -13,7 +13,8 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Overwrite
 
 from app.api.checkpointer import get_checkpointer
-from app.flows.common import get_agent_model, get_langfuse_handler, _wrap_with_retry
+from app.api.observability import _current_model_name
+from app.flows.common import get_agent_model, get_langfuse_handler, execute_llm_call_async
 from app.flows.opgroeien.poc import constants as flow_constants
 from app.flows.opgroeien.poc.constants import (
     NODE_AGENT,
@@ -58,30 +59,36 @@ class AgentState(TypedDict):
 
 
 
-def agent_node(state: AgentState, config: Optional[RunnableConfig] = None) -> AgentState:
+async def agent_node(state: AgentState, config: RunnableConfig | None = None) -> AgentState:
     """Agent node that processes messages and may call tools."""
     # Extract model_name from config if provided
+    # Convert config to dict first (RunnableConfig can be converted to dict)
+    config_dict: dict[str, Any] = dict(config) if config is not None else {}
     model_name = None
-    if config:
-        # Try multiple ways to access configurable
-        if hasattr(config, "configurable"):
-            if isinstance(config.configurable, dict):
-                model_name = config.configurable.get("model_name")
-            elif hasattr(config.configurable, "get"):
-                model_name = config.configurable.get("model_name")
-        # Also try accessing as dict
-        if not model_name and isinstance(config, dict):
-            configurable = config.get("configurable", {})
-            if isinstance(configurable, dict):
-                model_name = configurable.get("model_name")
+    if config_dict:
+        configurable = config_dict.get("configurable", {})
+        if isinstance(configurable, dict):
+            model_name = configurable.get("model_name")
+        # Fallback: try accessing as attribute if config is not a dict but has configurable
+        if not model_name and hasattr(config, "configurable"):
+            configurable_attr = getattr(config, "configurable")
+            if isinstance(configurable_attr, dict):
+                model_name = configurable_attr.get("model_name")
+            elif hasattr(configurable_attr, "get"):
+                model_name = configurable_attr.get("model_name")
+    # Fallback: if config doesn't have model_name, try reading from context var
+    # (useful when graph is invoked from tools where config may not propagate)
+    if not model_name:
+        model_name = _current_model_name.get()
     
+    # Set context so tool nodes (e.g. extract_entities) use the same model; do not reset
+    # (tools run after return; next agent_node overwrites)
+    _current_model_name.set(model_name)
     model = get_agent_model(model_name=model_name)
     tools = get_all_tools()
     
     # Bind tools to model
     model_with_tools = model.bind_tools(tools)
-    # Apply retry wrapper after binding tools
-    model_with_tools = _wrap_with_retry(model_with_tools)
     
     # Get messages from state
     all_messages = state["messages"]
@@ -90,7 +97,7 @@ def agent_node(state: AgentState, config: Optional[RunnableConfig] = None) -> Ag
     # This keeps recent conversation pairs and truncates large tool results
     messages = window_messages(all_messages)
     
-    # Log all messages in state for debugging
+    # Log all messages in state for monitoring
     logger.info(
         "agent_node_state_messages",
         original_count=len(all_messages),
@@ -139,16 +146,50 @@ def agent_node(state: AgentState, config: Optional[RunnableConfig] = None) -> Ag
                 )
                 return {"messages": []}  # Return empty to not add anything to state
     
-    # Invoke model with messages
+    # Get provider from model config
+    provider = None
+    if model_name:
+        from app.flows.common import get_provider_for_model
+        provider = get_provider_for_model(model_name=model_name)
+    
+    # Prepare call context for logging
+    call_context = {
+        "node": "agent_node",
+        "flow": "chat",
+        "message_count": len(messages),
+    }
+    if model_name:
+        call_context["model_name"] = model_name
+    if provider:
+        call_context["provider"] = provider
+    
+    # Helper coroutine for LLM invocation
+    async def _agent_llm_call():
+        """Execute LLM call for agent node."""
+        return await model_with_tools.ainvoke(messages, config=config_dict)
+    
+    # Use generic wrapper for flow control
     try:
-        response = model_with_tools.invoke(messages, config=config_dict)
+        response = await execute_llm_call_async(
+            _agent_llm_call,
+            call_context=call_context,
+        )
     except Exception as e:
+        # Count input tokens for error logging
+        input_tokens = None
+        try:
+            from app.flows.common import _count_tokens_from_messages
+            input_tokens = _count_tokens_from_messages(messages, model_name=model_name)
+        except Exception:
+            pass  # Don't fail on token counting errors
+        
         logger.error(
             "model_invoke_failed",
             error=str(e),
             error_type=type(e).__name__,
             message_count=len(messages),
             message_types=[type(m).__name__ for m in messages],
+            input_tokens=input_tokens,
         )
         raise
     

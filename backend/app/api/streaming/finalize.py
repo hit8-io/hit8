@@ -152,10 +152,12 @@ def finalize_stream(
         )
 
 
-def extract_final_response(config: dict[str, Any], thread_id: str, org: str, project: str) -> str | None:
+async def extract_final_response(config: dict[str, Any], thread_id: str, org: str, project: str) -> str | None:
     """Extract final response from graph state."""
     try:
-        final_state = get_graph(org, project).get_state(config)
+        import asyncio
+        # Use asyncio.to_thread to avoid AsyncPostgresSaver sync call error
+        final_state = await asyncio.to_thread(get_graph(org, project).get_state, config)
         if hasattr(final_state, "values") and "messages" in final_state.values:
             ai_message = extract_ai_message(final_state.values["messages"])
             return extract_message_content(ai_message.content)

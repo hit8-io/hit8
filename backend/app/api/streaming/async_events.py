@@ -53,6 +53,7 @@ logger = structlog.get_logger(__name__)
 # Constants
 SNAPSHOT_THROTTLE_INTERVAL = 12.0  # seconds - emit snapshot every 12s during long tasks
 LONG_RUNNING_TASK_THRESHOLD = 20.0  # seconds - task is considered long-running after 20s
+REPORT_KEEPALIVE_INTERVAL = 30.0  # seconds - send keepalive snapshot every 30s for report flows (even with no active tasks)
 DEFAULT_PREVIEW_LENGTH = 150  # characters for default preview truncation
 CHAPTER_PREVIEW_LENGTH = 200  # characters for chapter preview truncation
 TOOL_RESULT_PREVIEW_LENGTH = 500  # characters for tool result preview truncation
@@ -331,8 +332,31 @@ async def _process_event_loop(
             run_id = _extract_run_id(event)
             
             # Check if we need to emit a throttled snapshot (for long tasks)
+            # For report flow, also send keepalive events during long waits (e.g., retries)
             current_time = time.time()
-            if _should_emit_throttled_snapshot(current_time, stream_state.last_snapshot_time, stream_state.active_tasks):
+            time_since_last_snapshot = current_time - stream_state.last_snapshot_time
+            
+            # For report flow: send keepalive/snapshot every REPORT_KEEPALIVE_INTERVAL seconds even if no active tasks
+            # This prevents frontend timeout during long retry periods and rate limiting delays
+            # With 10-minute frontend timeout, 30s keepalive provides 20x safety margin
+            if flow == "report" and time_since_last_snapshot >= REPORT_KEEPALIVE_INTERVAL:
+                # Send a snapshot to keep the stream alive, even if no active tasks
+                stream_state.snapshot_seq, stream_state.event_seq, snapshot = await _emit_throttled_snapshot(
+                    graph, config, thread_id, flow, stream_state.visited_nodes,
+                    stream_state.active_tasks, stream_state.task_history,
+                    stream_state.snapshot_seq, stream_state.event_seq
+                )
+                if snapshot:
+                    yield _create_envelope_event(
+                        event_type=EVENT_STATE_SNAPSHOT,
+                        thread_id=thread_id,
+                        flow=flow,
+                        event_seq=stream_state.event_seq,
+                        payload=snapshot,
+                    )
+                    stream_state.last_snapshot_time = current_time
+            elif _should_emit_throttled_snapshot(current_time, stream_state.last_snapshot_time, stream_state.active_tasks):
+                # Normal throttled snapshot logic (for active tasks)
                 stream_state.snapshot_seq, stream_state.event_seq, snapshot = await _emit_throttled_snapshot(
                     graph, config, thread_id, flow, stream_state.visited_nodes,
                     stream_state.active_tasks, stream_state.task_history,

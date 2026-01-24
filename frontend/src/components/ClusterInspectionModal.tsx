@@ -30,7 +30,7 @@ interface ClusterInspectionModalProps {
   taskHistory?: TaskInfo[]
   chapters?: string[]
   chaptersByFileId?: Record<string, string>
-  clusterStatus?: Record<string, { status: string; started_at?: string; ended_at?: string; error?: string }>
+  clusterStatus?: Record<string, { status: string; started_at?: string; ended_at?: string; error?: string; retry_count?: number }>
 }
 
 export function ClusterInspectionModal({
@@ -141,19 +141,40 @@ export function ClusterInspectionModal({
                   <span className="font-medium">Procedures:</span>
                   <span>{procedureCount}</span>
                 </div>
-                {status && (
-                  <div className="flex justify-between text-xs">
-                    <span className="font-medium">Status:</span>
-                    <span className={`font-semibold ${
-                      status.status === 'completed' ? 'text-green-600' :
-                      status.status === 'active' ? 'text-blue-600' :
-                      status.status === 'error' ? 'text-red-600' :
-                      'text-gray-600'
-                    }`}>
-                      {status.status}
-                    </span>
-                  </div>
-                )}
+                {status && (() => {
+                  const isFailed = status.status === 'failed'
+                  const retryCount = status.retry_count || 0
+                  const hasRetries = retryCount > 0
+                  
+                  let statusColorClass: string
+                  let statusDisplay: string
+                  
+                  if (isFailed) {
+                    statusColorClass = 'text-red-600'
+                    statusDisplay = 'Failed'
+                  } else if (hasRetries) {
+                    statusColorClass = 'text-orange-600'
+                    statusDisplay = `Retrying (${retryCount})`
+                  } else if (status.status === 'completed') {
+                    statusColorClass = 'text-green-600'
+                    statusDisplay = 'Completed'
+                  } else if (status.status === 'active') {
+                    statusColorClass = 'text-blue-600'
+                    statusDisplay = 'Active'
+                  } else {
+                    statusColorClass = 'text-gray-600'
+                    statusDisplay = status.status
+                  }
+                  
+                  return (
+                    <div className="flex justify-between text-xs">
+                      <span className="font-medium">Status:</span>
+                      <span className={`font-semibold ${statusColorClass}`}>
+                        {statusDisplay}
+                      </span>
+                    </div>
+                  )
+                })()}
               </CardContent>
             </Card>
 
@@ -165,20 +186,37 @@ export function ClusterInspectionModal({
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
-                    {statusHistory.map((transition, idx) => (
-                      <div key={idx} className="flex items-center gap-2 text-xs border rounded p-2">
-                        <span className={`w-2 h-2 rounded-full ${
-                          transition.status === 'completed' ? 'bg-green-500' :
-                          transition.status === 'active' ? 'bg-blue-500' :
-                          transition.status === 'error' ? 'bg-red-500' :
-                          'bg-gray-500'
-                        }`} />
-                        <span className="font-medium capitalize">{transition.status}</span>
-                        <span className="text-muted-foreground ml-auto">
-                          {formatTimestamp(transition.timestamp)}
-                        </span>
-                      </div>
-                    ))}
+                    {statusHistory.map((transition, idx) => {
+                      const status = fileId ? clusterStatus[fileId] : null
+                      const retryCount = status?.retry_count || 0
+                      const hasRetries = retryCount > 0
+                      const isFailed = transition.status === 'error' || transition.status === 'failed'
+                      
+                      let dotColorClass: string
+                      if (isFailed) {
+                        dotColorClass = 'bg-red-500'
+                      } else if (hasRetries && transition.status === 'active') {
+                        dotColorClass = 'bg-orange-500'
+                      } else if (transition.status === 'completed') {
+                        dotColorClass = 'bg-green-500'
+                      } else if (transition.status === 'active') {
+                        dotColorClass = 'bg-blue-500'
+                      } else {
+                        dotColorClass = 'bg-gray-500'
+                      }
+                      
+                      return (
+                        <div key={idx} className="flex items-center gap-2 text-xs border rounded p-2">
+                          <span className={`w-2 h-2 rounded-full ${dotColorClass}`} />
+                          <span className="font-medium capitalize">
+                            {hasRetries && transition.status === 'active' ? `Retrying (${retryCount})` : transition.status}
+                          </span>
+                          <span className="text-muted-foreground ml-auto">
+                            {formatTimestamp(transition.timestamp)}
+                          </span>
+                        </div>
+                      )
+                    })}
                   </div>
                 </CardContent>
               </Card>

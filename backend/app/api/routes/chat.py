@@ -100,7 +100,7 @@ async def stream_chat_events(
         # Get final response from accumulated content reference
         final_response = accumulated_content_ref.get("content", "")
         if not final_response:
-            final_response = extract_final_response(config, thread_id, org, project)
+            final_response = await extract_final_response(config, thread_id, org, project)
         
         # Always send graph_end event (even if response is empty, to signal completion)
         logger.debug(
@@ -147,7 +147,7 @@ async def stream_chat_events(
             "ConnectionError" in error_type
         )
         
-        # Log full exception details for debugging
+        # Log full exception details
         logger.exception(
             "streaming_error",
             error=error_message,
@@ -318,8 +318,10 @@ async def chat(
     
     # Prepare config with callbacks, metadata, and thread_id
     # Use session_id (the actual thread_id being used) not the form parameter
+    from app.constants import CONSTANTS
     config: dict[str, Any] = {
-        "configurable": {"thread_id": session_id}
+        "configurable": {"thread_id": session_id},
+        "recursion_limit": CONSTANTS.get("GRAPH_RECURSION_LIMIT", 50),  # Prevent infinite loops
     }
     # Add model_name to configurable if provided
     if model:

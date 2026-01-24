@@ -84,27 +84,21 @@ def procedures_vector_search(query: str) -> str:
     Returns:
         JSON string with search results containing content, doc, score, and metadata
     """
-    # #region agent log
     logger.debug(
         "debug_vector_search_start",
-        hypothesisId="A",
         query=query,
         collection=COLLECTION_PROCEDURES,
     )
-    # #endregion
     
     try:
         results = _vector_search_raw_sql(query, COLLECTION_PROCEDURES, k=VECTOR_SEARCH_DEFAULT_K)
         
-        # #region agent log
         logger.debug(
             "debug_vector_search_completed",
-            hypothesisId="A",
             result_count=len(results) if results else 0,
             has_results=results is not None and len(results) > 0,
             sample_raw_result_doc=results[0][0].get("doc") if results and len(results) > 0 else None,
         )
-        # #endregion
         
         if not results:
             logger.warning(
@@ -132,17 +126,14 @@ def procedures_vector_search(query: str) -> str:
                     truncated = content[:last_newline]
                 result["content"] = truncated + f"\n\n[Content truncated: showing first {len(truncated):,} of {len(content):,} characters]"
         
-        # #region agent log
         logger.debug(
             "debug_formatted_results_check",
-            hypothesisId="A",
             result_count=len(formatted_results),
             has_doc_fields=[r.get("doc") is not None for r in formatted_results],
             doc_values=[r.get("doc") for r in formatted_results[:3]],  # First 3 doc values
             sample_result_keys=list(formatted_results[0].keys()) if formatted_results else None,
             sample_result_doc=formatted_results[0].get("doc") if formatted_results else None,
         )
-        # #endregion
         
         logger.info(
             "procedures_vector_search_success",
@@ -152,25 +143,19 @@ def procedures_vector_search(query: str) -> str:
         
         json_output = json.dumps(formatted_results, ensure_ascii=False)
         
-        # #region agent log
         logger.debug(
             "debug_json_output_ready",
-            hypothesisId="A",
             json_length=len(json_output),
             json_preview=json_output[:500] if len(json_output) > 500 else json_output,
         )
-        # #endregion
         
         return json_output
     except Exception as e:
-        # #region agent log
         logger.debug(
             "debug_vector_search_exception",
-            hypothesisId="A",
             error=str(e),
             error_type=type(e).__name__,
         )
-        # #endregion
         logger.error(
             "procedures_vector_search_failed",
             error=str(e),

@@ -10,6 +10,7 @@ import { Card } from './ui/card'
 import { ScrollArea } from './ui/scroll-area'
 import type { ExecutionState } from '../types'
 import { getAvailableModels } from '../utils/api'
+import { WELCOME_TEXT } from '../constants/welcomeText'
 
 interface ChatInterfaceProps {
   readonly token: string
@@ -147,8 +148,48 @@ export default function ChatInterface({ token, threadId, onChatStateChange, onEx
         <ScrollArea className="flex-1 p-4">
           <div className="space-y-4">
             {messages.length === 0 && (
-              <div className="text-center text-muted-foreground py-8">
-                Start a conversation by sending a message below.
+              <div className="flex justify-start">
+                <div className="bg-muted text-muted-foreground rounded-lg p-3 max-w-[80%]">
+                  <div className="markdown-content">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed">{children}</p>,
+                        ul: ({ children }) => <ul className="list-disc list-inside mb-2 space-y-1 ml-2">{children}</ul>,
+                        ol: ({ children }) => <ol className="list-decimal list-inside mb-2 space-y-1 ml-2">{children}</ol>,
+                        li: ({ children }) => <li className="ml-2">{children}</li>,
+                        strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                        em: ({ children }) => <em className="italic">{children}</em>,
+                        code: ({ children, className }) => {
+                          const isInline = !className
+                          return isInline ? (
+                            <code className="bg-muted-foreground/20 px-1 py-0.5 rounded text-sm font-mono">
+                              {children}
+                            </code>
+                          ) : (
+                            <code className={className}>{children}</code>
+                          )
+                        },
+                        pre: ({ children }) => (
+                          <pre className="bg-muted-foreground/20 p-2 rounded overflow-x-auto mb-2 text-sm">
+                            {children}
+                          </pre>
+                        ),
+                        h1: ({ children }) => <h1 className="text-xl font-bold mb-2 mt-4 first:mt-0">{children}</h1>,
+                        h2: ({ children }) => <h2 className="text-lg font-bold mb-2 mt-4 first:mt-0">{children}</h2>,
+                        h3: ({ children }) => <h3 className="text-base font-bold mb-2 mt-4 first:mt-0">{children}</h3>,
+                        hr: () => <hr className="my-4 border-muted-foreground/30" />,
+                        blockquote: ({ children }) => (
+                          <blockquote className="border-l-4 border-muted-foreground/30 pl-4 italic my-2">
+                            {children}
+                          </blockquote>
+                        ),
+                      }}
+                    >
+                      {WELCOME_TEXT}
+                    </ReactMarkdown>
+                  </div>
+                </div>
               </div>
             )}
             {messages.map((message) => (

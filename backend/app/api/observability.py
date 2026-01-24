@@ -17,6 +17,10 @@ from app.auth import verify_google_token
 # Context variable to track current thread_id during execution
 _current_thread_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("current_thread_id", default=None)
 
+# Context variable to forward model_name into nested flows (e.g. consult_general_knowledge)
+# so the nested chat graph uses the same model as the parent (report analyst, chat).
+_current_model_name: contextvars.ContextVar[str | None] = contextvars.ContextVar("current_model_name", default=None)
+
 logger = None  # Will be initialized when structlog is available
 
 
@@ -282,7 +286,11 @@ def extract_token_usage(response: Any) -> tuple[int, int, int | None]:
         elif hasattr(token_usage, "prompt_tokens") or hasattr(token_usage, "input_tokens"):
             input_tokens = getattr(token_usage, "prompt_tokens", 0) or getattr(token_usage, "input_tokens", 0)
             output_tokens = getattr(token_usage, "completion_tokens", 0) or getattr(token_usage, "output_tokens", 0)
+            # Check both thinking_tokens and cached_tokens (Gemini might use either)
+            # Prefer thinking_tokens, but fall back to cached_tokens if thinking_tokens is not present
             thinking_tokens = getattr(token_usage, "thinking_tokens", None)
+            if thinking_tokens is None:
+                thinking_tokens = getattr(token_usage, "cached_tokens", None)
     
     return (input_tokens, output_tokens, thinking_tokens)
 

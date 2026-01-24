@@ -19,9 +19,19 @@ from app.api.graph_manager import get_graph
 from app.api.streaming.async_events import process_async_stream_events
 from app.api.constants import EVENT_GRAPH_END, EVENT_ERROR
 from app.flows.opgroeien.poc.db import _get_all_procedures_raw_sql
+from app.flows.common import _get_first_available_llm_config
 from app.api.user_threads import upsert_thread
+from app.constants import CONSTANTS
 
 logger = structlog.get_logger(__name__)
+
+
+def _resolve_report_model(user_model: str | None) -> str | None:
+    """Return user-chosen model or first available so analyst, editor and consult share one model."""
+    if user_model:
+        return user_model
+    cfg = _get_first_available_llm_config()
+    return (cfg or {}).get("MODEL_NAME")
 
 # Global registry for active report tasks to support "Stop" functionality
 _active_tasks: Dict[str, asyncio.Task] = {}
@@ -301,16 +311,21 @@ async def start_report(
             detail=f"Failed to fetch procedures from database: {str(e)}"
         )
     
-    initial_state = {"raw_procedures": procedures}
-    model = payload.get("model")
+    # Initialize state for new report - clear final_report from any previous run
+    initial_state = {
+        "raw_procedures": procedures,
+        "final_report": "",  # Clear any previous final_report
+    }
+    model = _resolve_report_model(payload.get("model"))
     config = {
         "configurable": {
             "thread_id": thread_id
-        }
+        },
+        "recursion_limit": CONSTANTS.get("GRAPH_RECURSION_LIMIT", 50),  # Prevent infinite loops
     }
     if model:
         config["configurable"]["model_name"] = model
-    
+
     if mode == "cloud_run_job":
         # --- Trigger Cloud Run Job ---
         run_jobs_client = _get_run_jobs_client()
@@ -324,9 +339,8 @@ async def start_report(
             from google.cloud.run_v2.types import RunJobRequest, EnvVar
             from app.config import settings
             import json
-            
+
             # Job name format: projects/{project}/locations/{location}/jobs/{job}
-            from app.flows.common import _get_first_available_llm_config
             llm_config = _get_first_available_llm_config()
             location = llm_config.get("LOCATION") or settings.VERTEX_AI_LOCATION or "europe-west1"
             job_name = f"projects/{settings.GCP_PROJECT}/locations/{location}/jobs/hit8-report-job"
@@ -960,7 +974,7 @@ async def download_chapters(
                 pypandoc.convert_text(
                     combined_markdown,
                     'docx',
-                    format='md',
+                    format='markdown-yaml_metadata_block',
                     outputfile=tmp_file.name,
                     extra_args=['--standalone'],
                 )
@@ -1105,7 +1119,7 @@ async def download_final_report(
             detail="No final report available for download."
         )
     
-    # Log what we found in state for debugging
+    # Log what we found in state
     logger.debug(
         "final_report_download_extracted_from_state",
         thread_id=thread_id,
@@ -1147,7 +1161,7 @@ async def download_final_report(
                 pypandoc.convert_text(
                     report_markdown,
                     'docx',
-                    format='md',
+                    format='markdown-yaml_metadata_block',
                     outputfile=tmp_file.name,
                     extra_args=['--standalone'],
                 )
@@ -1338,18 +1352,24 @@ async def execute_report_job(
             detail=f"Failed to fetch procedures from database: {str(e)}"
         )
     
-    initial_state = {"raw_procedures": procedures}
+    # Initialize state for new report - clear final_report from any previous run
+    initial_state = {
+        "raw_procedures": procedures,
+        "final_report": "",  # Clear any previous final_report
+    }
+    model = _resolve_report_model(model)
     config = {
         "configurable": {
             "thread_id": thread_id
-        }
+        },
+        "recursion_limit": CONSTANTS.get("GRAPH_RECURSION_LIMIT", 50),  # Prevent infinite loops
     }
     if model:
         config["configurable"]["model_name"] = model
-    
+
     # Get the report graph instance
     report_graph = get_graph(org, project, "report")
-    
+
     logger.info(
         "report_job_execution_started",
         thread_id=thread_id,

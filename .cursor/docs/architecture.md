@@ -142,7 +142,69 @@ graph TB
 - **Polling API**: Frontend polls `/observability/metrics` for real-time metrics display
 - **Langfuse integration**: Optional tracing via Langfuse callback handlers
 
-### 6. Cloud Run Deployment
+### 6. LLM Rate Limiting and Flow Control
+
+The system uses **LiteLLM Router** for centralized rate limiting and token management. LiteLLM handles TPM (tokens per minute) and RPM (requests per minute) quotas automatically, with built-in retry logic and cooldown on failures.
+
+```mermaid
+graph TB
+    LLMCall[LLM Call Request] --> Semaphore[Layer 1: Semaphore<br/>Concurrency Control]
+    Semaphore --> LiteLLMRouter[Layer 2: LiteLLM Router<br/>Rate Limiting & Token Management]
+    LiteLLMRouter --> Timeout[Layer 3: Timeout<br/>Prevents Stalling]
+    Timeout --> Execute[Execute LLM Call]
+    
+    subgraph LiteLLMRouter["LiteLLM Router Features"]
+        TPM[Token Quota: TPM]
+        RPM[Rate Limit: RPM]
+        Retry[Automatic Retries]
+        Cooldown[Cooldown on Failures]
+    end
+    
+    LiteLLMRouter -.->|Handles| TPM
+    LiteLLMRouter -.->|Handles| RPM
+    LiteLLMRouter -.->|Handles| Retry
+    LiteLLMRouter -.->|Handles| Cooldown
+```
+
+**Key Features:**
+
+- **LiteLLM Router**: Centralized rate limiting and token quota management
+- **Automatic TPM/RPM Management**: Router enforces token and request quotas per model
+- **Built-in Retries**: Router automatically retries on 5xx errors with exponential backoff
+- **Cooldown on Failures**: Router implements cooldown periods when models fail (e.g., 429 errors)
+- **Semaphore Control**: Instance-level concurrency control (protects Cloud Run resources)
+- **Timeout Protection**: Prevents indefinite stalling on slow or hung requests
+
+**Configuration:**
+
+Rate limits and token quotas are configured in `backend/app/llm_router.py`:
+
+- **Quota Configuration**: TPM (tokens per minute) and RPM (requests per minute) per model
+- **Model List**: All models configured with their specific quotas and routing parameters
+- **Router Settings**: Retry count, cooldown time, and verbose logging
+
+Example configuration:
+- Gemini 2.5 Pro: 250k TPM, 5 RPM (preview tier)
+- Gemini 2.5 Flash: 5M TPM, 60 RPM (high throughput tier)
+- Gemini 3.0 Pro Preview: 250k TPM, 5 RPM, 1200s timeout (thinking models)
+
+**Usage:**
+
+All LLM calls go through `execute_llm_call_async()` wrapper which:
+1. Acquires semaphore (concurrency control)
+2. Calls LiteLLM Router (handles rate limiting, token quota, retries)
+3. Applies timeout protection
+4. Logs execution and errors
+
+**Why LiteLLM Router?**
+
+- **Simplified Codebase**: Removed ~400 lines of custom rate limiting code
+- **Standard Library**: Well-maintained library with active development
+- **Automatic Management**: Handles TPM/RPM quotas, retries, and cooldowns automatically
+- **Configuration-Driven**: Easy to add new models or adjust quotas in one place
+- **Robust Error Handling**: Built-in handling for rate limit errors and transient failures
+
+### 7. Cloud Run Deployment
 
 - **VPC egress**: All traffic routed through VPC with static NAT IP
 - **Connection pooling**: Shared asyncpg connection pool for PostgreSQL

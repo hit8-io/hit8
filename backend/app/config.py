@@ -85,7 +85,7 @@ def _load_constants_config(settings_fields: set[str] | None = None) -> dict[str,
         # This avoids circular import by using a parameter
         settings_fields = set(Settings.model_fields.keys())
     
-    # Log constants loading for debugging
+    # Log constants loading
     current_env = os.getenv("ENVIRONMENT", "unknown")
     logger.debug(
         "loading_constants_config",

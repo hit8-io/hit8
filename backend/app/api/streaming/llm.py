@@ -262,25 +262,48 @@ def extract_llm_end_event(event: dict[str, Any], thread_id: str) -> dict[str, An
     output_tokens = 0
     thinking_tokens = None
     
+    # Convert token_usage to dict format for frontend, ensuring thinking_tokens is included
+    token_usage_dict = None
+    
     if token_usage:
         # Handle different token usage formats
         if isinstance(token_usage, dict):
-            # Standard format
-            input_tokens = token_usage.get("prompt_tokens", token_usage.get("input_tokens", 0))
-            output_tokens = token_usage.get("completion_tokens", token_usage.get("output_tokens", 0))
-            thinking_tokens = token_usage.get("thinking_tokens", token_usage.get("cached_tokens"))
+            # Standard format - use as-is but ensure thinking_tokens key exists
+            token_usage_dict = token_usage.copy()
+            input_tokens = token_usage_dict.get("prompt_tokens", token_usage_dict.get("input_tokens", 0))
+            output_tokens = token_usage_dict.get("completion_tokens", token_usage_dict.get("output_tokens", 0))
+            thinking_tokens = token_usage_dict.get("thinking_tokens", token_usage_dict.get("cached_tokens"))
             
             # Also check for total_tokens if individual counts missing
             if input_tokens == 0 and output_tokens == 0:
-                total = token_usage.get("total_tokens", 0)
+                total = token_usage_dict.get("total_tokens", 0)
                 # Estimate split (rough approximation)
                 input_tokens = int(total * 0.6)
                 output_tokens = total - input_tokens
         elif hasattr(token_usage, "prompt_tokens") or hasattr(token_usage, "input_tokens"):
-            # TokenUsage object from LangChain
+            # TokenUsage object from LangChain - convert to dict
             input_tokens = getattr(token_usage, "prompt_tokens", 0) or getattr(token_usage, "input_tokens", 0)
             output_tokens = getattr(token_usage, "completion_tokens", 0) or getattr(token_usage, "output_tokens", 0)
+            # Check both thinking_tokens and cached_tokens (Gemini might use either)
+            # Prefer thinking_tokens, but fall back to cached_tokens if thinking_tokens is not present
             thinking_tokens = getattr(token_usage, "thinking_tokens", None)
+            if thinking_tokens is None:
+                thinking_tokens = getattr(token_usage, "cached_tokens", None)
+            
+            # Build dict from object attributes
+            token_usage_dict = {
+                "prompt_tokens": getattr(token_usage, "prompt_tokens", None),
+                "input_tokens": getattr(token_usage, "input_tokens", None),
+                "completion_tokens": getattr(token_usage, "completion_tokens", None),
+                "output_tokens": getattr(token_usage, "output_tokens", None),
+                "total_tokens": getattr(token_usage, "total_tokens", None),
+            }
+            # Remove None values
+            token_usage_dict = {k: v for k, v in token_usage_dict.items() if v is not None}
+            
+            # Add thinking_tokens if we extracted it
+            if thinking_tokens is not None:
+                token_usage_dict["thinking_tokens"] = thinking_tokens
     
     # Record LLM usage metrics
     current_metrics = None
@@ -310,9 +333,9 @@ def extract_llm_end_event(event: dict[str, Any], thread_id: str) -> dict[str, An
         "thread_id": thread_id,
     }
     
-    # Add token usage if available
-    if token_usage:
-        event_data["token_usage"] = token_usage
+    # Add token usage if available (now as a dict with thinking_tokens included)
+    if token_usage_dict:
+        event_data["token_usage"] = token_usage_dict
     
     # Include current execution metrics in the event (pushed through stream, no polling needed)
     # model_dump() serializes Pydantic model to dict (as used in observability.py endpoint)

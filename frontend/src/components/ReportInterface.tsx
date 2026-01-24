@@ -670,16 +670,16 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
     <div className="flex flex-col h-full overflow-hidden">
       {/* Error Banner */}
       {error && (
-        <Card className="flex-shrink-0 border-destructive bg-destructive/10">
+        <Card className="flex-shrink-0 border-destructive bg-destructive">
           <CardContent className="p-3">
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-destructive">
+              <div className="flex items-center gap-2 text-destructive-foreground">
                 <AlertCircle className="h-4 w-4" />
                 <span className="text-sm">{error}</span>
               </div>
               <button
                 onClick={() => setError(null)}
-                className="text-destructive hover:text-destructive/80"
+                className="text-destructive-foreground hover:text-destructive-foreground/80"
                 aria-label="Dismiss error"
               >
                 <X className="h-4 w-4" />

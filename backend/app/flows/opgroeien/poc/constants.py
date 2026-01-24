@@ -3,6 +3,8 @@ Constants for the opgroeien POC flow.
 """
 from __future__ import annotations
 
+from app import constants
+
 # Config
 ORG = "opgroeien"
 PROJECT = "poc"
@@ -42,5 +44,5 @@ NODE_GET_PROCEDURE = "node_get_procedure"
 NODE_GET_REGELGEVING = "node_get_regelgeving"
 
 # Report generation batching
-MAX_PARALLEL_WORKERS = 5  # Maximum number of parallel analyst workers for report generation
+MAX_PARALLEL_WORKERS = constants.CONSTANTS.get("REPORT_MAX_PARALLEL_WORKERS", 2)
 
