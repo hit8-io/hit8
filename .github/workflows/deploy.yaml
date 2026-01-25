@@ -68,7 +68,9 @@ jobs:
         with:
           context: ./backend
           push: true
-          tags: ${{ env.IMAGE_BASE }}:${{ steps.meta.outputs.image_tag }}
+          tags: |
+            ${{ env.IMAGE_BASE }}:${{ steps.meta.outputs.image_tag }}
+            ${{ env.IMAGE_BASE }}:${{ steps.meta.outputs.version }}
           build-args: |
             VERSION=${{ steps.meta.outputs.version }}
           cache-from: type=gha

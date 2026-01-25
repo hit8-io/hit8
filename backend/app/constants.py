@@ -25,6 +25,8 @@ Doppler Secrets Reference
 - BRIGHTDATA_API_KEY: BrightData API key for web scraping
 - N8N_GOOGLE_CLIENT_ID: Google OAuth client ID for n8n integration
 - N8N_GOOGLE_CLIENT_SECRET: Google OAuth client secret for n8n integration
+- UPSTASH_REDIS_HOST: Upstash Redis endpoint (stg/prd only)
+- UPSTASH_REDIS_PWD: Upstash Redis password (stg/prd only)
 """
 
 from __future__ import annotations
@@ -99,6 +101,8 @@ CONSTANTS: dict[str, Any] = {
     "FLOW": "chat",
     "PROMPTS_DIR": "app/prompts",
     "LANGFUSE_ENABLED": True,
+    "CACHE_ENABLED": False,  # Disabled by default (dev)
+    "CACHE_TTL": 3600,       # 1 hour default TTL
     "LLM_RETRY_STOP_AFTER_ATTEMPT": 10,
     "LLM_RETRY_MAX_INTERVAL": 60,
     "LLM_RETRY_INITIAL_INTERVAL": 1.0,
@@ -194,6 +198,7 @@ if ENVIRONMENT == "stg":
         {
             "LOG_LEVEL": "INFO",
             "LOG_FORMAT": "json",
+            "CACHE_ENABLED": True,
             "CORS_ALLOW_ORIGINS": [
                 "https://www.hit8.io",
                 "https://hit8.io",
@@ -209,6 +214,7 @@ if ENVIRONMENT == "prd":
         {
             "LOG_LEVEL": "INFO",
             "LOG_FORMAT": "json",
+            "CACHE_ENABLED": True,
             "CORS_ALLOW_ORIGINS": [
                 "https://www.hit8.io",
                 "https://hit8.io",

@@ -234,6 +234,14 @@ class Settings(BaseSettings):
     LANGFUSE_PUBLIC_KEY: str | None = None
     LANGFUSE_SECRET_KEY: str | None = Field(default=None, exclude=True)
     
+    # Cache / Redis settings
+    CACHE_ENABLED: bool
+    CACHE_TTL: int
+    
+    # Upstash Redis (optional - only for stg/prd)
+    UPSTASH_REDIS_HOST: str | None = None
+    UPSTASH_REDIS_PWD: str | None = Field(default=None, exclude=True)
+    
     # API
     API_TOKEN: str = Field(exclude=True)
     

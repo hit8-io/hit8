@@ -48,3 +48,9 @@ variable "artifact_registry_location" {
   type        = string
   default     = "europe-west1"
 }
+
+variable "image_tag" {
+  description = "Docker image tag to use (e.g., '0.5.0-a1b2c3d'). If null, uses VERSION file. CI/CD builds images with format '{VERSION}-{SHORT_SHA}'."
+  type        = string
+  default     = null
+}

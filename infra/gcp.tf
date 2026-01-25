@@ -4,7 +4,8 @@
 locals {
   # Assumes VERSION file is in the root (where you run terraform) or parent
   # Adjust path as needed: "${path.module}/../VERSION"
-  image_version = trimspace(file("${path.module}/../VERSION"))
+  # CI/CD builds images with tags: {VERSION}-{SHORT_SHA} (for deployments) and {VERSION} (for Terraform)
+  image_version = var.image_tag != null ? var.image_tag : trimspace(file("${path.module}/../VERSION"))
 
   envs = {
     prd = {
@@ -388,16 +389,28 @@ resource "google_cloud_run_v2_job" "report_job" {
 }
 
 # ==============================================================================
-# JOB IAM (Allow API SA to invoke BOTH jobs)
+# JOB IAM (Allow API SA to run Cloud Run jobs)
 # ==============================================================================
-resource "google_cloud_run_v2_job_iam_member" "api_invoker" {
+# Grant permission to api_runner service account (used by Cloud Run service)
+resource "google_cloud_run_v2_job_iam_member" "api_jobs_runner" {
   for_each = google_cloud_run_v2_job.report_job # <--- LOOP OVER JOBS
 
   project  = var.project_id
   location = var.region
   name     = each.value.name
-  role     = "roles/run.invoker"
+  role     = "roles/run.developer"  # Required to run Cloud Run v2 jobs (includes run.jobs.run permission)
   member   = "serviceAccount:${google_service_account.api_runner.email}"
+}
+
+# Grant permission to vertex service account (used for API client authentication)
+resource "google_cloud_run_v2_job_iam_member" "vertex_jobs_runner" {
+  for_each = google_cloud_run_v2_job.report_job # <--- LOOP OVER JOBS
+
+  project  = var.project_id
+  location = var.region
+  name     = each.value.name
+  role     = "roles/run.developer"  # Required to run Cloud Run v2 jobs (includes run.jobs.run permission)
+  member   = "serviceAccount:${google_service_account.vertex_sa.email}"
 }
 
 # ==============================================================================

@@ -187,14 +187,39 @@ if OLLAMA_BASE_URL:
 # 4. ROUTER INITIALIZATION: Optimized Load Balancing
 # latency-based-routing: Prioritizes the fastest response (Europe) 
 # and automatically shifts traffic to Global if Europe slows down or errors.
-router = Router(
-    model_list=model_list,
-    routing_strategy="latency-based-routing", 
-    num_retries=2,       # Retry on 5xx/429
-    allowed_fails=1,     # Allow 1 failure before cooldown
-    cooldown_time=30,    # Short cooldown to quickly retry failed region
-    set_verbose=True
-)
+router_kwargs = {
+    "model_list": model_list,
+    "routing_strategy": "latency-based-routing",
+    "num_retries": 2,       # Retry on 5xx/429
+    "allowed_fails": 1,     # Allow 1 failure before cooldown
+    "cooldown_time": 30,    # Short cooldown to quickly retry failed region
+    "set_verbose": True,
+}
+
+# Add Redis for distributed rate limiting and caching (stg/prd)
+if settings.CACHE_ENABLED and settings.UPSTASH_REDIS_HOST:
+    if not settings.UPSTASH_REDIS_PWD:
+        raise ValueError("UPSTASH_REDIS_PWD is required when CACHE_ENABLED is True")
+    
+    router_kwargs.update({
+        "redis_host": settings.UPSTASH_REDIS_HOST,
+        "redis_port": 6379,
+        "redis_password": settings.UPSTASH_REDIS_PWD,
+        "cache_responses": True,
+        "cache_kwargs": {
+            "ssl": True,  # Upstash requires TLS
+            "ttl": settings.CACHE_TTL,
+        },
+    })
+    
+    logger.info(
+        "litellm_router_redis_enabled",
+        redis_host=settings.UPSTASH_REDIS_HOST,
+        cache_ttl=settings.CACHE_TTL,
+        features=["response_caching", "distributed_rate_limiting", "cooldown_sync"],
+    )
+
+router = Router(**router_kwargs)
 
 logger.info(
     "litellm_router_initialized",
@@ -205,4 +230,5 @@ logger.info(
     deployment_locations=deployment_locations,
     use_alternative=USE_ALTERNATIVE,
     routing_strategy="latency-based-routing",
+    redis_enabled=settings.CACHE_ENABLED and settings.UPSTASH_REDIS_HOST is not None,
 )
