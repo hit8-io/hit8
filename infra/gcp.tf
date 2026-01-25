@@ -4,7 +4,8 @@
 locals {
   # Assumes VERSION file is in the root (where you run terraform) or parent
   # Adjust path as needed: "${path.module}/../VERSION"
-  # CI/CD builds images with tags: {VERSION}-{SHORT_SHA} (for deployments) and {VERSION} (for Terraform)
+  # Note: Image tags are managed by CI/CD, not Terraform. This is only used for initial resource creation.
+  # CI/CD builds images with tags: {VERSION}-{SHORT_SHA} and updates Cloud Run services/jobs after each build.
   image_version = var.image_tag != null ? var.image_tag : trimspace(file("${path.module}/../VERSION"))
 
   envs = {
@@ -228,11 +229,20 @@ resource "google_cloud_run_v2_service" "api" {
   name     = "hit8-api${each.value.suffix}"  # hit8-api-prd / hit8-api-stg
   location = var.region
 
+  # Image tags are managed by CI/CD, not Terraform
+  # CI/CD updates services after building new images
+  lifecycle {
+    ignore_changes = [
+      template[0].containers[0].image
+    ]
+  }
+
   template {
     service_account = google_service_account.api_runner.email
     timeout         = "300s"
 
     containers {
+      # Initial image reference (CI/CD will update this after each build)
       image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.artifact_registry_repository}/api:${local.image_version}"
 
       ports {
@@ -334,11 +344,20 @@ resource "google_cloud_run_v2_job" "report_job" {
   location            = var.region
   deletion_protection = true
 
+  # Image tags are managed by CI/CD, not Terraform
+  # CI/CD updates jobs after building new images
+  lifecycle {
+    ignore_changes = [
+      template[0].template[0].containers[0].image
+    ]
+  }
+
   template {
     template {
       service_account = google_service_account.api_runner.email
       
       containers {
+        # Initial image reference (CI/CD will update this after each build)
         image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.artifact_registry_repository}/api:${local.image_version}"
         
         command = ["python", "-m", "app.batch.run_report_job"]

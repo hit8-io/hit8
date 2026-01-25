@@ -144,9 +144,16 @@ jobs:
       - name: Setup GCloud
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Deploy Backend
+      - name: Deploy Backend Service
         run: |
           gcloud run services update hit8-api-stg \
+            --image "${{ env.IMAGE_BASE }}:${{ needs.build-backend.outputs.image_tag }}" \
+            --region ${{ env.REGION }} \
+            --quiet
+
+      - name: Update Cloud Run Job
+        run: |
+          gcloud run jobs update hit8-report-job-stg \
             --image "${{ env.IMAGE_BASE }}:${{ needs.build-backend.outputs.image_tag }}" \
             --region ${{ env.REGION }} \
             --quiet
@@ -183,9 +190,16 @@ jobs:
       - name: Setup GCloud
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Deploy Backend
+      - name: Deploy Backend Service
         run: |
           gcloud run services update hit8-api-prd \
+            --image "${{ env.IMAGE_BASE }}:${{ needs.build-backend.outputs.image_tag }}" \
+            --region ${{ env.REGION }} \
+            --quiet
+
+      - name: Update Cloud Run Job
+        run: |
+          gcloud run jobs update hit8-report-job-prd \
             --image "${{ env.IMAGE_BASE }}:${{ needs.build-backend.outputs.image_tag }}" \
             --region ${{ env.REGION }} \
             --quiet
