@@ -340,7 +340,7 @@ resource "google_cloud_run_v2_job" "report_job" {
       containers {
         image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.artifact_registry_repository}/api:${local.image_version}"
         
-        command = ["python", "-m", "app.cli.run_report_job"]
+        command = ["python", "-m", "app.batch.run_report_job"]
         
         resources {
           limits = {

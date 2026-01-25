@@ -1,9 +1,3 @@
-// Database Schema Definition
-// This file defines the desired state of the database using Atlas HCL format.
-// 
-// To extract the current schema: ./extract-schema.sh [dev|stg|prd]
-// To apply schema changes: atlas schema apply --to file://schema.hcl --url "<connection-string>"
-
 schema "public" {
 }
 

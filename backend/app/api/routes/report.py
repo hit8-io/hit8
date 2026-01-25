@@ -18,20 +18,13 @@ from app.user_config import validate_user_access, validate_user_flow_access
 from app.api.graph_manager import get_graph
 from app.api.streaming.async_events import process_async_stream_events
 from app.api.constants import EVENT_GRAPH_END, EVENT_ERROR
-from app.flows.opgroeien.poc.db import _get_all_procedures_raw_sql
-from app.flows.common import _get_first_available_llm_config
+from app.api.report_execution import prepare_report_execution
 from app.api.user_threads import upsert_thread
-from app.constants import CONSTANTS
+from app.batch.job_trigger import trigger_report_job
+from app.batch.job_status import get_job_status_for_thread
+from app.batch.job_cancellation import cancel_report_job
 
 logger = structlog.get_logger(__name__)
-
-
-def _resolve_report_model(user_model: str | None) -> str | None:
-    """Return user-chosen model or first available so analyst, editor and consult share one model."""
-    if user_model:
-        return user_model
-    cfg = _get_first_available_llm_config()
-    return (cfg or {}).get("MODEL_NAME")
 
 # Global registry for active report tasks to support "Stop" functionality
 _active_tasks: Dict[str, asyncio.Task] = {}
@@ -39,41 +32,6 @@ _active_tasks: Dict[str, asyncio.Task] = {}
 # Simple cancellation registry - checked between nodes (no polling)
 # When True, current nodes finish but no new nodes start
 _cancelled_threads: Dict[str, bool] = {}
-
-# Cloud Run Jobs client (lazy initialization)
-_run_jobs_client = None
-_run_jobs_client_lock = threading.Lock()
-
-def _get_run_jobs_client():
-    """Get or create Cloud Run Jobs client instance."""
-    global _run_jobs_client
-    if _run_jobs_client is None:
-        with _run_jobs_client_lock:
-            if _run_jobs_client is None:
-                try:
-                    from google.cloud import run_v2
-                    from google.oauth2 import service_account
-                    import json
-                    from app.config import settings
-                    
-                    service_account_info = json.loads(settings.VERTEX_SERVICE_ACCOUNT)
-                    credentials = service_account.Credentials.from_service_account_info(
-                        service_account_info,
-                        scopes=["https://www.googleapis.com/auth/cloud-platform"]
-                    )
-                    _run_jobs_client = run_v2.JobsClient(credentials=credentials)
-                    logger.debug("cloud_run_jobs_client_initialized")
-                except ImportError:
-                    logger.warning("cloud_run_jobs_client_not_available", reason="google-cloud-run not installed")
-                    _run_jobs_client = False
-                except Exception as e:
-                    logger.error(
-                        "cloud_run_jobs_client_init_failed",
-                        error=str(e),
-                        error_type=type(e).__name__,
-                    )
-                    _run_jobs_client = False
-    return _run_jobs_client if _run_jobs_client is not False else None
 
 router = APIRouter(prefix="/report", tags=["Report"])
 
@@ -87,10 +45,19 @@ async def stream_report_events(
     thread_id: str,
     org: str,
     project: str,
+    report_graph: Any | None = None,
 ):
     """Stream report execution events using LangGraph astream_events() directly.
     
     Similar to stream_chat_events but for report generation.
+    
+    Args:
+        initial_state: Initial state dictionary.
+        config: Configuration dictionary.
+        thread_id: Thread ID.
+        org: Organization name.
+        project: Project name.
+        report_graph: Optional pre-initialized graph. If None, will be fetched.
     
     Yields:
         Server-Sent Event strings
@@ -112,8 +79,9 @@ async def stream_report_events(
             project=project,
         )
         
-        # Get the report graph instance
-        report_graph = get_graph(org, project, "report")
+        # Get the report graph instance if not provided
+        if report_graph is None:
+            report_graph = get_graph(org, project, "report")
         
         # Process events directly from astream_events - runs in main event loop
         accumulated_content_ref: dict[str, str] = {"content": ""}
@@ -291,99 +259,36 @@ async def start_report(
             detail=f"Invalid execution_mode '{mode}'. Must be one of: {', '.join(valid_modes)}"
         )
     
-    # Fetch all procedures from database
+    # Prepare report execution (fetch procedures, init state, get graph)
     try:
-        procedures = _get_all_procedures_raw_sql()
-        logger.info(
-            "procedures_fetched_from_database",
+        initial_state, config, report_graph = await prepare_report_execution(
             thread_id=thread_id,
-            procedure_count=len(procedures),
+            org=org,
+            project=project,
+            model=payload.get("model"),
         )
     except Exception as e:
         logger.exception(
-            "failed_to_fetch_procedures",
+            "failed_to_prepare_report_execution",
             thread_id=thread_id,
             error=str(e),
             error_type=type(e).__name__,
         )
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to fetch procedures from database: {str(e)}"
+            detail=f"Failed to prepare report execution: {str(e)}"
         )
-    
-    # Initialize state for new report - clear final_report from any previous run
-    initial_state = {
-        "raw_procedures": procedures,
-        "final_report": "",  # Clear any previous final_report
-    }
-    model = _resolve_report_model(payload.get("model"))
-    config = {
-        "configurable": {
-            "thread_id": thread_id
-        },
-        "recursion_limit": CONSTANTS.get("GRAPH_RECURSION_LIMIT", 50),  # Prevent infinite loops
-    }
-    if model:
-        config["configurable"]["model_name"] = model
 
     if mode == "cloud_run_job":
         # --- Trigger Cloud Run Job ---
-        run_jobs_client = _get_run_jobs_client()
-        if not run_jobs_client:
-            raise HTTPException(
-                status_code=501,
-                detail="Cloud Run Jobs client is not available. Please install 'google-cloud-run' and ensure GCP credentials are configured."
-            )
-        
         try:
-            from google.cloud.run_v2.types import RunJobRequest, EnvVar
             from app.config import settings
-            import json
-
-            # Job name format: projects/{project}/locations/{location}/jobs/{job}
-            llm_config = _get_first_available_llm_config()
-            location = llm_config.get("LOCATION") or settings.VERTEX_AI_LOCATION or "europe-west1"
-            job_name = f"projects/{settings.GCP_PROJECT}/locations/{location}/jobs/hit8-report-job"
-            
-            # Create execution overrides with environment variables
-            # Pass job parameters as JSON in environment variable for simplicity
-            job_params = {
-                "thread_id": thread_id,
-                "org": org,
-                "project": project,
-            }
-            if model:
-                job_params["model"] = model
-            
-            overrides = RunJobRequest.Overrides(
-                container_overrides=[
-                    RunJobRequest.Overrides.ContainerOverride(
-                        env=[
-                            EnvVar(name="REPORT_JOB_PARAMS", value=json.dumps(job_params)),
-                        ]
-                    )
-                ]
-            )
-            
-            # Execute the job
-            request = RunJobRequest(
-                name=job_name,
-                overrides=overrides,
-            )
-            
-            operation = run_jobs_client.run_job(request=request)
-            # The operation is a long-running operation, get the execution name from metadata
-            execution_name = None
-            if hasattr(operation, 'metadata') and hasattr(operation.metadata, 'name'):
-                execution_name = operation.metadata.name
-            
-            logger.info(
-                "cloud_run_job_triggered",
+            execution_name = await trigger_report_job(
                 thread_id=thread_id,
-                job_name=job_name,
-                execution_name=execution_name,
                 org=org,
                 project=project,
+                model=payload.get("model"),
+                environment=settings.environment,
             )
             
             return {
@@ -392,6 +297,11 @@ async def start_report(
                 "execution_name": execution_name,
                 "mode": mode,
             }
+        except RuntimeError as e:
+            raise HTTPException(
+                status_code=501,
+                detail=str(e)
+            )
         except Exception as e:
             logger.exception(
                 "cloud_run_job_trigger_failed",
@@ -421,6 +331,7 @@ async def start_report(
                 thread_id=thread_id,
                 org=org,
                 project=project,
+                report_graph=report_graph,
             ),
             media_type="text/event-stream",
             headers={
@@ -440,6 +351,7 @@ async def start_report(
                 thread_id=thread_id,
                 org=org,
                 project=project,
+                report_graph=report_graph,
             ),
             media_type="text/event-stream",
             headers={
@@ -644,12 +556,15 @@ async def restore_report(
 async def stop_report(
     thread_id: str,
     user_payload: dict = Depends(verify_google_token),
+    x_org: str | None = Header(None, alias="X-Org"),
+    x_project: str | None = Header(None, alias="X-Project"),
 ):
     """Stops an ongoing report generation.
     
     Sets cancellation flag so current nodes finish but no new nodes start.
-    Works for both streaming mode (local/cloud_run_service) and background task mode.
+    Works for both streaming mode (local/cloud_run_service) and batch mode (cloud_run_job).
     For streaming mode, the frontend will also abort the connection.
+    For batch mode, also cancels the Cloud Run execution if execution_name is available.
     """
     logger.info(
         "report_stop_endpoint_called",
@@ -657,10 +572,7 @@ async def stop_report(
         user_id=user_payload.get("sub"),
     )
     
-    # Set cancellation flag - checked in event loop between nodes
-    _cancelled_threads[thread_id] = True
-    
-    # Also cancel task for cloud_run_service mode
+    # Cancel task for cloud_run_service mode
     task = _active_tasks.get(thread_id)
     if task:
         logger.info(
@@ -672,11 +584,12 @@ async def stop_report(
             "report_task_cancelled",
             thread_id=thread_id,
         )
-    else:
-        logger.info(
-            "report_stop_no_active_task",
-            thread_id=thread_id,
-        )
+    
+    # For cloud_run_job mode, try to cancel the Cloud Run execution
+    # Note: We don't have execution_name stored, so we'll just set the cancellation flag
+    # The job will check this flag and exit gracefully
+    # TODO: Store execution_name when job is triggered to enable proper cancellation
+    await cancel_report_job(thread_id, execution_name=None)
     
     logger.info("report_stop_requested", thread_id=thread_id)
     return {"status": "stopping", "message": "Termination signal sent to agent."}
@@ -688,7 +601,10 @@ async def get_status(
     x_org: str | None = Header(None, alias="X-Org"),
     x_project: str | None = Header(None, alias="X-Project"),
 ):
-    """Gets granular status (e.g. 5/10 chapters done)."""
+    """Gets granular status (e.g. 5/10 chapters done).
+    
+    For cloud_run_job mode, also checks Cloud Run execution status if graph state not found.
+    """
     user_id = user_payload["sub"]
     email = user_payload["email"]
     org = (x_org or "").strip()
@@ -730,48 +646,31 @@ async def get_status(
             error_type=type(e).__name__,
         )
     
-    config = {"configurable": {"thread_id": thread_id}}
+    # Get combined status (graph state + Cloud Run status if needed)
+    # Note: execution_name is not stored yet, so we pass None
+    # TODO: Store execution_name when job is triggered to enable Cloud Run status checking
+    status_result = await get_job_status_for_thread(
+        thread_id=thread_id,
+        org=org,
+        project=project,
+        execution_name=None,
+    )
     
-    # Get the report graph instance
-    report_graph = get_graph(org, project, "report")
+    # Add recent logs if available from graph state
+    if status_result.get("status") not in ("not_found", "pending"):
+        try:
+            config = {"configurable": {"thread_id": thread_id}}
+            report_graph = get_graph(org, project, "report")
+            snapshot = await asyncio.to_thread(report_graph.get_state, config)
+            if snapshot.values:
+                logs = snapshot.values.get("logs", [])
+                recent_logs = logs[-20:] if logs else []
+                if "progress" in status_result:
+                    status_result["progress"]["recent_logs"] = recent_logs
+        except Exception:
+            pass
     
-    # Check local state
-    try:
-        snapshot = await asyncio.to_thread(report_graph.get_state, config)
-    except Exception:
-        return {"status": "not_found"}
-    
-    if not snapshot.values:
-        return {"status": "not_found_or_empty"}
-    
-    current_values = snapshot.values
-    chapters = current_values.get("chapters", [])
-    logs = current_values.get("logs", [])
-    
-    is_complete = "final_report" in current_values
-    
-    # Extract visited nodes from current snapshot tasks (optimized - no history iteration)
-    # This eliminates expensive get_state_history() call that iterates through all checkpoints
-    next_nodes = list(snapshot.next) if snapshot.next else []
-    visited_nodes = []
-    if snapshot.tasks:
-        visited_nodes = [t.name for t in snapshot.tasks if hasattr(t, 'name')]
-
-    # Limit logs to last 20 entries to reduce payload size
-    recent_logs = logs[-20:] if logs else []
-
-    return {
-        "status": "completed" if is_complete else "running",
-        "progress": {
-            "chapters_completed": len(chapters),
-            "recent_logs": recent_logs
-        },
-        "graph_state": {
-            "visited_nodes": visited_nodes,
-            "next": next_nodes
-        },
-        "result": current_values.get("final_report") if is_complete else None
-    }
+    return status_result
 
 @router.get("/{thread_id}/load")
 async def load_report_checkpoint(
@@ -1291,9 +1190,13 @@ async def execute_report_job(
     Internal endpoint for Cloud Run Job execution.
     Called by Cloud Run Job container to execute a report.
     Requires API_TOKEN authentication via header.
+    
+    Note: This endpoint is kept for backward compatibility, but the CLI module
+    (app.batch.run_report_job) should be used instead for direct execution.
     """
     import os
     from app.config import settings
+    from app.api.report_execution import prepare_report_execution, execute_report_graph
     
     # Authenticate using API_TOKEN (internal service-to-service auth)
     api_token = os.getenv("API_TOKEN")
@@ -1332,57 +1235,20 @@ async def execute_report_job(
             detail="Missing required parameters: thread_id, org, project"
         )
     
-    # Fetch all procedures from database
     try:
-        procedures = _get_all_procedures_raw_sql()
-        logger.info(
-            "procedures_fetched_from_database",
+        # Prepare execution
+        initial_state, config, report_graph = await prepare_report_execution(
             thread_id=thread_id,
-            procedure_count=len(procedures),
+            org=org,
+            project=project,
+            model=model,
         )
-    except Exception as e:
-        logger.exception(
-            "failed_to_fetch_procedures",
-            thread_id=thread_id,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to fetch procedures from database: {str(e)}"
-        )
-    
-    # Initialize state for new report - clear final_report from any previous run
-    initial_state = {
-        "raw_procedures": procedures,
-        "final_report": "",  # Clear any previous final_report
-    }
-    model = _resolve_report_model(model)
-    config = {
-        "configurable": {
-            "thread_id": thread_id
-        },
-        "recursion_limit": CONSTANTS.get("GRAPH_RECURSION_LIMIT", 50),  # Prevent infinite loops
-    }
-    if model:
-        config["configurable"]["model_name"] = model
-
-    # Get the report graph instance
-    report_graph = get_graph(org, project, "report")
-
-    logger.info(
-        "report_job_execution_started",
-        thread_id=thread_id,
-        org=org,
-        project=project,
-    )
-    
-    try:
-        # Execute the report graph
-        await report_graph.ainvoke(initial_state, config)
         
-        logger.info(
-            "report_job_execution_completed",
+        # Execute graph
+        await execute_report_graph(
+            graph=report_graph,
+            initial_state=initial_state,
+            config=config,
             thread_id=thread_id,
             org=org,
             project=project,
