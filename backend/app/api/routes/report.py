@@ -974,7 +974,7 @@ async def download_chapters(
                 pypandoc.convert_text(
                     combined_markdown,
                     'docx',
-                    format='markdown-yaml_metadata_block',
+                    format='md',
                     outputfile=tmp_file.name,
                     extra_args=['--standalone'],
                 )
@@ -1161,7 +1161,7 @@ async def download_final_report(
                 pypandoc.convert_text(
                     report_markdown,
                     'docx',
-                    format='markdown-yaml_metadata_block',
+                    format='md',
                     outputfile=tmp_file.name,
                     extra_args=['--standalone'],
                 )

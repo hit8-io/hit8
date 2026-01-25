@@ -40,6 +40,8 @@ prompt: |
 
   ---
 
+  **BELANGRIJK**: Zorg ervoor dat de `---` separator altijd gevolgd wordt door een nieuwe regel (newline) om YAML-parsing problemen te voorkomen.
+
 # Metadata
 version: "1.0.0"
 description: "System prompt for the Report Analyst node"

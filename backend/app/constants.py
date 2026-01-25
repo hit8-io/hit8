@@ -40,6 +40,10 @@ logger = structlog.get_logger(__name__)
 
 ENVIRONMENT: Literal["dev", "stg", "prd"] = os.getenv("ENVIRONMENT", "dev")
 
+# Vertex AI Configuration (single constants for all models)
+VERTEX_LOCATION: str = "europe-west1"
+USE_ALTERNATIVE: bool = True
+
 # Defaults
 CONSTANTS: dict[str, Any] = {
     "MAX_RECENT_MESSAGE_PAIRS": 5,
@@ -50,28 +54,32 @@ CONSTANTS: dict[str, Any] = {
         {
             "MODEL_NAME": "gemini-2.5-pro",
             "PROVIDER": "vertex",
-            "LOCATION": "global",
+            "LOCATION": VERTEX_LOCATION,
+            "USE_ALTERNATIVE": USE_ALTERNATIVE,
             "THINKING_LEVEL": None,
             "TEMPERATURE": 0.3,
         },
         {
             "MODEL_NAME": "gemini-2.5-flash",
             "PROVIDER": "vertex",
-            "LOCATION": "global",
+            "LOCATION": VERTEX_LOCATION,
+            "USE_ALTERNATIVE": USE_ALTERNATIVE,
             "THINKING_LEVEL": None,
             "TEMPERATURE": 0.3,
         },
         {
             "MODEL_NAME": "gemini-3-pro-preview",
             "PROVIDER": "vertex",
-            "LOCATION": "global",
+            "LOCATION": VERTEX_LOCATION,
+            "USE_ALTERNATIVE": USE_ALTERNATIVE,
             "THINKING_LEVEL": None,
             "TEMPERATURE": None,
         },
         {
             "MODEL_NAME": "gemini-3-flash-preview",
             "PROVIDER": "vertex",
-            "LOCATION": "global",
+            "LOCATION": VERTEX_LOCATION,
+            "USE_ALTERNATIVE": USE_ALTERNATIVE,
             "THINKING_LEVEL": None,
             "TEMPERATURE": None,
         },
@@ -117,7 +125,8 @@ if ENVIRONMENT == "dev":
                 {
                     "MODEL_NAME": "gemini-2.0-flash-lite-001",
                     "PROVIDER": "vertex",
-                    "LOCATION": "global",
+                    "LOCATION": VERTEX_LOCATION,
+                    "USE_ALTERNATIVE": USE_ALTERNATIVE,
                     "THINKING_LEVEL": None,
                     "TEMPERATURE": 0.3,
                 },
@@ -131,28 +140,32 @@ if ENVIRONMENT == "dev":
                 {
                     "MODEL_NAME": "gemini-2.5-pro",
                     "PROVIDER": "vertex",
-                    "LOCATION": "global",
+                    "LOCATION": VERTEX_LOCATION,
+                    "USE_ALTERNATIVE": USE_ALTERNATIVE,
                     "THINKING_LEVEL": None,
                     "TEMPERATURE": 0.3,
                 },
                 {
                     "MODEL_NAME": "gemini-2.5-flash",
                     "PROVIDER": "vertex",
-                    "LOCATION": "global",
+                    "LOCATION": VERTEX_LOCATION,
+                    "USE_ALTERNATIVE": USE_ALTERNATIVE,
                     "THINKING_LEVEL": None,
                     "TEMPERATURE": 0.3,
                 },
                 {
                     "MODEL_NAME": "gemini-3-pro-preview",
                     "PROVIDER": "vertex",
-                    "LOCATION": "global",
+                    "LOCATION": VERTEX_LOCATION,
+                    "USE_ALTERNATIVE": USE_ALTERNATIVE,
                     "THINKING_LEVEL": None,
                     "TEMPERATURE": None,
                 },
                 {
                     "MODEL_NAME": "gemini-3-flash-preview",
                     "PROVIDER": "vertex",
-                    "LOCATION": "global",
+                    "LOCATION": VERTEX_LOCATION,
+                    "USE_ALTERNATIVE": USE_ALTERNATIVE,
                     "THINKING_LEVEL": None,
                     "TEMPERATURE": None,
                 },

@@ -13,7 +13,7 @@ prompt: |
   ## Input Data
   U ontvangt in het **gebruikersbericht** (user prompt) de volledige tekst van alle hoofdstukken (chapters). Elk hoofdstuk bevat een gedetailleerde analyse per departement of thema. De hoofdstukken zijn gescheiden door `---` markers (omgeven door lege regels).
 
-  **BELANGRIJK**: In sectie 3 (Departementale Analyse) moet u de **volledige, onbewerkte tekst** van alle hoofdstukken opnemen. Voeg geen samenvattingen toe, maar integreer alle hoofdstukken in hun geheel. Behoud de structuur en inhoud van elk hoofdstuk zoals aangeleverd. U mag de `---` scheidingsmarkers tussen hoofdstukken behouden of vervangen door passende markdown-scheidingen (zoals `---` of extra witruimte).
+  **BELANGRIJK**: In sectie 3 (Departementale Analyse) moet u de **volledige, onbewerkte tekst** van alle hoofdstukken opnemen. Voeg geen samenvattingen toe, maar integreer alle hoofdstukken in hun geheel. Behoud de structuur en inhoud van elk hoofdstuk zoals aangeleverd. U mag de `---` scheidingsmarkers tussen hoofdstukken behouden of vervangen door passende markdown-scheidingen. **BELANGRIJK**: Gebruik altijd `---` gevolgd door een nieuwe regel (newline) om YAML-parsing problemen te voorkomen.
 
   ## Output Structuur (Markdown)
 
@@ -45,7 +45,7 @@ prompt: |
   ---
 
   ## 3. Departementale Analyse
-  *(BELANGRIJK: Neem hier de volledige tekst op van alle hoofdstukken die u in het gebruikersbericht ontvangt. Integreer alle hoofdstukken in hun geheel, zonder samenvattingen of weglatingen. Behoud de originele structuur en inhoud van elk hoofdstuk. Elke hoofdstuk moet volledig worden opgenomen, inclusief alle subsecties, bevindingen, en aanbevelingen. De hoofdstukken zijn gescheiden door `---` markers in het gebruikersbericht - u mag deze behouden of aanpassen voor een betere leesbaarheid van het eindrapport.)*
+  *(BELANGRIJK: Neem hier de volledige tekst op van alle hoofdstukken die u in het gebruikersbericht ontvangt. Integreer alle hoofdstukken in hun geheel, zonder samenvattingen of weglatingen. Behoud de originele structuur en inhoud van elk hoofdstuk. Elke hoofdstuk moet volledig worden opgenomen, inclusief alle subsecties, bevindingen, en aanbevelingen. De hoofdstukken zijn gescheiden door `---` markers in het gebruikersbericht - u mag deze behouden of aanpassen voor een betere leesbaarheid van het eindrapport. **BELANGRIJK**: Zorg ervoor dat elke `---` separator altijd gevolgd wordt door een nieuwe regel (newline) om YAML-parsing problemen te voorkomen.)*
 
   ---
 

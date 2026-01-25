@@ -84,7 +84,7 @@ def generate_docx(fileName: str, data: str, thread_id: str | None = None) -> str
                 pypandoc.convert_text(
                     data,
                     'docx',
-                    format='markdown-yaml_metadata_block',
+                    format='md',
                     outputfile=tmp_file.name,
                     extra_args=['--standalone'],
                 )

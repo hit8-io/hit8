@@ -8,6 +8,7 @@ import structlog
 from litellm import Router
 
 from app.config import settings
+from app.constants import CONSTANTS
 
 logger = structlog.get_logger(__name__)
 
@@ -83,70 +84,93 @@ for provider_config in settings.LLM_PROVIDER:
         OLLAMA_BASE_URL = provider_config.OLLAMA_BASE_URL
         break
 
-model_list = [
-    # Gemini 2.5 Pro
-    {
-        "model_name": "gemini-2.5-pro",
-        "litellm_params": {
-            "model": "vertex_ai/gemini-2.5-pro",
+# 1. CONFIGURATION: Get Location & Fallback Preference
+VERTEX_LOCATION = None
+USE_ALTERNATIVE = False
+
+for llm_config in CONSTANTS["LLM"]:
+    if llm_config.get("PROVIDER") == "vertex":
+        VERTEX_LOCATION = llm_config.get("LOCATION")
+        # Check if alternative endpoint (global) is enabled in config
+        USE_ALTERNATIVE = llm_config.get("USE_ALTERNATIVE", False)
+        break
+
+# Define target locations: Preferred first, then Global if enabled
+deployment_locations = [VERTEX_LOCATION]
+if USE_ALTERNATIVE:
+    deployment_locations.append("global")
+
+# Remove duplicates (e.g., if VERTEX_LOCATION is already 'global')
+deployment_locations = list(dict.fromkeys(filter(None, deployment_locations)))
+
+
+# 2. HELPER: Generate configs for all active locations
+def _create_vertex_configs(model_name: str, vertex_path: str, tpm: int, rpm: int, timeout: int | None = None) -> list[dict]:
+    """Generates a list of model configs for all active deployment locations."""
+    configs = []
+    for location in deployment_locations:
+        params = {
+            "model": vertex_path,
             "vertex_project": GCP_PROJECT,
-            "vertex_location": "global",
+            "vertex_location": location,
             "vertex_credentials": VERTEX_CREDENTIALS,
-            "tpm": QUOTA_PRO_TPM,
-            "rpm": 5,
-            "timeout": 600,
+            "tpm": tpm,
+            "rpm": rpm,
         }
-    },
-    # Gemini 2.5 Flash
-    {
-        "model_name": "gemini-2.5-flash",
-        "litellm_params": {
-            "model": "vertex_ai/gemini-2.5-flash",
-            "vertex_project": GCP_PROJECT,
-            "vertex_location": "global",
-            "vertex_credentials": VERTEX_CREDENTIALS,
-            "tpm": QUOTA_FLASH_TPM,
-            "rpm": 60,
-        }
-    },
-    # Gemini 2.0 Flash Lite
-    {
-        "model_name": "gemini-2.0-flash-lite-001",
-        "litellm_params": {
-            "model": "vertex_ai/gemini-2.0-flash-lite-001",
-            "vertex_project": GCP_PROJECT,
-            "vertex_location": "global",
-            "vertex_credentials": VERTEX_CREDENTIALS,
-            "tpm": QUOTA_FLASH_TPM,
-            "rpm": 60,
-        }
-    },
-    # Gemini 3.0 Pro Preview
-    {
-        "model_name": "gemini-3-pro-preview",
-        "litellm_params": {
-            "model": "vertex_ai/gemini-3-pro-preview",
-            "vertex_project": GCP_PROJECT,
-            "vertex_location": "global",
-            "vertex_credentials": VERTEX_CREDENTIALS,
-            "tpm": QUOTA_PRO_TPM,
-            "rpm": 5,
-            "timeout": 1200,  # Extra long for thinking
-        }
-    },
-    # Gemini 3.0 Flash Preview
-    {
-        "model_name": "gemini-3-flash-preview",
-        "litellm_params": {
-            "model": "vertex_ai/gemini-3-flash-preview",
-            "vertex_project": GCP_PROJECT,
-            "vertex_location": "global",
-            "vertex_credentials": VERTEX_CREDENTIALS,
-            "tpm": QUOTA_FLASH_TPM,
-            "rpm": 10,
-        }
-    },
-]
+        if timeout:
+            params["timeout"] = timeout
+            
+        configs.append({
+            "model_name": model_name,
+            "litellm_params": params
+        })
+    return configs
+
+
+# 3. MODEL DEFINITIONS: Dynamic generation
+model_list = []
+
+# Gemini 2.5 Pro
+model_list.extend(_create_vertex_configs(
+    model_name="gemini-2.5-pro",
+    vertex_path="vertex_ai/gemini-2.5-pro",
+    tpm=QUOTA_PRO_TPM,
+    rpm=5,
+    timeout=600
+))
+
+# Gemini 2.5 Flash
+model_list.extend(_create_vertex_configs(
+    model_name="gemini-2.5-flash",
+    vertex_path="vertex_ai/gemini-2.5-flash",
+    tpm=QUOTA_FLASH_TPM,
+    rpm=60
+))
+
+# Gemini 2.0 Flash Lite
+model_list.extend(_create_vertex_configs(
+    model_name="gemini-2.0-flash-lite-001",
+    vertex_path="vertex_ai/gemini-2.0-flash-lite-001",
+    tpm=QUOTA_FLASH_TPM,
+    rpm=60
+))
+
+# Gemini 3.0 Pro Preview
+model_list.extend(_create_vertex_configs(
+    model_name="gemini-3-pro-preview",
+    vertex_path="vertex_ai/gemini-3-pro-preview",
+    tpm=QUOTA_PRO_TPM,
+    rpm=5,
+    timeout=1200
+))
+
+# Gemini 3.0 Flash Preview
+model_list.extend(_create_vertex_configs(
+    model_name="gemini-3-flash-preview",
+    vertex_path="vertex_ai/gemini-3-flash-preview",
+    tpm=QUOTA_FLASH_TPM,
+    rpm=10
+))
 
 # Add Ollama model if configured
 if OLLAMA_BASE_URL:
@@ -159,13 +183,17 @@ if OLLAMA_BASE_URL:
         }
     })
 
-# Initialize router (in-memory mode, no Redis)
+
+# 4. ROUTER INITIALIZATION: Optimized Load Balancing
+# latency-based-routing: Prioritizes the fastest response (Europe) 
+# and automatically shifts traffic to Global if Europe slows down or errors.
 router = Router(
     model_list=model_list,
-    num_retries=3,      # Retry 5xx and 429 errors automatically
-    allowed_fails=1,    # Allow 1 fail before cooldown
-    cooldown_time=120,  # Wait 120s if model fails (e.g. 429) - longer for rate limits
-    set_verbose=True     # Enable logs to see rate limiting
+    routing_strategy="latency-based-routing", 
+    num_retries=2,       # Retry on 5xx/429
+    allowed_fails=1,     # Allow 1 failure before cooldown
+    cooldown_time=30,    # Short cooldown to quickly retry failed region
+    set_verbose=True
 )
 
 logger.info(
@@ -173,4 +201,8 @@ logger.info(
     model_count=len(model_list),
     gcp_project=GCP_PROJECT,
     ollama_configured=OLLAMA_BASE_URL is not None,
+    vertex_location=VERTEX_LOCATION,
+    deployment_locations=deployment_locations,
+    use_alternative=USE_ALTERNATIVE,
+    routing_strategy="latency-based-routing",
 )
