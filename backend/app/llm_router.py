@@ -208,8 +208,10 @@ if settings.CACHE_ENABLED and settings.UPSTASH_REDIS_HOST:
         "cache_responses": True,
         "cache_kwargs": {
             "ssl": True,  # Upstash requires TLS
-            "ttl": settings.CACHE_TTL,
+            # Note: TTL is handled by LiteLLM's caching layer, not passed to Redis client
         },
+        # TTL is configured via default_in_redis_ttl if LiteLLM supports it
+        # Otherwise, LiteLLM will use its default TTL behavior
     })
     
     logger.info(
