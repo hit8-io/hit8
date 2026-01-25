@@ -106,7 +106,7 @@ If you prefer to run services manually without Docker:
 
 #### Database Setup
 
-The app uses **`DATABASE_CONNECTION_STRING`** (via Doppler or env) to connect to PostgreSQL. Use Supabase (cloud) or a separate Postgres instance. **Docker Compose does not include a Supabase/Postgres service** for the app. Migrations live in `supabase/migrations/`; apply via Supabase tooling or your project runbook.
+The app uses **`DATABASE_CONNECTION_STRING`** (via Doppler or env) to connect to PostgreSQL. Use Supabase (cloud) or a separate Postgres instance. **Docker Compose does not include a Supabase/Postgres service** for the app. Database schema is managed with [Atlas](https://atlasgo.io) using declarative schema in `database/schema.hcl`. See [supabase/migrate.md](../supabase/migrate.md) for schema management workflow.
 
 ## Project Structure
 
@@ -270,9 +270,17 @@ prod:
 
 The app connects via **`DATABASE_CONNECTION_STRING`** (Doppler or env). Docker Compose does **not** include a Supabase/Postgres container for the app; use Supabase (cloud) or an external Postgres. Ensure Doppler provides `DATABASE_CONNECTION_STRING` for the `api` service.
 
-### Migrations
+### Database Schema Management
 
-Migrations live in **`supabase/migrations/`**. Apply them via Supabase tooling or your project runbook (e.g. `supabase db push` or Supabase Dashboard).
+Database schema is managed with **Atlas** using declarative schema in `database/schema.hcl`. 
+
+**Making schema changes:**
+1. Edit `database/schema.hcl` to reflect desired changes
+2. Review diff: `atlas schema apply --to file://schema.hcl --url "postgresql://postgres:postgres@localhost:54325/postgres?sslmode=disable&search_path=public" --schema public --dry-run`
+3. Apply changes: `atlas schema apply --to file://schema.hcl --url "postgresql://postgres:postgres@localhost:54325/postgres?sslmode=disable&search_path=public" --schema public`
+4. Commit `database/schema.hcl` to Git
+
+See [supabase/migrate.md](../supabase/migrate.md) for detailed workflow and [database/README.md](../database/README.md) for Atlas setup.
 
 ## Development Tips
 

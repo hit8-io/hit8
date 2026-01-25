@@ -33,6 +33,29 @@ env:
 
 ## Jobs
 
+### 0. Apply Database Schema
+
+- **Name**: `apply-schema`
+- **Runs**: When `database/schema.hcl` changes, or on manual trigger
+- **Steps**:
+  1. Install Atlas CLI
+  2. Install Doppler CLI
+  3. Validate schema files exist
+  4. Show schema diff (dry-run) for staging
+  5. Apply schema to staging automatically
+  6. Show schema diff (dry-run) for production
+  7. Apply schema to production (requires manual approval)
+
+**Schema Management:**
+- Schema is defined declaratively in `database/schema.hcl`
+- Atlas automatically generates and applies migrations
+- Staging: Applied automatically
+- Production: Applied after manual approval in GitHub Actions
+
+See [supabase/migrate.md](../supabase/migrate.md) for local development workflow.
+
+---
+
 ### 1. Build Backend
 
 - **Checkout** → **Authenticate to GCP** (`google-github-actions/auth`, `GCP_SA_KEY`) → **Set up Cloud SDK** → **Configure Docker** for Artifact Registry (`gcloud auth configure-docker europe-west1-docker.pkg.dev`)
@@ -42,7 +65,7 @@ env:
 
 **Image:** Artifact Registry (not GCR). Tag: `{VERSION}-{SHORT_SHA}`.
 
-**Note:** Database migrations are performed manually outside CI/CD.
+**Note:** Database schema changes are automatically applied via Atlas in the `apply-schema` job (see below).
 
 ---
 
@@ -128,10 +151,11 @@ All routes go to `index.html` for client-side routing.
 
 ## Deployment Flow (Summary)
 
-1. Push to `main` (with backend/frontend or workflow changes)
-2. Workflow: build backend image (Docker → Artifact Registry) and frontend (two builds: stg, prd)
-3. **Staging:** `hit8-api-stg` image update + Cloudflare Pages `main-staging` (Preview)
-4. **Production:** after manual approval → `hit8-api-prd` image update + Cloudflare Pages `main` (Production)
+1. Push to `main` (with backend/frontend, schema, or workflow changes)
+2. **Schema:** If `database/schema.hcl` or `database/atlas.hcl` changed, apply schema to staging (auto) and production (manual approval)
+3. Workflow: build backend image (Docker → Artifact Registry) and frontend (two builds: stg, prd)
+4. **Staging:** `hit8-api-stg` image update + Cloudflare Pages `main-staging` (Preview)
+5. **Production:** after manual approval → `hit8-api-prd` image update + Cloudflare Pages `main` (Production)
 
 ---
 

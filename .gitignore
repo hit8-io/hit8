@@ -53,6 +53,9 @@ doppler.yaml
 supabase/backup/
 supabase/.temp/
 
+# Atlas (if not using Atlas Cloud)
+.atlas/
+
 # Terraform
 infra/.terraform/
 infra/.terraform.lock.hcl

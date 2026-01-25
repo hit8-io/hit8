@@ -23,242 +23,176 @@ env:
 
 jobs:
   # --------------------------------------------------------------------------
-  # 1A. BUILD BACKEND: Docker Image
+  # 1A. BUILD BACKEND
   # --------------------------------------------------------------------------
   build-backend:
     name: Build Backend
     runs-on: ubuntu-latest
-    timeout-minutes: 30
     permissions:
       contents: read
       id-token: write
     outputs:
       image_tag: ${{ steps.meta.outputs.image_tag }}
       version: ${{ steps.meta.outputs.version }}
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Authenticate to Google Cloud
+      - uses: actions/checkout@v4
+      
+      - name: Auth GCP
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      - name: Set up Cloud SDK
+          
+      - name: Setup GCloud
         uses: google-github-actions/setup-gcloud@v2
-
+        
       - name: Configure Docker
         run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
 
       - name: Determine Tag
         id: meta
         run: |
-          set -e
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           if [ -f VERSION ]; then
             VERSION=$(cat VERSION | tr -d '[:space:]')
-            if [ -z "$VERSION" ]; then
-              echo "Error: VERSION file is empty"
-              exit 1
-            fi
           else
-            echo "Error: VERSION file is required but not found"
-            exit 1
+            echo "VERSION file missing" && exit 1
           fi
-          IMAGE_TAG="${VERSION}-${SHORT_SHA}"
-          echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "image_tag=${VERSION}-${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
       - name: Build and Push
-        run: |
-          set -e
-          FULL_IMAGE="${{ env.IMAGE_BASE }}:${{ steps.meta.outputs.image_tag }}"
-          VERSION="${{ steps.meta.outputs.version }}"
-          
-          docker build \
-            --tag "$FULL_IMAGE" \
-            --build-arg VERSION="$VERSION" \
-            ./backend
-          
-          docker push "$FULL_IMAGE"
-          
-          # Verify image exists
-          echo "Verifying image push..."
-          gcloud container images describe "$FULL_IMAGE" --format="value(image_summary.fully_qualified_digest)"
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: ${{ env.IMAGE_BASE }}:${{ steps.meta.outputs.image_tag }}
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   # --------------------------------------------------------------------------
-  # 1B. BUILD FRONTEND: Static Assets (Twice: Stg + Prd)
+  # 1B. BUILD FRONTEND
   # --------------------------------------------------------------------------
   build-frontend:
     name: Build Frontend
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Install Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
+      
+      - run: cd frontend && npm ci
 
-      - name: Install dependencies
-        run: cd frontend && npm ci
-
-      # Build Staging (Uses Staging API URL)
       - name: Build Staging
         run: cd frontend && npm run build
         env:
           VITE_API_URL: ${{ env.API_URL_STG }}
+          VITE_GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
           VITE_GOOGLE_IDENTITY_PLATFORM_KEY: ${{ secrets.GOOGLE_IDENTITY_PLATFORM_KEY }}
           VITE_GOOGLE_IDENTITY_PLATFORM_DOMAIN: ${{ secrets.GOOGLE_IDENTITY_PLATFORM_DOMAIN }}
-          VITE_GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
           VITE_API_TOKEN: ${{ secrets.API_TOKEN }}
           VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-      
-      - name: Upload Staging Artifact
-        uses: actions/upload-artifact@v4
+
+      - uses: actions/upload-artifact@v4
         with:
           name: frontend-dist-stg
           path: frontend/dist
           retention-days: 1
 
-      # Build Production (Uses Production API URL)
       - name: Build Production
         run: cd frontend && npm run build
         env:
           VITE_API_URL: ${{ env.API_URL_PRD }}
+          VITE_GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
           VITE_GOOGLE_IDENTITY_PLATFORM_KEY: ${{ secrets.GOOGLE_IDENTITY_PLATFORM_KEY }}
           VITE_GOOGLE_IDENTITY_PLATFORM_DOMAIN: ${{ secrets.GOOGLE_IDENTITY_PLATFORM_DOMAIN }}
-          VITE_GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
           VITE_API_TOKEN: ${{ secrets.API_TOKEN }}
           VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
 
-      - name: Upload Production Artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: frontend-dist-prd
           path: frontend/dist
           retention-days: 1
 
   # --------------------------------------------------------------------------
-  # 2. STAGING: Auto-Deploy (Backend + Frontend)
+  # 2. DEPLOY STAGING
   # --------------------------------------------------------------------------
   deploy-staging:
     name: Deploy Staging
     needs: [build-backend, build-frontend]
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     environment: staging
     permissions:
       contents: read
       id-token: write
-
     steps:
-      # --- BACKEND DEPLOY ---
-      - name: Authenticate to Google Cloud
+      - name: Auth GCP
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Set up Cloud SDK
+      - name: Setup GCloud
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Deploy Backend (Staging)
+      - name: Deploy Backend
         run: |
-          set -e
-          IMAGE_TAG="${{ needs.build-backend.outputs.image_tag }}"
-          if [ -z "$IMAGE_TAG" ]; then
-            echo "Error: Image tag is empty"
-            exit 1
-          fi
-          IMAGE="${{ env.IMAGE_BASE }}:${IMAGE_TAG}"
-          
-          echo "Deploying backend to staging..."
           gcloud run services update hit8-api-stg \
-            --image "$IMAGE" \
+            --image "${{ env.IMAGE_BASE }}:${{ needs.build-backend.outputs.image_tag }}" \
             --region ${{ env.REGION }} \
             --quiet
-          
-          # Verify deployment
-          echo "Verifying staging deployment..."
-          gcloud run services describe hit8-api-stg \
-            --region ${{ env.REGION }} \
-            --format="value(status.url)"
 
-      # --- FRONTEND DEPLOY ---
-      - name: Download Staging Artifact
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: frontend-dist-stg
           path: dist-stg
 
-      - name: Deploy Frontend (Staging/Preview)
+      - name: Deploy Frontend
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_PAGES_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # "main-staging" branch name forces a Preview deployment
           command: pages deploy dist-stg --project-name=${{ env.CLOUDFLARE_PROJECT }} --branch=main-staging
 
   # --------------------------------------------------------------------------
-  # 3. PRODUCTION: Manual Approval (Backend + Frontend)
+  # 3. DEPLOY PRODUCTION (Manual Approval)
   # --------------------------------------------------------------------------
   deploy-production:
     name: Deploy Production
-    needs: [build-backend, deploy-staging, build-frontend]
+    needs: [deploy-staging, build-backend]
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    environment: production
+    environment: production # <--- Manual Approval triggers here
     permissions:
       contents: read
       id-token: write
-
     steps:
-      # --- BACKEND DEPLOY ---
-      - name: Authenticate to Google Cloud
+      - name: Auth GCP
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Set up Cloud SDK
+      - name: Setup GCloud
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Deploy Backend (Production)
+      - name: Deploy Backend
         run: |
-          set -e
-          IMAGE_TAG="${{ needs.build-backend.outputs.image_tag }}"
-          if [ -z "$IMAGE_TAG" ]; then
-            echo "Error: Image tag is empty"
-            exit 1
-          fi
-          IMAGE="${{ env.IMAGE_BASE }}:${IMAGE_TAG}"
-          
-          echo "Deploying backend to production..."
           gcloud run services update hit8-api-prd \
-            --image "$IMAGE" \
+            --image "${{ env.IMAGE_BASE }}:${{ needs.build-backend.outputs.image_tag }}" \
             --region ${{ env.REGION }} \
             --quiet
-          
-          # Verify deployment
-          echo "Verifying production deployment..."
-          gcloud run services describe hit8-api-prd \
-            --region ${{ env.REGION }} \
-            --format="value(status.url)"
 
-      # --- FRONTEND DEPLOY ---
-      - name: Download Production Artifact
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: frontend-dist-prd
           path: dist-prd
 
-      - name: Deploy Frontend (Production)
+      - name: Deploy Frontend
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_PAGES_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # "main" matches Production Branch -> LIVE deployment
           command: pages deploy dist-prd --project-name=${{ env.CLOUDFLARE_PROJECT }} --branch=main --commit-dirty=true
