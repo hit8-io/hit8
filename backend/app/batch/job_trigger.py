@@ -116,6 +116,20 @@ async def trigger_report_job(
         
         job_name = _build_job_name(environment)
         
+        # Fetch the job definition to get container name (required for ContainerOverride)
+        job = run_jobs_client.get_job(name=job_name)
+        container_name = None
+        if (
+            job.template
+            and job.template.template
+            and job.template.template.containers
+            and len(job.template.template.containers) > 0
+        ):
+            first_container = job.template.template.containers[0]
+            # Container name is optional in job definition, but required for override
+            # If not set, Cloud Run uses a default name, but we'll use the first container index
+            container_name = getattr(first_container, 'name', None)
+        
         # Create execution overrides with environment variables
         # Pass job parameters as JSON in environment variable for simplicity
         job_params = {
@@ -126,14 +140,33 @@ async def trigger_report_job(
         if model:
             job_params["model"] = model
         
-        overrides = RunJobRequest.Overrides(
-            container_overrides=[
-                RunJobRequest.Overrides.ContainerOverride(
-                    env=[
-                        EnvVar(name="REPORT_JOB_PARAMS", value=json.dumps(job_params)),
-                    ]
-                )
+        # Build container override with environment variables
+        container_override = RunJobRequest.Overrides.ContainerOverride(
+            env=[
+                EnvVar(name="REPORT_JOB_PARAMS", value=json.dumps(job_params)),
             ]
+        )
+        # Set container name if we found one (required for ContainerOverride to target the right container)
+        if container_name:
+            container_override.name = container_name
+            logger.debug(
+                "container_override_with_name",
+                container_name=container_name,
+                job_name=job_name,
+            )
+        else:
+            logger.warning(
+                "container_name_not_found",
+                job_name=job_name,
+                container_count=len(job.template.template.containers) if (
+                    job.template
+                    and job.template.template
+                    and job.template.template.containers
+                ) else 0,
+            )
+        
+        overrides = RunJobRequest.Overrides(
+            container_overrides=[container_override]
         )
         
         # Execute the job

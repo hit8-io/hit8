@@ -196,7 +196,7 @@ if ENVIRONMENT == "dev":
 if ENVIRONMENT == "stg":
     CONSTANTS.update(
         {
-            "LOG_LEVEL": "INFO",
+            "LOG_LEVEL": "DEBUG",
             "LOG_FORMAT": "json",
             "CACHE_ENABLED": True,
             "CORS_ALLOW_ORIGINS": [

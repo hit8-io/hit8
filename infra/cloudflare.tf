@@ -32,6 +32,7 @@ resource "cloudflare_record" "api_endpoints" {
 
 
 # Dummy A record for root domain - actual routing handled by redirect ruleset
+# Note: This record may already exist - if import fails, it means it doesn't exist and will be created
 resource "cloudflare_record" "root" {
   zone_id = var.cloudflare_zone_id
   name    = var.domain_name

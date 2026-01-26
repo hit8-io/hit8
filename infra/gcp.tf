@@ -357,6 +357,9 @@ resource "google_cloud_run_v2_job" "report_job" {
       service_account = google_service_account.api_runner.email
       
       containers {
+        # Container name is required for ContainerOverride to work correctly
+        name = "api"
+        
         # Initial image reference (CI/CD will update this after each build)
         image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.artifact_registry_repository}/api:${local.image_version}"
         
