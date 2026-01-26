@@ -498,12 +498,6 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
     const pollStatus = async () => {
       if (shouldStop) return;
       
-      // Also check if status was set to stopped (e.g., by stopReport)
-      if (status?.status === 'stopped') {
-        shouldStop = true;
-        return;
-      }
-      
       try {
         const response = await fetch(`${API_URL}/report/${jobId}/status`, {
           headers: getApiHeaders(token)
