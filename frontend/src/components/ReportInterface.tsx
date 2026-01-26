@@ -41,6 +41,7 @@ interface ReportStatus {
     chapters: string[];
     chapters_by_file_id?: Record<string, string>;
     final_report?: string | null;
+    execution_metrics?: Record<string, any>;
   };
   result?: string;
 }
@@ -522,11 +523,12 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
           }
         }
         
-        // Update status field for UI state (running/completed/etc)
+        // Update full status including progress (for event logs) and status field
         if (data.status && data.status !== 'not_found') {
           setStatus(prev => ({
             ...prev,
             status: data.status,
+            progress: data.progress || prev?.progress,
           }))
         }
       } catch (err) {
@@ -895,7 +897,10 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
 
             {/* Observability */}
             <div className="flex-1 min-h-0">
-              <ObservabilityWindow executionState={executionState || null} />
+              <ObservabilityWindow 
+                executionState={executionState || null} 
+                statusMetrics={status?.state?.execution_metrics}
+              />
             </div>
           </div>
         </>

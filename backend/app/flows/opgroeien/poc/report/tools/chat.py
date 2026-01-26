@@ -53,11 +53,16 @@ async def consult_general_knowledge(query: str) -> str:
         # 2. Use a specific sub-thread ID to keep report queries isolated 
         # from the user's main chat history. Forward model_name from parent (e.g. report
         # analyst) so the nested chat uses the same model and observability shows one model.
+        # Note: Callbacks are not preserved here because this is a tool function that doesn't
+        # have direct access to the parent config. The nested graph will work correctly if
+        # callbacks are passed, but they need to be explicitly added to the config.
         sub_thread_id = f"sys-consult-{uuid.uuid4()}"
         config = {"configurable": {"thread_id": sub_thread_id}}
         parent_model = _current_model_name.get()
         if parent_model:
             config["configurable"]["model_name"] = parent_model
+        # TODO: Extract callbacks from execution context if available to preserve Langfuse tracing
+        # in nested graph calls. This would require accessing the current LangChain run context.
 
         # 3. Invoke the Chat Graph with flow control
         # Set _current_model_name before ainvoke so nested chat's agent_node can read it

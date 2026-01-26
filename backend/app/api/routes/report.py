@@ -266,6 +266,7 @@ async def start_report(
             org=org,
             project=project,
             model=payload.get("model"),
+            user_id=user_id,
         )
     except Exception as e:
         logger.exception(
@@ -1219,6 +1220,7 @@ async def execute_report_job(
             org = job_params.get("org")
             project = job_params.get("project")
             model = job_params.get("model")
+            user_id = job_params.get("user_id")  # Optional - may not be available
         except (json.JSONDecodeError, KeyError) as e:
             raise HTTPException(
                 status_code=400,
@@ -1230,6 +1232,7 @@ async def execute_report_job(
         org = payload.get("org")
         project = payload.get("project")
         model = payload.get("model")
+        user_id = payload.get("user_id")  # Optional - may not be available
     
     if not all([thread_id, org, project]):
         raise HTTPException(
@@ -1244,6 +1247,7 @@ async def execute_report_job(
             org=org,
             project=project,
             model=model,
+            user_id=user_id,
         )
         
         # Execute graph

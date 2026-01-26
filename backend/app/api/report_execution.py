@@ -35,6 +35,7 @@ async def prepare_report_execution(
     org: str,
     project: str,
     model: str | None = None,
+    user_id: str | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], Any]:
     """Prepare report execution: fetch procedures, initialize state, get graph.
     
@@ -76,6 +77,23 @@ async def prepare_report_execution(
     # Resolve model
     resolved_model = _resolve_report_model(model)
     
+    # Build metadata for Langfuse tracing
+    from app.config import settings
+    centralized_metadata = settings.metadata
+    metadata: dict[str, Any] = {
+        **centralized_metadata,  # Includes environment, account
+        "org": org,
+        "project": project,
+    }
+    
+    # Get Langfuse callback handler if enabled (pass session_id, user_id, and metadata)
+    from app.flows.common import get_langfuse_handler
+    langfuse_handler = get_langfuse_handler(
+        session_id=thread_id,
+        user_id=user_id,
+        metadata=metadata,
+    )
+    
     # Build config
     config = {
         "configurable": {
@@ -85,6 +103,19 @@ async def prepare_report_execution(
     }
     if resolved_model:
         config["configurable"]["model_name"] = resolved_model
+    
+    # Add callbacks if Langfuse handler is available
+    if langfuse_handler:
+        config["callbacks"] = [langfuse_handler]
+        logger.debug(
+            "langfuse_callback_handler_added_to_report",
+            thread_id=thread_id,
+            user_id=user_id,
+            org=org,
+            project=project,
+        )
+    
+    config["metadata"] = metadata
     
     # Get the report graph instance
     report_graph = get_graph(org, project, "report")

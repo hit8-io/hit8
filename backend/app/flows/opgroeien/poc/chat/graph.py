@@ -14,7 +14,7 @@ from langgraph.types import Overwrite
 
 from app.api.checkpointer import get_checkpointer
 from app.api.observability import _current_model_name
-from app.flows.common import get_agent_model, get_langfuse_handler, execute_llm_call_async
+from app.flows.common import get_agent_model, get_langfuse_handler, execute_llm_call_async, extract_callbacks_from_config
 from app.flows.opgroeien.poc import constants as flow_constants
 from app.flows.opgroeien.poc.constants import (
     NODE_AGENT,
@@ -111,6 +111,12 @@ async def agent_node(state: AgentState, config: RunnableConfig | None = None) ->
     
     # Convert config to dict for metadata injection
     config_dict: dict[str, Any] = dict(config) if config is not None else {}
+    
+    # Extract and preserve callbacks from config (needed for Langfuse tracing)
+    # When converting RunnableConfig to dict, callbacks are not automatically preserved
+    callbacks = extract_callbacks_from_config(config)
+    if callbacks:
+        config_dict["callbacks"] = callbacks
     
     # Inject metadata into config for Vertex AI
     # Use flow constants for org/project, settings for environment/account

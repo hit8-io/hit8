@@ -762,6 +762,37 @@ def get_langfuse_handler(
     return handler
 
 
+def extract_callbacks_from_config(config: Any | None) -> list[Any] | None:
+    """Extract callbacks from RunnableConfig or dict config.
+    
+    LangGraph nodes receive RunnableConfig which may contain callbacks.
+    When converting to dict, callbacks need to be explicitly preserved.
+    This helper extracts callbacks from either a RunnableConfig object or a dict.
+    
+    Args:
+        config: RunnableConfig object or dict containing callbacks
+        
+    Returns:
+        List of callback handlers if found, None otherwise
+    """
+    if not config:
+        return None
+    
+    # Try accessing as dict first
+    if isinstance(config, dict):
+        callbacks = config.get("callbacks")
+        if callbacks:
+            return callbacks if isinstance(callbacks, list) else [callbacks]
+    
+    # Try accessing as object attribute
+    if hasattr(config, "callbacks"):
+        callbacks = config.callbacks
+        if callbacks:
+            return callbacks if isinstance(callbacks, list) else [callbacks]
+    
+    return None
+
+
 def get_agent_model(
     thinking_level: str | None = None,
     temperature: float | None = None,

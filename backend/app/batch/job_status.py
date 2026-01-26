@@ -175,6 +175,7 @@ async def get_job_status_for_thread(
                     "chapters": chapters,
                     "chapters_by_file_id": current_values.get("chapters_by_file_id", {}),
                     "final_report": current_values.get("final_report") if is_complete else None,
+                    "execution_metrics": current_values.get("execution_metrics"),
                 },
                 "result": current_values.get("final_report") if is_complete else None,
             }

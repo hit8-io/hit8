@@ -9,6 +9,8 @@ import structlog
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 
+from app.flows.common import extract_callbacks_from_config
+
 if TYPE_CHECKING:
     from app.flows.opgroeien.poc.chat.graph import AgentState
 
@@ -62,14 +64,8 @@ def create_tool_node(tool_name: str, tool_func: Callable[..., Any]):
                 )
             
             # Extract callbacks from config for Langfuse logging
-            callbacks = None
-            if config:
-                # Try accessing as dict first
-                if isinstance(config, dict):
-                    callbacks = config.get("callbacks")
-                # Try accessing as object attribute
-                elif hasattr(config, "callbacks"):
-                    callbacks = config.callbacks
+            # Use helper function for consistent callback extraction
+            callbacks = extract_callbacks_from_config(config)
             
             last_message = state["messages"][-1]
             

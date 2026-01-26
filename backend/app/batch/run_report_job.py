@@ -119,6 +119,11 @@ async def _run_report_job() -> int:
         await startup()
         logger.info("report_job_initialization_complete", thread_id=thread_id)
 
+        # Initialize execution metrics tracking for this thread
+        from app.api.observability import initialize_execution, finalize_execution
+        initialize_execution(thread_id)
+        logger.info("report_job_observability_initialized", thread_id=thread_id)
+
         # Import after init so anything that touches DB/checkpointer is safe
         from app.api.report_execution import prepare_report_execution, execute_report_graph
 
@@ -128,6 +133,7 @@ async def _run_report_job() -> int:
             org=org,
             project=project,
             model=model,
+            user_id=user_id,
         )
         logger.info("report_job_execution_prepared", thread_id=thread_id)
 
@@ -145,6 +151,8 @@ async def _run_report_job() -> int:
             project=project,
         )
 
+        # Finalize execution metrics tracking
+        finalize_execution(thread_id)
         logger.info("report_job_cli_completed", thread_id=thread_id, has_final_report="final_report" in final_state)
         return 0
 

@@ -6,6 +6,8 @@ import type { ExecutionMetrics } from '../types/observability'
 
 interface ObservabilityWindowProps {
   executionState: ExecutionState | null
+  // Metrics from status response (for batch/polling mode)
+  statusMetrics?: ExecutionMetrics | null
 }
 
 /**
@@ -63,12 +65,18 @@ function extractMetricsFromStreamEvents(streamEvents: StreamEvent[] | undefined)
 
 export default function ObservabilityWindow({
   executionState,
+  statusMetrics,
 }: ObservabilityWindowProps) {
-  // Extract metrics from stream events (no polling needed)
+  // Extract metrics from stream events OR use status metrics (for batch/polling mode)
   const executionMetrics = useMemo(() => {
+    // Prefer status metrics if available (batch mode stores metrics in state)
+    if (statusMetrics) {
+      return statusMetrics
+    }
+    // Fall back to extracting from stream events (streaming mode)
     const streamEvents = executionState?.streamEvents
     return extractMetricsFromStreamEvents(streamEvents)
-  }, [executionState?.streamEvents])
+  }, [executionState?.streamEvents, statusMetrics])
 
   // Generate table rows from execution metrics
   const tableRows = useMemo(() => {

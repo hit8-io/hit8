@@ -11,7 +11,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, StateGraph
 
 from app.api.checkpointer import get_checkpointer
-from app.flows.common import get_agent_model, execute_llm_call_async
+from app.flows.common import get_agent_model, execute_llm_call_async, extract_callbacks_from_config
 from app.flows.hit8.hit8 import constants as flow_constants
 from app.config import settings
 
@@ -59,6 +59,13 @@ async def generate_node(
     
     # Prepare config with metadata for Vertex AI
     config_dict: dict = dict(config) if config else {}
+    
+    # Extract and preserve callbacks from config (needed for Langfuse tracing)
+    # When converting RunnableConfig to dict, callbacks are not automatically preserved
+    callbacks = extract_callbacks_from_config(config)
+    if callbacks:
+        config_dict["callbacks"] = callbacks
+    
     if "metadata" not in config_dict:
         config_dict["metadata"] = {}
     # Start with settings metadata (environment, account)

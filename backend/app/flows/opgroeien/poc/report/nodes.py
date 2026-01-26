@@ -312,6 +312,13 @@ async def _analyst_node_impl(input_data: ClusterInput, config: Optional[Runnable
     # Use constant from configuration - keep it simple and maintainable
     max_iter = constants.CONSTANTS.get("ANALYST_AGENT_MAX_ITERATIONS", 30)
     invoke_config = {**(dict(config) if config else {}), "recursion_limit": max_iter}
+    
+    # Extract and preserve callbacks from config (needed for Langfuse tracing)
+    # When converting RunnableConfig to dict, callbacks are not automatically preserved
+    from app.flows.common import extract_callbacks_from_config
+    callbacks = extract_callbacks_from_config(config)
+    if callbacks:
+        invoke_config["callbacks"] = callbacks
 
     # Invoke agent executor
     # Set _current_model_name so consult_general_knowledge uses the same model; reset after.
@@ -1030,13 +1037,20 @@ async def editor_node(state: ReportState, config: Optional[RunnableConfig] = Non
     if provider:
         call_context["provider"] = provider
     
+    # Extract and preserve callbacks from config (needed for Langfuse tracing)
+    from app.flows.common import extract_callbacks_from_config
+    callbacks = extract_callbacks_from_config(config)
+    editor_config: dict[str, Any] = {}
+    if callbacks:
+        editor_config["callbacks"] = callbacks
+    
     # Helper coroutine for LLM invocation
     async def _editor_llm_call():
         """Execute LLM call for editor node."""
         return await llm.ainvoke([
             SystemMessage(content=system_prompt),
             HumanMessage(content=human_message)
-        ])
+        ], config=editor_config if editor_config else None)
     
     # Use generic wrapper with report-specific semaphore
     response = await execute_llm_call_async(
@@ -1065,7 +1079,31 @@ async def editor_node(state: ReportState, config: Optional[RunnableConfig] = Non
             max_output_tokens=max_output_tokens,
         )
     
+    # Capture execution metrics for batch mode (persisted in state)
+    execution_metrics_data = None
+    try:
+        from app.api.observability import get_execution_metrics
+        # Get thread_id from config (passed by LangGraph)
+        thread_id = config.get("configurable", {}).get("thread_id") if config else None
+        if thread_id:
+            metrics = get_execution_metrics(thread_id)
+            if metrics:
+                execution_metrics_data = metrics.model_dump(mode='json')
+                logger.info(
+                    "editor_node_captured_execution_metrics",
+                    thread_id=thread_id,
+                    llm_calls=len(metrics.llm_calls),
+                    embedding_calls=len(metrics.embedding_calls),
+                )
+    except Exception as e:
+        logger.debug(
+            "editor_node_metrics_capture_failed",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+    
     return {
         "final_report": final_report_text,
+        "execution_metrics": execution_metrics_data,
         "logs": [_log_ts(f"Editor finished final report with {len(chapters_list)} chapters.")]
     }

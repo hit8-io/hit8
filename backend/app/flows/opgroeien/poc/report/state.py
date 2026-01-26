@@ -128,5 +128,9 @@ class ReportState(TypedDict):
     # Logs/Events for UI
     logs: Annotated[List[str], operator.add]
     
+    # Execution metrics (for batch mode - stored in state since no streaming)
+    # Contains LLM usage, embedding usage, etc. from observability module
+    execution_metrics: Optional[Dict[str, Any]]
+    
     # Final Output
     final_report: str
