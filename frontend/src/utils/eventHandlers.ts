@@ -94,7 +94,10 @@ export interface EventHandlerContext {
   onReportStateUpdate?: (reportState: {
     raw_procedures?: Array<Record<string, any>>;
     pending_clusters?: Array<Record<string, any>>;
+    clusters_all?: Array<Record<string, any>>;
+    cluster_status?: Record<string, { status: string; started_at?: string; ended_at?: string; error?: string; retry_count?: number }>;
     chapters?: string[];
+    chapters_by_file_id?: Record<string, string>;
     final_report?: string | null;
   }) => void
 }

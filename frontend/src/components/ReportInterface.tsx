@@ -18,6 +18,14 @@ interface ReportProgress {
   recent_logs: string[];
 }
 
+interface ClusterStatusInfo {
+  status: string;
+  started_at?: string;
+  ended_at?: string;
+  error?: string;
+  retry_count?: number;
+}
+
 interface ReportStatus {
   status: 'running' | 'completed' | 'not_found' | 'cloud_run_job_submitted';
   progress?: ReportProgress;
@@ -29,6 +37,7 @@ interface ReportStatus {
     raw_procedures: Array<Record<string, any>>;
     pending_clusters: Array<Record<string, any>>;
     clusters_all?: Array<Record<string, any>>;
+    cluster_status?: Record<string, ClusterStatusInfo>;
     chapters: string[];
     chapters_by_file_id?: Record<string, string>;
     final_report?: string | null;
@@ -92,11 +101,12 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
     pendingStateUpdateRef.current = state
   }, []);
 
-  // Update status from report state in stream events
+  // Update status from report state (used by both streaming and polling)
   const handleReportStateUpdate = React.useCallback((reportState: {
     raw_procedures?: Array<Record<string, any>>;
     pending_clusters?: Array<Record<string, any>>;
     clusters_all?: Array<Record<string, any>>;
+    cluster_status?: Record<string, ClusterStatusInfo>;
     chapters?: string[];
     chapters_by_file_id?: Record<string, string>;
     final_report?: string | null;
@@ -110,10 +120,11 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
           recent_logs: prev?.progress?.recent_logs || [],
         },
         state: {
-          // Use explicit checks for arrays - empty arrays are valid and should replace previous values
+          // Use explicit checks - undefined means "keep previous", null/value means "update"
           raw_procedures: reportState.raw_procedures !== undefined ? reportState.raw_procedures : (prev?.state?.raw_procedures || []),
           pending_clusters: reportState.pending_clusters !== undefined ? reportState.pending_clusters : (prev?.state?.pending_clusters || []),
           clusters_all: reportState.clusters_all !== undefined ? reportState.clusters_all : (prev?.state?.clusters_all || []),
+          cluster_status: reportState.cluster_status !== undefined ? reportState.cluster_status : prev?.state?.cluster_status,
           chapters: reportState.chapters !== undefined ? reportState.chapters : (prev?.state?.chapters || []),
           chapters_by_file_id: reportState.chapters_by_file_id !== undefined ? reportState.chapters_by_file_id : (prev?.state?.chapters_by_file_id || {}),
           final_report: reportState.final_report !== undefined ? reportState.final_report : prev?.state?.final_report,
@@ -450,7 +461,6 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
   // Polling only for cloud_run_job mode (no streaming available)
   // For local and cloud_run_service modes, state comes from stream events
   React.useEffect(() => {
-    // Only poll for cloud_run_job mode
     if (!jobId || !org || !project || executionMode !== 'cloud_run_job') return;
 
     let shouldStop = false;
@@ -463,17 +473,18 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
           headers: getApiHeaders(token)
         });
         const data = await response.json();
-        setStatus(data);
 
         if (data.status === 'not_found') {
           shouldStop = true;
           return;
         }
 
-        // Update status with state data (procedures, clusters, chapters, final_report)
-        setStatus(data);
+        // Reuse handleReportStateUpdate for consistent status handling (same as streaming)
+        if (data.state) {
+          handleReportStateUpdate(data.state);
+        }
 
-        // Update execution state from graph_state for cloud_run_job mode
+        // Update execution state from graph_state
         if (data.graph_state) {
           const newExecutionState: ExecutionState = {
             next: data.graph_state.next || [],
@@ -495,17 +506,13 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
     };
 
     pollStatus();
-    const interval = setInterval(() => {
-      if (!shouldStop) {
-        pollStatus();
-      }
-    }, 3000);
+    const interval = setInterval(pollStatus, 3000);
 
     return () => {
       shouldStop = true;
       clearInterval(interval);
     };
-  }, [jobId, executionMode, token, API_URL, org, project, onExecutionStateUpdate]);
+  }, [jobId, executionMode, token, API_URL, org, project, onExecutionStateUpdate, handleReportStateUpdate]);
 
   // Update event logs from stream events or status
   React.useEffect(() => {

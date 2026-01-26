@@ -767,20 +767,22 @@ async def load_report_checkpoint(
         "status": "completed" if is_complete else "running",
         "progress": {
             "chapters_completed": len(chapters),
-            "recent_logs": logs
+            "recent_logs": logs[-20:] if logs else [],
         },
         "graph_state": {
             "visited_nodes": visited_nodes,
-            "next": next_nodes
+            "next": next_nodes,
         },
         "state": {
             "raw_procedures": current_values.get("raw_procedures", []),
             "pending_clusters": current_values.get("pending_clusters", []),
             "clusters_all": current_values.get("clusters_all"),
+            "cluster_status": current_values.get("cluster_status", {}),
             "chapters": chapters,
-            "final_report": current_values.get("final_report") if is_complete else None
+            "chapters_by_file_id": current_values.get("chapters_by_file_id", {}),
+            "final_report": current_values.get("final_report") if is_complete else None,
         },
-        "result": current_values.get("final_report") if is_complete else None
+        "result": current_values.get("final_report") if is_complete else None,
     }
 
 @router.get("/{thread_id}/chapters/download")

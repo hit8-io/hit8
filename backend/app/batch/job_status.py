@@ -137,6 +137,7 @@ async def get_job_status_for_thread(
             # Graph state exists - use it
             current_values = snapshot.values
             chapters = current_values.get("chapters", [])
+            logs = current_values.get("logs", [])
             is_complete = "final_report" in current_values
             
             next_nodes = list(snapshot.next) if snapshot.next else []
@@ -148,16 +149,32 @@ async def get_job_status_for_thread(
                 "status": "completed" if is_complete else "running",
                 "progress": {
                     "chapters_completed": len(chapters),
+                    "recent_logs": logs[-20:] if logs else [],
                 },
                 "graph_state": {
                     "visited_nodes": visited_nodes,
                     "next": next_nodes,
                 },
+                # Include full state for frontend to render clusters, chapters, etc.
+                "state": {
+                    "raw_procedures": current_values.get("raw_procedures", []),
+                    "pending_clusters": current_values.get("pending_clusters", []),
+                    "clusters_all": current_values.get("clusters_all"),
+                    "cluster_status": current_values.get("cluster_status", {}),
+                    "chapters": chapters,
+                    "chapters_by_file_id": current_values.get("chapters_by_file_id", {}),
+                    "final_report": current_values.get("final_report") if is_complete else None,
+                },
                 "result": current_values.get("final_report") if is_complete else None,
             }
-    except Exception:
-        # Graph state not found - check Cloud Run status if execution_name provided
-        pass
+    except Exception as e:
+        # Graph state not found or error reading it - check Cloud Run status if execution_name provided
+        logger.debug(
+            "get_job_status_graph_state_error",
+            thread_id=thread_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
     
     # If graph state not found and we have execution_name, check Cloud Run status
     if execution_name:
@@ -171,6 +188,7 @@ async def get_job_status_for_thread(
                     "visited_nodes": [],
                     "next": [],
                 },
+                "state": None,
                 "error_message": cloud_run_status.get("error_message"),
             }
     
@@ -182,4 +200,5 @@ async def get_job_status_for_thread(
             "visited_nodes": [],
             "next": [],
         },
+        "state": None,
     }

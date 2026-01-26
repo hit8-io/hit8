@@ -25,9 +25,19 @@ interface Cluster {
   [key: string]: unknown;
 }
 
+interface ClusterStatusInfo {
+  status: string;
+  started_at?: string;
+  ended_at?: string;
+  error?: string;
+  retry_count?: number;
+}
+
 interface ReportState {
   raw_procedures?: Procedure[];
   pending_clusters?: Cluster[];
+  clusters_all?: Cluster[];
+  cluster_status?: Record<string, ClusterStatusInfo>;
   chapters?: string[];
   chapters_by_file_id?: Record<string, string>;
   final_report?: string | null;
@@ -53,10 +63,8 @@ export default function StateView({ state, executionState, token, threadId }: St
     output_preview?: string
     metadata?: Record<string, unknown>
   }>>([])
-  const [clusterStatus, setClusterStatus] = useState<Record<string, { status: string; started_at?: string; ended_at?: string; error?: string; retry_count?: number }>>({})
 
-  // Extract task_history and cluster_status from state_snapshot events
-  // Compute directly from streamEvents to avoid setState in useEffect
+  // Extract task_history from state_snapshot events (streaming mode only)
   const latestSnapshotForState = useMemo(() => {
     if (!executionState?.streamEvents) return null
     const snapshots = executionState.streamEvents.filter(
@@ -69,36 +77,30 @@ export default function StateView({ state, executionState, token, threadId }: St
         input_preview?: string
         output_preview?: string
         metadata?: Record<string, unknown>
-      }>; report_state?: { cluster_status?: Record<string, { status: string; started_at?: string; ended_at?: string; error?: string; retry_count?: number }> } } =>
-        e.type === 'state_snapshot'
+      }> } => e.type === 'state_snapshot'
     )
     return snapshots.length > 0 ? snapshots[snapshots.length - 1] : null
   }, [executionState?.streamEvents]) // eslint-disable-line react-compiler/react-compiler
 
-  // Update state from computed snapshot
-  // Note: setState in useEffect is necessary here to extract data from stream events
+  // Update task history from stream events
   // eslint-disable-next-line react-hooks/exhaustive-deps, react-compiler/react-compiler
   useEffect(() => {
-    if (latestSnapshotForState) {
-      if (latestSnapshotForState.task_history && Array.isArray(latestSnapshotForState.task_history)) {
-        // Type assertion: task_history is already validated in filter
-        setTaskHistory(latestSnapshotForState.task_history as Array<{
-          task_key?: string
-          node_name: string
-          run_id: string
-          started_at: number
-          ended_at?: number
-          input_preview?: string
-          output_preview?: string
-          metadata?: Record<string, unknown>
-        }>)
-      }
-      if (latestSnapshotForState.report_state?.cluster_status) {
-        // Type assertion: cluster_status is already validated
-        setClusterStatus(latestSnapshotForState.report_state.cluster_status as Record<string, { status: string; started_at?: string; ended_at?: string; error?: string; retry_count?: number }>)
-      }
+    if (latestSnapshotForState?.task_history && Array.isArray(latestSnapshotForState.task_history)) {
+      setTaskHistory(latestSnapshotForState.task_history as Array<{
+        task_key?: string
+        node_name: string
+        run_id: string
+        started_at: number
+        ended_at?: number
+        input_preview?: string
+        output_preview?: string
+        metadata?: Record<string, unknown>
+      }>)
     }
   }, [latestSnapshotForState])
+
+  // cluster_status comes from state prop (unified for both streaming and polling)
+  const clusterStatus = state?.cluster_status || {}
 
   const API_URL = import.meta.env.VITE_API_URL
 
