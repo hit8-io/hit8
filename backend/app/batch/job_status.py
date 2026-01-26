@@ -133,11 +133,14 @@ async def get_job_status_for_thread(
         import asyncio
         snapshot = await asyncio.to_thread(report_graph.get_state, config)
         
-        logger.debug(
+        logger.info(
             "get_job_status_snapshot",
             thread_id=thread_id,
             has_values=bool(snapshot.values),
             has_next=bool(snapshot.next),
+            state_keys=list(snapshot.values.keys()) if snapshot.values else [],
+            has_clusters_all=bool(snapshot.values.get("clusters_all")) if snapshot.values else False,
+            clusters_all_count=len(snapshot.values.get("clusters_all") or []) if snapshot.values else 0,
         )
         
         if snapshot.values:

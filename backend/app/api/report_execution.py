@@ -121,6 +121,12 @@ async def execute_report_graph(
     )
     
     try:
+        logger.info(
+            "report_graph_ainvoke_starting",
+            thread_id=thread_id,
+            initial_state_keys=list(initial_state.keys()),
+        )
+        
         # Execute the report graph
         await graph.ainvoke(initial_state, config)
         

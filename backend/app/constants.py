@@ -100,7 +100,7 @@ CONSTANTS: dict[str, Any] = {
     "PROJECT": "poc",
     "FLOW": "chat",
     "PROMPTS_DIR": "app/prompts",
-    "LANGFUSE_ENABLED": False,
+    "LANGFUSE_ENABLED": True,
     "CACHE_ENABLED": False,  # Disabled by default (dev)
     "CACHE_TTL": 3600,       # 1 hour default TTL
     "LLM_RETRY_STOP_AFTER_ATTEMPT": 10,

@@ -730,12 +730,35 @@ def get_langfuse_client() -> Langfuse | None:
     return _langfuse_client
 
 
-def get_langfuse_handler() -> CallbackHandler | None:
-    """Get Langfuse callback handler if enabled, None otherwise."""
+def get_langfuse_handler(
+    session_id: str | None = None,
+    user_id: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> CallbackHandler | None:
+    """Get Langfuse callback handler if enabled, None otherwise.
+    
+    Args:
+        session_id: Session ID for grouping traces (typically thread_id)
+        user_id: User ID for user tracking
+        metadata: Custom metadata dictionary to attach to traces
+        
+    Returns:
+        CallbackHandler instance if Langfuse is enabled, None otherwise
+    """
     if not settings.LANGFUSE_ENABLED:
         return None
     get_langfuse_client()  # Ensure client is initialized
-    handler = CallbackHandler()
+    
+    # Build handler kwargs
+    handler_kwargs: dict[str, Any] = {}
+    if session_id:
+        handler_kwargs["session_id"] = session_id
+    if user_id:
+        handler_kwargs["user_id"] = user_id
+    if metadata:
+        handler_kwargs["metadata"] = metadata
+    
+    handler = CallbackHandler(**handler_kwargs)
     return handler
 
 

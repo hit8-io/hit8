@@ -166,6 +166,7 @@ def splitter_node(state: ReportState):
     Groups procedures by department/topic using safe_key for file storage.
     Processes first batch and stores remaining clusters for batching.
     """
+    logger.info("splitter_node_started", procedure_count=len(state.get("raw_procedures", [])))
     raw_data = state.get("raw_procedures", [])
     clusters: Dict[str, Dict] = {}
     
@@ -249,6 +250,12 @@ def splitter_node(state: ReportState):
     
     # Return dict with both state updates and routing information
     # The conditional edge function will extract the SENDS_KEY
+    logger.info(
+        "splitter_node_completed",
+        cluster_count=len(cluster_list),
+        first_batch_count=len(first_batch),
+        remaining_count=len(remaining_clusters),
+    )
     return {
         **state_update,
         SENDS_KEY: send_objects

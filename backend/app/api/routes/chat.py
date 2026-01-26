@@ -313,8 +313,28 @@ async def chat(
         ]
     }
     
-    # Get Langfuse callback handler if enabled
-    langfuse_handler = get_langfuse_handler()
+    # Build metadata: environment and account from settings, org/project from headers
+    centralized_metadata = settings.metadata
+    metadata: dict[str, Any] = {
+        **centralized_metadata,  # Includes environment, account
+        "org": org,
+        "project": project,
+    }
+    logger.debug(
+        "langfuse_metadata_constructed",
+        environment=centralized_metadata["environment"],
+        account=centralized_metadata["account"],
+        org=org,
+        project=project,
+        thread_id=session_id,
+    )
+    
+    # Get Langfuse callback handler if enabled (pass session_id, user_id, and metadata)
+    langfuse_handler = get_langfuse_handler(
+        session_id=session_id,
+        user_id=user_id,
+        metadata=metadata,
+    )
     
     # Prepare config with callbacks, metadata, and thread_id
     # Use session_id (the actual thread_id being used) not the form parameter
@@ -332,24 +352,10 @@ async def chat(
             "langfuse_callback_handler_added",
             handler_type=type(langfuse_handler).__name__,
             thread_id=session_id,
+            session_id=session_id,
+            user_id=user_id,
+            has_metadata=bool(metadata),
         )
-    
-    # Build metadata: environment and account from settings, org/project from headers
-    centralized_metadata = settings.metadata
-    metadata: dict[str, Any] = {
-        "langfuse_user_id": user_id,
-        **centralized_metadata,  # Includes environment, account
-        "org": org,
-        "project": project,
-    }
-    logger.debug(
-        "langfuse_metadata_constructed",
-        environment=centralized_metadata["environment"],
-        account=centralized_metadata["account"],
-        org=org,
-        project=project,
-        thread_id=session_id,
-    )
     
     config["metadata"] = metadata
     
