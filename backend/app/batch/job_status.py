@@ -136,6 +136,7 @@ async def get_job_status_for_thread(
         logger.info(
             "get_job_status_snapshot",
             thread_id=thread_id,
+            config_thread_id=config.get("configurable", {}).get("thread_id", "MISSING"),
             has_values=bool(snapshot.values),
             has_next=bool(snapshot.next),
             state_keys=list(snapshot.values.keys()) if snapshot.values else [],

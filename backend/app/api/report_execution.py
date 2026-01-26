@@ -137,9 +137,23 @@ async def execute_report_graph(
             project=project,
         )
         
-        # Get final state
+        # Get final state and verify checkpoint was written
         import asyncio
         snapshot = await asyncio.to_thread(graph.get_state, config)
+        
+        # Log the thread_id that was used (for debugging)
+        config_thread_id = config.get("configurable", {}).get("thread_id", "MISSING")
+        
+        logger.info(
+            "report_job_final_state",
+            thread_id=thread_id,
+            config_thread_id=config_thread_id,
+            has_values=bool(snapshot.values),
+            state_keys=list(snapshot.values.keys()) if snapshot.values else [],
+            clusters_all_count=len(snapshot.values.get("clusters_all") or []) if snapshot.values else 0,
+            chapters_count=len(snapshot.values.get("chapters") or []) if snapshot.values else 0,
+        )
+        
         return snapshot.values if snapshot.values else {}
         
     except Exception as e:
