@@ -193,7 +193,7 @@ router_kwargs = {
     "num_retries": 2,       # Retry on 5xx/429
     "allowed_fails": 1,     # Allow 1 failure before cooldown
     "cooldown_time": 30,    # Short cooldown to quickly retry failed region
-    "set_verbose": True,
+    "set_verbose": settings.LOG_LEVEL.upper() == "DEBUG",  # Verbose when log level is DEBUG
 }
 
 # Add Redis for distributed rate limiting and caching (stg/prd)
