@@ -760,6 +760,9 @@ def extract_callbacks_from_config(config: Any | None) -> list[Any] | None:
     When converting to dict, callbacks need to be explicitly preserved.
     This helper extracts callbacks from either a RunnableConfig object or a dict.
     
+    Filters out AsyncCallbackManager objects and only returns actual callback handler
+    instances, as managers cannot be passed directly to invoke/ainvoke methods.
+    
     Args:
         config: RunnableConfig object or dict containing callbacks
         
@@ -769,19 +772,46 @@ def extract_callbacks_from_config(config: Any | None) -> list[Any] | None:
     if not config:
         return None
     
+    callbacks = None
+    
     # Try accessing as dict first
     if isinstance(config, dict):
         callbacks = config.get("callbacks")
-        if callbacks:
-            return callbacks if isinstance(callbacks, list) else [callbacks]
     
     # Try accessing as object attribute
-    if hasattr(config, "callbacks"):
+    if not callbacks and hasattr(config, "callbacks"):
         callbacks = config.callbacks
-        if callbacks:
-            return callbacks if isinstance(callbacks, list) else [callbacks]
     
-    return None
+    if not callbacks:
+        return None
+    
+    # Normalize to list
+    if not isinstance(callbacks, list):
+        callbacks = [callbacks]
+    
+    # Filter out callback managers - only return actual handler instances
+    # AsyncCallbackManager and CallbackManager objects cannot be passed directly
+    # to invoke/ainvoke methods and will cause AttributeError: 'AsyncCallbackManager' object has no attribute 'run_inline'
+    filtered_callbacks = []
+    for cb in callbacks:
+        # Skip callback managers (they don't have run_inline and cause errors)
+        if hasattr(cb, "__class__"):
+            class_name = cb.__class__.__name__
+            # Check if it's a callback manager (not a handler)
+            # Managers have "CallbackManager" in their name but not "Handler"
+            if "CallbackManager" in class_name and "Handler" not in class_name:
+                # Skip managers entirely - they cannot be passed to invoke/ainvoke
+                # If handlers were meant to be used, they should have been passed separately
+                logger.debug(
+                    "skipping_callback_manager",
+                    manager_class=class_name,
+                    reason="CallbackManager objects cannot be passed directly to invoke/ainvoke",
+                )
+                continue
+        # Include actual handler instances
+        filtered_callbacks.append(cb)
+    
+    return filtered_callbacks if filtered_callbacks else None
 
 
 def get_agent_model(

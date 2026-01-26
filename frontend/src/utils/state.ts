@@ -417,7 +417,7 @@ export function useChatStream({
         timeoutRef.current = null
       }, CHAT_CLEANUP_DELAY)
     }
-  }, [input, isLoading, threadId, selectedFiles, token, apiUrl, onChatStateChange, memoizedReadStream, handleStreamCompletion, handleResponseError])
+  }, [input, isLoading, threadId, selectedFiles, token, apiUrl, model, onChatStateChange, memoizedReadStream, handleStreamCompletion, handleResponseError])
   
   return {
     // State
