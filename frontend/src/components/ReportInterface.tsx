@@ -27,7 +27,7 @@ interface ClusterStatusInfo {
 }
 
 interface ReportStatus {
-  status: 'running' | 'completed' | 'not_found' | 'cloud_run_job_submitted';
+  status: 'running' | 'completed' | 'not_found' | 'cloud_run_job_submitted' | 'stopped';
   progress?: ReportProgress;
   graph_state?: {
     visited_nodes: string[];
@@ -428,23 +428,29 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
     } catch (err) {
       console.error("Failed to stop report", err)
     } finally {
-      // Reset all state and loading BEFORE clearing jobId
-      // This ensures the Start button is enabled when it appears
-      setStatus(null)
-      setExecutionState(null)
-      setStreamEvents([])
-      setVisitedNodes([])
-      setActiveNode(null)
-      setEventLogs([])
+      // When stopping, preserve all state but mark as stopped
+      // Only clear activeNode since nothing is running
+      // Keep jobId so the report can be resumed
+      setStatus(prev => prev ? { ...prev, status: 'stopped' as const } : null)
+      setActiveNode(null) // Clear active node since execution is stopped
       setError(null) // Clear any error state when stopping
-      setLoading(false) // Reset loading BEFORE clearing jobId
-      if (onExecutionStateUpdate) onExecutionStateUpdate(null)
-      // Clear localStorage when stopping
-      if (org && project) {
-        const storageKey = `report_thread_${org}_${project}`
-        localStorage.removeItem(storageKey)
+      setLoading(false)
+      
+      // Update execution state to clear active node but preserve history
+      if (executionState) {
+        const updatedExecutionState: ExecutionState = {
+          ...executionState,
+          next: [] // No active nodes when stopped
+        }
+        setExecutionState(updatedExecutionState)
+        if (onExecutionStateUpdate) {
+          onExecutionStateUpdate(updatedExecutionState)
+        }
       }
-      setJobId(null) // Clear jobId last so Start button appears enabled
+      
+      // Don't clear localStorage - preserve checkpoint for potential resume
+      // Don't clear jobId - keep it so user can see what was stopped
+      // Don't clear streamEvents, visitedNodes, or eventLogs - preserve UX state
     }
   }
 
@@ -483,11 +489,20 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
   // For local and cloud_run_service modes, state comes from stream events
   React.useEffect(() => {
     if (!jobId || !org || !project || executionMode !== 'cloud_run_job') return;
+    
+    // Stop polling if status is already stopped
+    if (status?.status === 'stopped') return;
 
     let shouldStop = false;
 
     const pollStatus = async () => {
       if (shouldStop) return;
+      
+      // Also check if status was set to stopped (e.g., by stopReport)
+      if (status?.status === 'stopped') {
+        shouldStop = true;
+        return;
+      }
       
       try {
         const response = await fetch(`${API_URL}/report/${jobId}/status`, {
@@ -543,7 +558,7 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
       shouldStop = true;
       clearInterval(interval);
     };
-  }, [jobId, executionMode, token, API_URL, org, project, onExecutionStateUpdate, handleReportStateUpdate]);
+  }, [jobId, executionMode, token, API_URL, org, project, onExecutionStateUpdate, handleReportStateUpdate, status]);
 
   // Update event logs from stream events or status
   React.useEffect(() => {
