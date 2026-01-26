@@ -363,7 +363,7 @@ resource "google_cloud_run_v2_job" "report_job" {
         # Initial image reference (CI/CD will update this after each build)
         image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.artifact_registry_repository}/api:${local.image_version}"
         
-        command = ["python", "-u", "-m", "app.batch.run_report_job"]
+        command = ["/usr/local/bin/python", "-u", "-m", "app.batch.run_report_job"]
         
         resources {
           limits = {

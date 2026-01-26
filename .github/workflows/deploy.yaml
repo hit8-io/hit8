@@ -34,6 +34,7 @@ jobs:
     outputs:
       image_tag: ${{ steps.meta.outputs.image_tag }}
       version: ${{ steps.meta.outputs.version }}
+      digest: ${{ steps.build.outputs.digest }}
     steps:
       - uses: actions/checkout@v4
       
@@ -64,10 +65,12 @@ jobs:
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
       - name: Build and Push
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: ./backend
           push: true
+          platforms: linux/amd64
           tags: |
             ${{ env.IMAGE_BASE }}:${{ steps.meta.outputs.image_tag }}
             ${{ env.IMAGE_BASE }}:${{ steps.meta.outputs.version }}
@@ -75,6 +78,12 @@ jobs:
             VERSION=${{ steps.meta.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Smoke test job command
+        run: |
+          docker run --rm --platform linux/amd64 \
+            "${{ env.IMAGE_BASE }}@${{ steps.build.outputs.digest }}" \
+            /usr/local/bin/python -c "import sys; print('Python', sys.version)"
 
   # --------------------------------------------------------------------------
   # 1B. BUILD FRONTEND
@@ -147,14 +156,14 @@ jobs:
       - name: Deploy Backend Service
         run: |
           gcloud run services update hit8-api-stg \
-            --image "${{ env.IMAGE_BASE }}:${{ needs.build-backend.outputs.image_tag }}" \
+            --image "${{ env.IMAGE_BASE }}@${{ needs.build-backend.outputs.digest }}" \
             --region ${{ env.REGION }} \
             --quiet
 
       - name: Update Cloud Run Job
         run: |
           gcloud run jobs update hit8-report-job-stg \
-            --image "${{ env.IMAGE_BASE }}:${{ needs.build-backend.outputs.image_tag }}" \
+            --image "${{ env.IMAGE_BASE }}@${{ needs.build-backend.outputs.digest }}" \
             --region ${{ env.REGION }} \
             --quiet
 
@@ -193,14 +202,14 @@ jobs:
       - name: Deploy Backend Service
         run: |
           gcloud run services update hit8-api-prd \
-            --image "${{ env.IMAGE_BASE }}:${{ needs.build-backend.outputs.image_tag }}" \
+            --image "${{ env.IMAGE_BASE }}@${{ needs.build-backend.outputs.digest }}" \
             --region ${{ env.REGION }} \
             --quiet
 
       - name: Update Cloud Run Job
         run: |
           gcloud run jobs update hit8-report-job-prd \
-            --image "${{ env.IMAGE_BASE }}:${{ needs.build-backend.outputs.image_tag }}" \
+            --image "${{ env.IMAGE_BASE }}@${{ needs.build-backend.outputs.digest }}" \
             --region ${{ env.REGION }} \
             --quiet
 

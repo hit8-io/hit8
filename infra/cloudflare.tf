@@ -32,12 +32,13 @@ resource "cloudflare_record" "api_endpoints" {
 
 
 # Dummy A record for root domain - actual routing handled by redirect ruleset
-# Note: This record may already exist - if import fails, it means it doesn't exist and will be created
+# Root domain CNAME record pointing to Cloudflare Pages
+# This record was imported from existing Cloudflare configuration
 resource "cloudflare_record" "root" {
   zone_id = var.cloudflare_zone_id
   name    = var.domain_name
-  content = "192.0.2.1" # RFC 3330 documentation address
-  type    = "A"
+  content = "hit8.pages.dev"
+  type    = "CNAME"
   proxied = true
   ttl     = 1
 }
