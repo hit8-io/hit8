@@ -7,7 +7,8 @@ import type { ExecutionMetrics } from '../types/observability'
 interface ObservabilityWindowProps {
   executionState: ExecutionState | null
   // Metrics from status response (for batch/polling mode)
-  statusMetrics?: ExecutionMetrics | null
+  // Uses Record<string, any> since data comes from API and may not match exact type
+  statusMetrics?: Record<string, any> | null
 }
 
 /**
@@ -70,8 +71,8 @@ export default function ObservabilityWindow({
   // Extract metrics from stream events OR use status metrics (for batch/polling mode)
   const executionMetrics = useMemo(() => {
     // Prefer status metrics if available (batch mode stores metrics in state)
-    if (statusMetrics) {
-      return statusMetrics
+    if (statusMetrics && statusMetrics.llm_calls) {
+      return statusMetrics as ExecutionMetrics
     }
     // Fall back to extracting from stream events (streaming mode)
     const streamEvents = executionState?.streamEvents
