@@ -81,29 +81,26 @@ async def _run_report_job() -> int:
         model=model,
     )
     
+    # Use shared lifecycle (same as FastAPI)
+    from app.api.lifecycle import shutdown, startup
+
     try:
-        # Import here to ensure logging is configured first
+        await startup()
+
+        # Import after init so anything that touches DB/checkpointer is safe
         from app.api.report_execution import prepare_report_execution, execute_report_graph
-        
-        # Prepare execution
+
         initial_state, config, graph = await prepare_report_execution(
             thread_id=thread_id,
             org=org,
             project=project,
             model=model,
         )
-        
-        # Check cancellation before starting
+
         if _check_cancellation(thread_id):
-            logger.info(
-                "report_job_cancelled_before_start",
-                thread_id=thread_id,
-            )
-            return 130  # Exit code 130 typically indicates SIGINT/cancellation
-        
-        # Execute graph
-        # Note: The graph execution itself checks for cancellation between nodes
-        # via the event loop in async_events.py
+            logger.info("report_job_cancelled_before_start", thread_id=thread_id)
+            return 130
+
         final_state = await execute_report_graph(
             graph=graph,
             initial_state=initial_state,
@@ -112,29 +109,18 @@ async def _run_report_job() -> int:
             org=org,
             project=project,
         )
-        
-        logger.info(
-            "report_job_cli_completed",
-            thread_id=thread_id,
-            has_final_report="final_report" in final_state,
-        )
-        
+
+        logger.info("report_job_cli_completed", thread_id=thread_id, has_final_report="final_report" in final_state)
         return 0
-        
+
     except KeyboardInterrupt:
-        logger.info(
-            "report_job_cli_interrupted",
-            thread_id=thread_id,
-        )
+        logger.info("report_job_cli_interrupted", thread_id=thread_id)
         return 130
     except Exception as e:
-        logger.exception(
-            "report_job_cli_failed",
-            thread_id=thread_id,
-            error=str(e),
-            error_type=type(e).__name__,
-        )
+        logger.exception("report_job_cli_failed", thread_id=thread_id, error=str(e), error_type=type(e).__name__)
         return 1
+    finally:
+        await shutdown()
 
 
 def main() -> int:

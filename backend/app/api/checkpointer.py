@@ -42,7 +42,9 @@ async def initialize_checkpointer() -> None:
         logger.warning("checkpointer_already_initialized")
         return
     
-    # Ensure pool is initialized first
+    # Ensure pool is initialized first (safe for Cloud Run Jobs without FastAPI lifespan)
+    await initialize_pool()
+    
     pool = get_pool()
     
     logger.info(
