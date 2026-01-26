@@ -364,11 +364,31 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
           setLoading(false)
         }
       } else {
-        // Non-streaming mode (cloud_run)
+        // Non-streaming mode (cloud_run_job)
         const data = await response.json()
         setJobId(data.job_id)
+        
+        // Initialize status for cloud_run_job mode
+        setStatus({
+          status: 'cloud_run_job_submitted',
+          progress: { chapters_completed: 0, recent_logs: [] },
+          graph_state: { visited_nodes: [], next: [] },
+        })
+        
+        // Initialize execution state so views render
+        const initialExecutionState: ExecutionState = {
+          next: [],
+          history: [],
+          values: { message_count: 0, logs: [] },
+          streamEvents: []
+        }
+        setExecutionState(initialExecutionState)
+        if (onExecutionStateUpdate) {
+          onExecutionStateUpdate(initialExecutionState)
+        }
+        
         setLoading(false)
-        // Polling will be handled by useEffect
+        // Polling will start via useEffect when jobId is set
       }
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
@@ -474,12 +494,13 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
         });
         const data = await response.json();
 
-        if (data.status === 'not_found') {
+        // Don't stop polling on "not_found" - job may not have written state yet
+        // Only stop if status is "completed" or we get an error
+        if (data.status === 'completed') {
           shouldStop = true;
-          return;
         }
 
-        // Reuse handleReportStateUpdate for consistent status handling (same as streaming)
+        // Update state if available (job has started writing checkpoints)
         if (data.state) {
           handleReportStateUpdate(data.state);
         }
@@ -499,6 +520,14 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
           if (onExecutionStateUpdate) {
             onExecutionStateUpdate(newExecutionState);
           }
+        }
+        
+        // Update status field for UI state (running/completed/etc)
+        if (data.status && data.status !== 'not_found') {
+          setStatus(prev => ({
+            ...prev,
+            status: data.status,
+          }))
         }
       } catch (err) {
         console.error("Failed to poll status", err);

@@ -133,6 +133,13 @@ async def get_job_status_for_thread(
         import asyncio
         snapshot = await asyncio.to_thread(report_graph.get_state, config)
         
+        logger.debug(
+            "get_job_status_snapshot",
+            thread_id=thread_id,
+            has_values=bool(snapshot.values),
+            has_next=bool(snapshot.next),
+        )
+        
         if snapshot.values:
             # Graph state exists - use it
             current_values = snapshot.values
