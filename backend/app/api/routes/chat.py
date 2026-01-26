@@ -329,12 +329,15 @@ async def chat(
         thread_id=session_id,
     )
     
-    # Get Langfuse callback handler if enabled (pass session_id, user_id, and metadata)
-    langfuse_handler = get_langfuse_handler(
-        session_id=session_id,
-        user_id=user_id,
-        metadata=metadata,
-    )
+    # Add Langfuse-specific metadata keys for tracing
+    # In Langfuse v3, these are set via config["metadata"] with special keys
+    if session_id:
+        metadata["langfuse_session_id"] = session_id
+    if user_id:
+        metadata["langfuse_user_id"] = user_id
+    
+    # Get Langfuse callback handler if enabled
+    langfuse_handler = get_langfuse_handler()
     
     # Prepare config with callbacks, metadata, and thread_id
     # Use session_id (the actual thread_id being used) not the form parameter

@@ -86,13 +86,16 @@ async def prepare_report_execution(
         "project": project,
     }
     
-    # Get Langfuse callback handler if enabled (pass session_id, user_id, and metadata)
+    # Add Langfuse-specific metadata keys for tracing
+    # In Langfuse v3, these are set via config["metadata"] with special keys
+    if thread_id:
+        metadata["langfuse_session_id"] = thread_id
+    if user_id:
+        metadata["langfuse_user_id"] = user_id
+    
+    # Get Langfuse callback handler if enabled
     from app.flows.common import get_langfuse_handler
-    langfuse_handler = get_langfuse_handler(
-        session_id=thread_id,
-        user_id=user_id,
-        metadata=metadata,
-    )
+    langfuse_handler = get_langfuse_handler()
     
     # Build config
     config = {
@@ -115,6 +118,7 @@ async def prepare_report_execution(
             project=project,
         )
     
+    # Add metadata to config (includes langfuse_session_id and langfuse_user_id)
     config["metadata"] = metadata
     
     # Get the report graph instance

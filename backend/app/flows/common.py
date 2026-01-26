@@ -730,18 +730,16 @@ def get_langfuse_client() -> Langfuse | None:
     return _langfuse_client
 
 
-def get_langfuse_handler(
-    session_id: str | None = None,
-    user_id: str | None = None,
-    metadata: dict[str, Any] | None = None,
-) -> CallbackHandler | None:
+def get_langfuse_handler() -> CallbackHandler | None:
     """Get Langfuse callback handler if enabled, None otherwise.
     
-    Args:
-        session_id: Session ID for grouping traces (typically thread_id)
-        user_id: User ID for user tracking
-        metadata: Custom metadata dictionary to attach to traces
-        
+    Note: In Langfuse v3, session_id, user_id, and metadata should be set via
+    config["metadata"] when invoking chains, not as constructor arguments.
+    Use the following metadata keys:
+    - "langfuse_session_id" for session tracking
+    - "langfuse_user_id" for user tracking
+    - Other metadata keys will be attached to traces
+    
     Returns:
         CallbackHandler instance if Langfuse is enabled, None otherwise
     """
@@ -749,16 +747,9 @@ def get_langfuse_handler(
         return None
     get_langfuse_client()  # Ensure client is initialized
     
-    # Build handler kwargs
-    handler_kwargs: dict[str, Any] = {}
-    if session_id:
-        handler_kwargs["session_id"] = session_id
-    if user_id:
-        handler_kwargs["user_id"] = user_id
-    if metadata:
-        handler_kwargs["metadata"] = metadata
-    
-    handler = CallbackHandler(**handler_kwargs)
+    # CallbackHandler in Langfuse v3 doesn't accept constructor arguments
+    # session_id, user_id, and metadata should be set via config["metadata"]
+    handler = CallbackHandler()
     return handler
 
 
