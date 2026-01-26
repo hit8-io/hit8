@@ -10,8 +10,6 @@ import structlog
 
 from app.batch.client import get_jobs_client
 from app.batch.types import JOB_NAME_PREFIX
-from app.config import settings
-from app.flows.common import _get_first_available_llm_config
 
 if TYPE_CHECKING:
     from google.cloud.run_v2.types import RunJobRequest
@@ -29,6 +27,8 @@ def _get_environment_suffix(environment: str | None = None) -> str:
         Environment suffix: "-prd", "-stg", or "" for dev.
     """
     if environment is None:
+        # Import settings lazily to avoid loading before DOPPLER_SECRETS_JSON is available
+        from app.config import settings
         environment = settings.environment
     
     if environment == "prd":
@@ -45,6 +45,10 @@ def _get_job_location() -> str:
     Returns:
         Location string (e.g., "europe-west1").
     """
+    # Import lazily to avoid loading settings before DOPPLER_SECRETS_JSON is available
+    from app.flows.common import _get_first_available_llm_config
+    from app.config import settings
+    
     llm_config = _get_first_available_llm_config()
     location = llm_config.get("LOCATION") if llm_config else None
     if location:
@@ -67,6 +71,9 @@ def _build_job_name(environment: str | None = None) -> str:
     Returns:
         Full job name: projects/{project}/locations/{location}/jobs/hit8-report-job{suffix}
     """
+    # Import settings lazily to avoid loading before DOPPLER_SECRETS_JSON is available
+    from app.config import settings
+    
     suffix = _get_environment_suffix(environment)
     job_name_base = f"{JOB_NAME_PREFIX}{suffix}"
     location = _get_job_location()
@@ -141,6 +148,9 @@ async def trigger_report_job(
         execution_name = None
         if hasattr(operation, 'metadata') and hasattr(operation.metadata, 'name'):
             execution_name = operation.metadata.name
+        
+        # Import settings lazily for logging
+        from app.config import settings
         
         logger.info(
             "cloud_run_job_triggered",
