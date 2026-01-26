@@ -15,7 +15,7 @@ import httpx
 from google.api_core.exceptions import ResourceExhausted, ServiceUnavailable
 from litellm.exceptions import RateLimitError
 
-from langchain_community.chat_models import ChatLiteLLM
+from langchain_litellm import ChatLiteLLM
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage
 from langfuse import Langfuse
