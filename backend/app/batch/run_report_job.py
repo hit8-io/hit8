@@ -8,6 +8,7 @@ from __future__ import annotations
 
 # VERY TOP: Undeniable debug print before any imports
 import sys
+import traceback
 print("BOOT: run_report_job imported", file=sys.stderr, flush=True)
 
 import asyncio
@@ -25,7 +26,6 @@ try:
     print("BOOT: structlog configured", file=sys.stderr, flush=True)
 except Exception as e:
     print(f"BOOT: structlog configuration failed: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
-    import traceback
     traceback.print_exc(file=sys.stderr)
     # Continue anyway - we'll use basic logging
 
@@ -37,7 +37,6 @@ try:
 except Exception as e:
     # Log to stderr as fallback if setup_logging fails
     print(f"BOOT: Failed to setup logging: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
-    import traceback
     traceback.print_exc(file=sys.stderr)
     # Continue anyway - structlog is already configured
 
@@ -154,8 +153,6 @@ async def _run_report_job() -> int:
         return 130
     except Exception as e:
         # Log to both structlog and stderr as fallback
-        import traceback
-        import sys
         logger.exception("report_job_cli_failed", thread_id=thread_id, error=str(e), error_type=type(e).__name__)
         # Also print to stderr as fallback in case logging isn't working
         print(f"ERROR: report_job_cli_failed: {type(e).__name__}: {e}", file=sys.stderr)
@@ -190,7 +187,6 @@ def main() -> int:
         return 130
     except Exception as e:
         print(f"BOOT: Unexpected error in main(): {type(e).__name__}: {e}", file=sys.stderr, flush=True)
-        import traceback
         traceback.print_exc(file=sys.stderr)
         try:
             logger.exception(
