@@ -14,9 +14,10 @@ import sys
 import structlog
 
 # Initialize logging early
-from app.logging import configure_structlog
+from app.logging import configure_structlog, setup_logging
 
 configure_structlog()
+setup_logging()
 logger = structlog.get_logger(__name__)
 
 
