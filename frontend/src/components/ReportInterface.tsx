@@ -533,12 +533,19 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
         }
         
         // Update full status including progress (for event logs) and status field
+        // Don't overwrite 'stopped' status - if user stopped it, keep it stopped
         if (data.status && data.status !== 'not_found') {
-          setStatus(prev => ({
-            ...prev,
-            status: data.status,
-            progress: data.progress || prev?.progress,
-          }))
+          setStatus(prev => {
+            // Don't overwrite 'stopped' status with API response
+            if (prev?.status === 'stopped') {
+              return prev;
+            }
+            return {
+              ...prev,
+              status: data.status,
+              progress: data.progress || prev?.progress,
+            };
+          })
         }
       } catch (err) {
         console.error("Failed to poll status", err);
