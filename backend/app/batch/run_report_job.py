@@ -86,6 +86,7 @@ async def _run_report_job() -> int:
         org = job_params.get("org")
         project = job_params.get("project")
         model = job_params.get("model")
+        user_id = job_params.get("user_id")  # Optional - may not be available
     except (json.JSONDecodeError, KeyError) as e:
         logger.error(
             "invalid_report_job_params",
