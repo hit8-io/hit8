@@ -1,35 +1,39 @@
 # Atlas Database Schema Management
 
-This project uses [Atlas](https://atlasgo.io) for declarative database schema management.
+This project uses [Atlas](https://atlasgo.io) for declarative database schema management with a modular schema structure.
 
 ## Quick Start
 
-**Note:** All commands use `--schema public` to only manage the public schema, automatically excluding all Supabase system schemas.
+**Note:** All commands must be run from the `database/` directory so Atlas can auto-discover `atlas.hcl`. Atlas automatically manages the `hit8` schema.
 
 ### Dev Environment (No Doppler)
+
+Dev environment uses a hardcoded connection string for localhost access:
+
 ```bash
-atlas schema apply \
-  --to file://schema.hcl \
-  --url "postgresql://postgres:postgres@localhost:54325/postgres?sslmode=disable&search_path=public" \
-  --schema public
+cd database
+atlas schema apply --env dev
 ```
 
 ### Staging/Production (With Doppler)
+
+Staging and production environments use Doppler to inject connection strings:
+
 ```bash
 # Staging
-doppler run --config stg -- \
-  sh -c 'atlas schema apply --to file://schema.hcl --url "$DIRECT_DB_CONNECTION_STRING" --schema public'
+cd database
+doppler run --config stg -- atlas schema apply --env stg
 
 # Production
-doppler run --config prd -- \
-  sh -c 'atlas schema apply --to file://schema.hcl --url "$DIRECT_DB_CONNECTION_STRING" --schema public'
+cd database
+doppler run --config prd -- atlas schema apply --env prd
 ```
 
 **How it works:**
-- No config file needed - all settings via command-line flags
-- `--to file://schema.hcl` specifies the desired schema state
-- `--url` specifies the target database connection string
-- `doppler run --config <env>` injects `DIRECT_DB_CONNECTION_STRING` as an environment variable
+- `atlas.hcl` is auto-discovered when running from the `database/` directory
+- Schema source is loaded from `schemas/**/*.hcl` files using `fileset()`
+- Dev environment has a hardcoded connection string in `atlas.hcl`
+- Staging/production environments use `doppler run --config <env>` to inject `DIRECT_DB_CONNECTION_STRING`
 
 ## Setup
 
@@ -46,72 +50,84 @@ brew install ariga/tap/atlas
 atlas version
 ```
 
+## Schema Structure
+
+The schema is organized modularly under `schemas/hit8/`:
+
+```
+database/
+  atlas.hcl                    # Atlas project configuration
+  schemas/
+    hit8/
+      schema.hcl               # Schema declaration
+      tables/
+        langgraph/
+          checkpoints.hcl      # LangGraph checkpoint tables
+        rag/
+          proc.hcl             # Procedure document processing tables
+          regel.hcl            # Regulation document processing tables
+          entities_relationships.hcl  # Entity and relationship tables
+        users/
+          user_threads.hcl     # User thread management tables
+```
+
+This modular structure allows the schema to grow organically as new domains are added.
+
 ## Development Workflow
 
 ### Making Schema Changes
 
-1. Edit `database/schema.hcl` to reflect desired database changes
+1. Edit schema files in `schemas/hit8/tables/` to reflect desired database changes
 2. Review the diff (dry-run):
    ```bash
-   # Dev: No Doppler needed (hardcoded connection)
-   atlas schema apply \
-     --to file://schema.hcl \
-     --url "postgresql://postgres:postgres@localhost:54325/postgres?sslmode=disable&search_path=public" \
-     --schema public \
-     --dry-run
+   cd database
+   atlas schema apply --env dev --dry-run
    ```
 3. Apply the changes:
    ```bash
-   # Dev: No Doppler needed
-   atlas schema apply \
-     --to file://schema.hcl \
-     --url "postgresql://postgres:postgres@localhost:54325/postgres?sslmode=disable&search_path=public" \
-     --schema public
+   cd database
+   atlas schema apply --env dev
    ```
-4. Commit `database/schema.hcl` changes to Git
+4. Commit schema file changes to Git
 
 ### View Schema Diff
 
 ```bash
-# Dev: No Doppler needed
-atlas schema apply \
-  --to file://schema.hcl \
-  --url "postgresql://postgres:postgres@localhost:54325/postgres?sslmode=disable&search_path=public" \
-  --schema public \
-  --dry-run
+cd database
 
-# Staging: Use Doppler to inject connection string
-doppler run --config stg -- \
-  sh -c 'atlas schema apply --to file://schema.hcl --url "$DIRECT_DB_CONNECTION_STRING" --schema public --dry-run'
+# Dev (no Doppler needed)
+atlas schema apply --env dev --dry-run
 
-# Production: Use Doppler to inject connection string
-doppler run --config prd -- \
-  sh -c 'atlas schema apply --to file://schema.hcl --url "$DIRECT_DB_CONNECTION_STRING" --schema public --dry-run'
+# Staging (with Doppler)
+doppler run --config stg -- atlas schema apply --env stg --dry-run
+
+# Production (with Doppler)
+doppler run --config prd -- atlas schema apply --env prd --dry-run
 ```
 
 ### Apply Schema to Database
 
 ```bash
-# Dev: No Doppler needed (hardcoded local connection)
-atlas schema apply \
-  --to file://schema.hcl \
-  --url "postgresql://postgres:postgres@localhost:54325/postgres?sslmode=disable&search_path=public" \
-  --schema public
+cd database
 
-# Staging: Use Doppler to inject DIRECT_DB_CONNECTION_STRING
-doppler run --config stg -- \
-  sh -c 'atlas schema apply --to file://schema.hcl --url "$DIRECT_DB_CONNECTION_STRING" --schema public'
+# Dev (no Doppler needed)
+atlas schema apply --env dev
 
-# Production: Use Doppler to inject DIRECT_DB_CONNECTION_STRING
-doppler run --config prd -- \
-  sh -c 'atlas schema apply --to file://schema.hcl --url "$DIRECT_DB_CONNECTION_STRING" --schema public'
+# Staging (with Doppler)
+doppler run --config stg -- atlas schema apply --env stg
+
+# Production (with Doppler)
+doppler run --config prd -- atlas schema apply --env prd
 ```
 
 ## Configuration
 
-- `database/schema.hcl` - Declarative schema definition (desired database state)
+- `database/atlas.hcl` - Atlas project configuration with environment definitions
+- `database/schemas/hit8/` - Modular schema files organized by domain
+- `database/schema.hcl` - **Deprecated** - Kept for reference only, will be removed in a future cleanup
 
-Connection strings are passed via `--url` flag. For staging/production, use Doppler to inject `DIRECT_DB_CONNECTION_STRING`.
+- **Dev**: Connection string is hardcoded in `atlas.hcl` for localhost access (no Doppler needed)
+- **Staging/Production**: Connection strings are injected via Doppler's `DIRECT_DB_CONNECTION_STRING` environment variable
 
 ## CI/CD
 

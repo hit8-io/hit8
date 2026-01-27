@@ -1,0 +1,2 @@
+schema "hit8" {
+}
