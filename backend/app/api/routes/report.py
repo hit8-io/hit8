@@ -281,39 +281,102 @@ async def start_report(
         )
 
     if mode == "cloud_run_job":
-        # --- Trigger Cloud Run Job ---
-        try:
-            from app.config import settings
-            execution_name = await trigger_report_job(
+        # --- Cloud Run Job Mode (polling via checkpointer) ---
+        from app.config import settings
+        
+        # In dev environment, execute locally in background task instead of triggering Cloud Run Job
+        # Uses same polling logic (checkpointer) as staging/production
+        if settings.environment == "dev":
+            logger.info(
+                "cloud_run_job_mode_dev_local_execution",
                 thread_id=thread_id,
                 org=org,
                 project=project,
-                model=payload.get("model"),
-                environment=settings.environment,
             )
+            
+            async def run_local_job():
+                """Background task to execute report graph locally (dev only)."""
+                try:
+                    from app.api.report_execution import execute_report_graph
+                    from app.api.observability import initialize_execution, finalize_execution
+                    
+                    # Initialize execution metrics tracking
+                    initialize_execution(thread_id)
+                    
+                    # Execute the graph
+                    await execute_report_graph(
+                        graph=report_graph,
+                        initial_state=initial_state,
+                        config=config,
+                        thread_id=thread_id,
+                        org=org,
+                        project=project,
+                    )
+                    
+                    # Finalize execution metrics tracking
+                    finalize_execution(thread_id)
+                    
+                    logger.info(
+                        "local_job_completed",
+                        thread_id=thread_id,
+                        org=org,
+                        project=project,
+                    )
+                except Exception as e:
+                    logger.exception(
+                        "local_job_failed",
+                        thread_id=thread_id,
+                        org=org,
+                        project=project,
+                        error=str(e),
+                        error_type=type(e).__name__,
+                    )
+                finally:
+                    # Clean up active task
+                    _active_tasks.pop(thread_id, None)
+            
+            # Start background task
+            task = asyncio.create_task(run_local_job())
+            _active_tasks[thread_id] = task
             
             return {
                 "job_id": thread_id,
                 "status": "cloud_run_job_submitted",
-                "execution_name": execution_name,
                 "mode": mode,
             }
-        except RuntimeError as e:
-            raise HTTPException(
-                status_code=501,
-                detail=str(e)
-            )
-        except Exception as e:
-            logger.exception(
-                "cloud_run_job_trigger_failed",
-                thread_id=thread_id,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to trigger Cloud Run Job: {str(e)}"
-            )
+        else:
+            # In staging/production, trigger actual Cloud Run Job
+            try:
+                execution_name = await trigger_report_job(
+                    thread_id=thread_id,
+                    org=org,
+                    project=project,
+                    model=payload.get("model"),
+                    environment=settings.environment,
+                )
+                
+                return {
+                    "job_id": thread_id,
+                    "status": "cloud_run_job_submitted",
+                    "execution_name": execution_name,
+                    "mode": mode,
+                }
+            except RuntimeError as e:
+                raise HTTPException(
+                    status_code=501,
+                    detail=str(e)
+                )
+            except Exception as e:
+                logger.exception(
+                    "cloud_run_job_trigger_failed",
+                    thread_id=thread_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to trigger Cloud Run Job: {str(e)}"
+                )
     
     elif mode == "cloud_run_service":
         # --- Cloud Run Service Mode (same as local - streaming) ---

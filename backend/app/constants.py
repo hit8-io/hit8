@@ -102,7 +102,7 @@ CONSTANTS: dict[str, Any] = {
     "PROMPTS_DIR": "app/prompts",
     "LANGFUSE_ENABLED": True,
     "CACHE_ENABLED": False,  # Disabled by default (dev)
-    "CACHE_TTL": 3600,       # 1 hour default TTL
+    "CACHE_TTL": 3600,  # 1 hour default TTL
     "LLM_RETRY_STOP_AFTER_ATTEMPT": 10,
     "LLM_RETRY_MAX_INTERVAL": 60,
     "LLM_RETRY_INITIAL_INTERVAL": 1.0,
@@ -205,6 +205,7 @@ if ENVIRONMENT == "stg":
                 "https://hit8.pages.dev",
                 "https://main-staging.hit8.pages.dev",
             ],
+            "LANGFUSE_ENABLED": False,
         }
     )
 
@@ -220,6 +221,7 @@ if ENVIRONMENT == "prd":
                 "https://hit8.io",
                 "https://hit8.pages.dev",
             ],
+            "LANGFUSE_ENABLED": False,
         }
     )
 

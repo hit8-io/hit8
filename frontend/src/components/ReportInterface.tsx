@@ -1,7 +1,8 @@
 import * as React from "react"
-import { FileText, Play, Square, Loader2, CheckCircle, AlertCircle, X } from "lucide-react"
+import { FileText, Play, Square, Loader2, CheckCircle, AlertCircle, X, Plus } from "lucide-react"
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card"
 import { ScrollArea } from "./ui/scroll-area"
+import { Button } from "./ui/button"
 import { getApiHeaders, getAvailableModels } from "../utils/api"
 import GraphView from "./GraphView"
 import ObservabilityWindow from "./ObservabilityWindow"
@@ -65,7 +66,7 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
   const [selectedModel, setSelectedModel] = React.useState<string | null>(null);
   const [availableModels, setAvailableModels] = React.useState<string[]>([]);
   const [executionMode, setExecutionMode] = React.useState<'local' | 'cloud_run_service' | 'cloud_run_job'>(
-    isDev ? 'local' : 'cloud_run_service'
+    'cloud_run_service'
   );
   const [streamEvents, setStreamEvents] = React.useState<StreamEvent[]>([]);
   const [visitedNodes, setVisitedNodes] = React.useState<string[]>([]);
@@ -485,6 +486,36 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
     }
   }
 
+  const handleNewReport = () => {
+    // Cancel any existing stream
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+    }
+
+    // Clear all state
+    setJobId(null)
+    setStatus(null)
+    setExecutionState(null)
+    setStreamEvents([])
+    setVisitedNodes([])
+    setActiveNode(null)
+    setEventLogs([])
+    setError(null)
+    setLoading(false)
+
+    // Clear localStorage if org/project are available
+    if (org && project) {
+      const storageKey = `report_thread_${org}_${project}`
+      localStorage.removeItem(storageKey)
+    }
+
+    // Notify parent component that execution state is cleared
+    if (onExecutionStateUpdate) {
+      onExecutionStateUpdate(null)
+    }
+  }
+
   // Polling only for cloud_run_job mode (no streaming available)
   // For local and cloud_run_service modes, state comes from stream events
   React.useEffect(() => {
@@ -770,18 +801,32 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
                 </select>
               </div>
             )}
-            {isDev ? (
-              <span className="text-sm text-muted-foreground px-2 py-1">Local</span>
-            ) : (
-              <select 
-                className="bg-background border rounded px-2 py-1 text-sm"
-                value={executionMode}
-                onChange={(e) => setExecutionMode(e.target.value as 'cloud_run_service' | 'cloud_run_job')}
-              >
-                <option value="cloud_run_service">Cloud Run Service</option>
-                <option value="cloud_run_job">Cloud Run Job</option>
-              </select>
-            )}
+            <select 
+              className="bg-background border rounded px-2 py-1 text-sm"
+              value={executionMode}
+              onChange={(e) => setExecutionMode(e.target.value as 'local' | 'cloud_run_service' | 'cloud_run_job')}
+            >
+              {isDev ? (
+                <>
+                  <option value="cloud_run_service">Streaming</option>
+                  <option value="cloud_run_job">Polling</option>
+                </>
+              ) : (
+                <>
+                  <option value="cloud_run_service">Cloud Run Service</option>
+                  <option value="cloud_run_job">Cloud Run Job</option>
+                </>
+              )}
+            </select>
+            <Button 
+              variant="outline" 
+              size="icon" 
+              onClick={handleNewReport}
+              title="New Report"
+              disabled={loading}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
             {!jobId || status?.status === 'completed' ? (
               <button 
                 onClick={startReport}
