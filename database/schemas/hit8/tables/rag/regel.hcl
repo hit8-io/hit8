@@ -1,8 +1,3 @@
-// ============================================================================
-// Document Processing Tables (Regel)
-// ============================================================================
-// Tables for storing and processing regulation documents
-
 table "documents_regel" {
   schema = schema.hit8
   
@@ -162,5 +157,13 @@ table "embeddings_regel" {
   
   index "idx_embeddings_regel_doc" {
     columns = [column.doc]
+  }
+
+  index "idx_embeddings_regel_vector" {
+    type = "HNSW"
+    on {
+      column = column.embedding
+      ops    = "vector_l2_ops"
+    }
   }
 }
