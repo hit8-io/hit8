@@ -10,7 +10,7 @@ import structlog
 from langchain_core.tools import tool
 
 from app.flows.opgroeien.poc.constants import (
-    COLLECTION_REGELGEVING,
+    BATCH_TYPE_REGELGEVING,
     VECTOR_SEARCH_DEFAULT_K,
 )
 from app.flows.opgroeien.poc.db import (
@@ -71,7 +71,13 @@ def regelgeving_vector_search(query: str) -> str:
         JSON string with search results containing content, doc, score, and metadata
     """
     try:
-        results = _vector_search_raw_sql(query, COLLECTION_REGELGEVING, k=VECTOR_SEARCH_DEFAULT_K)
+        # Search across all batches of type 'regel' (batch_ids=None means search all)
+        results = _vector_search_raw_sql(
+            query=query,
+            batch_type=BATCH_TYPE_REGELGEVING,
+            batch_ids=None,  # Search all batches of this type
+            k=VECTOR_SEARCH_DEFAULT_K,
+        )
         
         if not results:
             logger.warning(

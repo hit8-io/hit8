@@ -100,6 +100,9 @@ resource "google_storage_bucket" "chat_documents_dev" {
   location                    = var.region
   storage_class               = "STANDARD"
   uniform_bucket_level_access = true
+  autoclass {
+    enabled = true
+  }
   lifecycle_rule {
     condition { age = 1 }
     action { type = "Delete" }
@@ -112,6 +115,9 @@ resource "google_storage_bucket" "chat_documents_prd" {
   location                    = var.region
   storage_class               = "STANDARD"
   uniform_bucket_level_access = true
+  autoclass {
+    enabled = true
+  }
   lifecycle_rule {
     condition { age = 1 }
     action { type = "Delete" }
@@ -124,10 +130,49 @@ resource "google_storage_bucket" "chat_documents_stg" {
   location                    = var.region
   storage_class               = "STANDARD"
   uniform_bucket_level_access = true
+  autoclass {
+    enabled = true
+  }
   lifecycle_rule {
     condition { age = 1 }
     action { type = "Delete" }
   }
+}
+
+# Knowledge Storage (Dev)
+resource "google_storage_bucket" "knowledge_dev" {
+  name                        = "${var.project_id}-dev-knowledge"
+  location                    = var.region
+  storage_class               = "STANDARD"
+  uniform_bucket_level_access = true
+  autoclass {
+    enabled = true
+  }
+  # No lifecycle rule - knowledge buckets are long-term storage
+}
+
+# Knowledge Storage (Stg)
+resource "google_storage_bucket" "knowledge_stg" {
+  name                        = "${var.project_id}-stg-knowledge"
+  location                    = var.region
+  storage_class               = "STANDARD"
+  uniform_bucket_level_access = true
+  autoclass {
+    enabled = true
+  }
+  # No lifecycle rule - knowledge buckets are long-term storage
+}
+
+# Knowledge Storage (Prd)
+resource "google_storage_bucket" "knowledge_prd" {
+  name                        = "${var.project_id}-prd-knowledge"
+  location                    = var.region
+  storage_class               = "STANDARD"
+  uniform_bucket_level_access = true
+  autoclass {
+    enabled = true
+  }
+  # No lifecycle rule - knowledge buckets are long-term storage
 }
 
 # Function Source Code
@@ -136,6 +181,9 @@ resource "google_storage_bucket" "function_source" {
   location                    = var.region
   storage_class               = "STANDARD"
   uniform_bucket_level_access = true
+  autoclass {
+    enabled = true
+  }
   lifecycle_rule {
     condition { age = 30 }
     action { type = "Delete" }
@@ -145,6 +193,7 @@ resource "google_storage_bucket" "function_source" {
 # Terraform State Bucket
 # This bucket is cross-environment and stores Terraform state for all environments (prd, stg, dev)
 # The name includes "prd" for historical reasons, but it's shared across all environments
+# Note: Autoclass is NOT enabled for this bucket as Terraform state files are accessed frequently
 resource "google_storage_bucket" "terraform_state" {
   name                        = "hit8-poc-prd-tfstate"
   location                    = var.region      # Single Region
@@ -571,6 +620,44 @@ resource "google_storage_bucket_iam_member" "vertex_chat_access_prd" {
 # Vertex SA Access (Stg)
 resource "google_storage_bucket_iam_member" "vertex_chat_access_stg" {
   bucket = google_storage_bucket.chat_documents_stg.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.vertex_sa.email}"
+}
+
+# API Runner Access - Knowledge Buckets
+resource "google_storage_bucket_iam_member" "api_knowledge_access_dev" {
+  bucket = google_storage_bucket.knowledge_dev.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.api_runner.email}"
+}
+
+resource "google_storage_bucket_iam_member" "api_knowledge_access_stg" {
+  bucket = google_storage_bucket.knowledge_stg.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.api_runner.email}"
+}
+
+resource "google_storage_bucket_iam_member" "api_knowledge_access_prd" {
+  bucket = google_storage_bucket.knowledge_prd.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.api_runner.email}"
+}
+
+# Vertex SA Access - Knowledge Buckets
+resource "google_storage_bucket_iam_member" "vertex_knowledge_access_dev" {
+  bucket = google_storage_bucket.knowledge_dev.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.vertex_sa.email}"
+}
+
+resource "google_storage_bucket_iam_member" "vertex_knowledge_access_stg" {
+  bucket = google_storage_bucket.knowledge_stg.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.vertex_sa.email}"
+}
+
+resource "google_storage_bucket_iam_member" "vertex_knowledge_access_prd" {
+  bucket = google_storage_bucket.knowledge_prd.name
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${google_service_account.vertex_sa.email}"
 }

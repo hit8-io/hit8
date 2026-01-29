@@ -10,7 +10,7 @@ import structlog
 from langchain_core.tools import tool
 
 from app.flows.opgroeien.poc.constants import (
-    COLLECTION_PROCEDURES,
+    BATCH_TYPE_PROCEDURES,
     VECTOR_SEARCH_DEFAULT_K,
 )
 from app.flows.opgroeien.poc.db import (
@@ -87,11 +87,17 @@ def procedures_vector_search(query: str) -> str:
     logger.debug(
         "debug_vector_search_start",
         query=query,
-        collection=COLLECTION_PROCEDURES,
+        type=BATCH_TYPE_PROCEDURES,
     )
     
     try:
-        results = _vector_search_raw_sql(query, COLLECTION_PROCEDURES, k=VECTOR_SEARCH_DEFAULT_K)
+        # Search across all batches of type 'proc' (batch_ids=None means search all)
+        results = _vector_search_raw_sql(
+            query=query,
+            batch_type=BATCH_TYPE_PROCEDURES,
+            batch_ids=None,  # Search all batches of this type
+            k=VECTOR_SEARCH_DEFAULT_K,
+        )
         
         logger.debug(
             "debug_vector_search_completed",

@@ -14,8 +14,8 @@ from google.oauth2 import service_account
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 from app.flows.opgroeien.poc.constants import (
-    COLLECTION_PROCEDURES,
-    COLLECTION_REGELGEVING,
+    BATCH_TYPE_PROCEDURES,
+    BATCH_TYPE_REGELGEVING,
     EMBEDDING_MODEL_NAME,
     EMBEDDING_OUTPUT_DIMENSIONALITY,
     EMBEDDING_PROVIDER,
@@ -24,7 +24,6 @@ from app.flows.opgroeien.poc.constants import (
 )
 from app import constants
 from app.config import settings
-from app.api.database import get_sync_connection
 
 logger = structlog.get_logger(__name__)
 
@@ -38,6 +37,8 @@ __all__ = [
     "_get_regelgeving_raw_sql",
     "_get_all_procedures_raw_sql",
     "_get_db_connection",
+    "_get_batch_ids_by_type",
+    "_get_document_by_key",
 ]
 
 
@@ -125,36 +126,95 @@ def _get_db_connection():
     Returns:
         psycopg.Connection: Database connection
     """
+    # Lazy import to avoid circular dependency
+    from app.api.database import get_sync_connection
     return get_sync_connection()
+
+
+def _get_batch_ids_by_type(
+    type: str,
+    org: str | None = None,
+    project: str | None = None,
+) -> list[str]:
+    """
+    Get all batch IDs for a given type, optionally filtered by org/project.
+    
+    Args:
+        type: Batch type ('proc' or 'regel')
+        org: Optional org filter
+        project: Optional project filter
+        
+    Returns:
+        List of batch IDs (UUIDs as strings)
+    """
+    try:
+        with _get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                # Build WHERE conditions safely
+                conditions = [psql.SQL("type = %s")]
+                params: list[Any] = [type]
+                
+                if org is not None:
+                    conditions.append(psql.SQL("org = %s"))
+                    params.append(org)
+                
+                if project is not None:
+                    conditions.append(psql.SQL("project = %s"))
+                    params.append(project)
+                
+                where_clause = psql.SQL(" AND ").join(conditions)
+                
+                query_sql = psql.SQL("""
+                    SELECT id
+                    FROM hit8.batches
+                    WHERE {}
+                """).format(where_clause)
+                
+                cursor.execute(query_sql, params)
+                batch_ids = [str(row[0]) for row in cursor.fetchall()]
+                
+                return batch_ids
+    except Exception as e:
+        logger.error(
+            "get_batch_ids_by_type_failed",
+            type=type,
+            org=org,
+            project=project,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
 
 
 def _vector_search_raw_sql(  # noqa: PLR0911
     query: str,
-    table_name: str,
+    batch_type: str,
+    batch_ids: list[str] | None = None,
     k: int = VECTOR_SEARCH_DEFAULT_K,
 ) -> list[tuple[dict[str, Any], float]]:
     """
-    Perform vector similarity search using raw SQL queries on custom tables.
+    Perform vector similarity search using unified schema with batch filtering.
     
     Note: This function is exported and used by tools.py and tools_future.py.
     
     Args:
         query: The search query text
-        table_name: Name of the table to search (e.g., 'embeddings_proc' or 'embeddings_regel')
+        batch_type: Batch type ('proc' or 'regel')
+        batch_ids: Optional list of batch IDs to filter by. If None, searches all batches of the type.
         k: Number of results to return
         
     Returns:
         List of tuples: (result_dict, score) where result_dict contains:
             - content: The text content
             - metadata: JSON metadata from the database
-            - doc: Document identifier
-            - chunk: Chunk number
+            - doc: Document identifier (doc_key)
+            - chunk: Chunk number (chunk_index)
         Score is cosine similarity (higher is more similar, converted from distance: 1 - distance)
     """
-    # Validate table name to prevent SQL injection
-    allowed_tables = {COLLECTION_PROCEDURES, COLLECTION_REGELGEVING}
-    if table_name not in allowed_tables:
-        raise ValueError(f"Invalid table name: {table_name}. Allowed: {allowed_tables}")
+    # Validate batch_type
+    allowed_types = {BATCH_TYPE_PROCEDURES, BATCH_TYPE_REGELGEVING}
+    if batch_type not in allowed_types:
+        raise ValueError(f"Invalid batch_type: {batch_type}. Allowed: {allowed_types}")
     
     try:
         # Get query embedding with timing
@@ -198,25 +258,54 @@ def _vector_search_raw_sql(  # noqa: PLR0911
         # Connect to database and execute query (with SSL support for production)
         with _get_db_connection() as conn:
             with conn.cursor() as cursor:
+                # Build WHERE clause with batch filtering safely
+                where_conditions = [
+                    psql.SQL("e.embedding IS NOT NULL"),
+                    psql.SQL("e.type = %s"),
+                ]
+                
+                if batch_ids is not None and len(batch_ids) > 0:
+                    where_conditions.append(psql.SQL("e.batch_id = ANY(%s)"))
+                
+                where_clause = psql.SQL(" AND ").join(where_conditions)
+                
                 # Use cosine distance operator (<=>) and convert to similarity score
+                # Join with chunks and documents to get content and doc_key
                 # Cosine distance: 0 = identical, 1 = orthogonal, 2 = opposite
                 # Similarity: 1 - distance (higher is more similar)
-                # Use psycopg.sql to safely compose SQL with identifiers
-                # This properly quotes and escapes the table name, preventing SQL injection
+                # Note: SQL parameter order matches placeholder order in SQL string:
+                # 1. SELECT vector (%s::vector)
+                # 2. WHERE e.type = %s
+                # 3. WHERE e.batch_id = ANY(%s) (if provided)
+                # 4. ORDER BY vector (%s::vector)
+                # 5. LIMIT %s
                 query_sql = psql.SQL("""
                     SELECT 
-                        content,
-                        metadata,
-                        doc,
-                        chunk,
-                        1 - (embedding <=> %s::vector) as similarity_score
-                    FROM {table}
-                    WHERE embedding IS NOT NULL
-                    ORDER BY embedding <=> %s::vector
+                        c.content,
+                        c.metadata,
+                        d.doc_key as doc,
+                        c.chunk_index as chunk,
+                        1 - (e.embedding <=> %s::vector) as similarity_score
+                    FROM hit8.embeddings e
+                    JOIN hit8.chunks c ON e.chunk_id = c.id
+                    JOIN hit8.documents d ON c.document_id = d.id
+                    WHERE {}
+                    ORDER BY e.embedding <=> %s::vector
                     LIMIT %s
-                """).format(table=psql.Identifier(table_name))
+                """).format(where_clause)
                 
-                cursor.execute(query_sql, (embedding_array, embedding_array, k))
+                # Build parameters in SQL placeholder order:
+                # 1. embedding_array (for SELECT vector)
+                # 2. batch_type (for WHERE e.type = %s)
+                # 3. batch_ids (for WHERE e.batch_id = ANY(%s), if provided)
+                # 4. embedding_array (for ORDER BY vector)
+                # 5. k (for LIMIT)
+                query_params: list[Any] = [embedding_array, batch_type]
+                if batch_ids is not None and len(batch_ids) > 0:
+                    query_params.append(batch_ids)
+                query_params.extend([embedding_array, k])
+                
+                cursor.execute(query_sql, query_params)
                 
                 # Parse results
                 results = []
@@ -236,8 +325,72 @@ def _vector_search_raw_sql(  # noqa: PLR0911
     except Exception as e:
         logger.error(
             "vector_search_raw_sql_failed",
-            table_name=table_name,
+            batch_type=batch_type,
+            batch_ids=batch_ids,
             query=query,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        raise
+
+
+def _get_document_by_key(
+    batch_id: str,
+    doc_key: str,
+) -> dict[str, Any] | None:
+    """
+    Get a document by batch_id and doc_key using unified schema.
+    
+    Args:
+        batch_id: UUID of the batch
+        doc_key: Document key identifier (e.g., "PR-AV-02")
+        
+    Returns:
+        Dictionary with keys: doc_key, content, metadata; or None if not found
+    """
+    # Validate input
+    if not doc_key or not doc_key.strip():
+        raise ValueError("doc_key parameter cannot be empty")
+    if not batch_id or not batch_id.strip():
+        raise ValueError("batch_id parameter cannot be empty")
+    
+    try:
+        # Connect to database and execute query (with SSL support for production)
+        with _get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                query_sql = psql.SQL("""
+                    SELECT 
+                        doc_key,
+                        content,
+                        metadata
+                    FROM hit8.documents
+                    WHERE batch_id = %s AND doc_key = %s
+                    LIMIT 1
+                """)
+                
+                cursor.execute(query_sql, (batch_id, doc_key))
+                
+                # Fetch result (0 or 1 row)
+                row = cursor.fetchone()
+                
+                if row is None:
+                    return None
+                
+                doc_id, content, metadata = row
+                
+                result_dict = {
+                    "doc": doc_id,
+                    "content": content or "",
+                    "metadata": _parse_metadata(metadata),
+                }
+                
+                return result_dict
+                
+    except Exception as e:
+        logger.error(
+            "get_document_by_key_failed",
+            batch_id=batch_id,
+            doc_key=doc_key,
             error=str(e),
             error_type=type(e).__name__,
         )
@@ -246,7 +399,9 @@ def _vector_search_raw_sql(  # noqa: PLR0911
 
 def _get_procedure_raw_sql(doc: str) -> dict[str, Any] | None:
     """
-    Get a procedure document by document identifier using raw SQL query.
+    Get a procedure document by document identifier using unified schema.
+    
+    Searches across all batches of type 'proc' to find the document.
     
     Args:
         doc: The document identifier (e.g., "PR-AV-02")
@@ -262,19 +417,19 @@ def _get_procedure_raw_sql(doc: str) -> dict[str, Any] | None:
         # Connect to database and execute query (with SSL support for production)
         with _get_db_connection() as conn:
             with conn.cursor() as cursor:
-                # Use psycopg.sql to safely compose SQL with identifiers
-                # This properly quotes and escapes the table name, preventing SQL injection
+                # Search across all batches of type 'proc'
                 query_sql = psql.SQL("""
                     SELECT 
-                        doc,
-                        content,
-                        metadata
-                    FROM {table}
-                    WHERE doc = %s
+                        d.doc_key,
+                        d.content,
+                        d.metadata
+                    FROM hit8.documents d
+                    JOIN hit8.batches b ON d.batch_id = b.id
+                    WHERE d.doc_key = %s AND d.type = %s
                     LIMIT 1
-                """).format(table=psql.Identifier("documents_proc"))
+                """)
                 
-                cursor.execute(query_sql, (doc,))
+                cursor.execute(query_sql, (doc, BATCH_TYPE_PROCEDURES))
                 
                 # Fetch result (0 or 1 row)
                 row = cursor.fetchone()
@@ -304,7 +459,9 @@ def _get_procedure_raw_sql(doc: str) -> dict[str, Any] | None:
 
 def _get_regelgeving_raw_sql(doc: str) -> dict[str, Any] | None:
     """
-    Get a regelgeving document by document identifier using raw SQL query.
+    Get a regelgeving document by document identifier using unified schema.
+    
+    Searches across all batches of type 'regel' to find the document.
     
     Args:
         doc: The document identifier
@@ -320,19 +477,19 @@ def _get_regelgeving_raw_sql(doc: str) -> dict[str, Any] | None:
         # Connect to database and execute query (with SSL support for production)
         with _get_db_connection() as conn:
             with conn.cursor() as cursor:
-                # Use psycopg.sql to safely compose SQL with identifiers
-                # This properly quotes and escapes the table name, preventing SQL injection
+                # Search across all batches of type 'regel'
                 query_sql = psql.SQL("""
                     SELECT 
-                        doc,
-                        content,
-                        metadata
-                    FROM {table}
-                    WHERE doc = %s
+                        d.doc_key,
+                        d.content,
+                        d.metadata
+                    FROM hit8.documents d
+                    JOIN hit8.batches b ON d.batch_id = b.id
+                    WHERE d.doc_key = %s AND d.type = %s
                     LIMIT 1
-                """).format(table=psql.Identifier("documents_regel"))
+                """)
                 
-                cursor.execute(query_sql, (doc,))
+                cursor.execute(query_sql, (doc, BATCH_TYPE_REGELGEVING))
                 
                 # Fetch result (0 or 1 row)
                 row = cursor.fetchone()
@@ -362,7 +519,9 @@ def _get_regelgeving_raw_sql(doc: str) -> dict[str, Any] | None:
 
 def _get_all_procedures_raw_sql() -> list[dict[str, Any]]:
     """
-    Get all procedure documents from the database.
+    Get all procedure documents from the database using unified schema.
+    
+    Searches across all batches of type 'proc'.
     
     Returns:
         List of dictionaries, each with keys: doc, content, metadata
@@ -371,37 +530,34 @@ def _get_all_procedures_raw_sql() -> list[dict[str, Any]]:
         # Connect to database and execute query (with SSL support for production)
         with _get_db_connection() as conn:
             with conn.cursor() as cursor:
-                # Use psycopg.sql to safely compose SQL with identifiers
-                # This properly quotes and escapes the table name, preventing SQL injection
                 # Limit the number of returned procedures if MAX_PROCEDURES_DEV is set
                 max_procedures = constants.CONSTANTS.get("MAX_PROCEDURES_DEV")
                 
                 if max_procedures is not None:
                     query_sql = psql.SQL("""
                         SELECT 
-                            doc,
-                            content,
-                            metadata
-                        FROM {table}
-                        ORDER BY doc
-                        LIMIT {limit}
-                    """).format(
-                        table=psql.Identifier("documents_proc"),
-                        limit=psql.Literal(max_procedures),
-                    )
+                            d.doc_key,
+                            d.content,
+                            d.metadata
+                        FROM hit8.documents d
+                        JOIN hit8.batches b ON d.batch_id = b.id
+                        WHERE d.type = %s
+                        ORDER BY d.doc_key
+                        LIMIT %s
+                    """)
+                    cursor.execute(query_sql, (BATCH_TYPE_PROCEDURES, max_procedures))
                 else:
                     query_sql = psql.SQL("""
                         SELECT 
-                            doc,
-                            content,
-                            metadata
-                        FROM {table}
-                        ORDER BY doc
-                    """).format(
-                        table=psql.Identifier("documents_proc"),
-                    )
-                
-                cursor.execute(query_sql)
+                            d.doc_key,
+                            d.content,
+                            d.metadata
+                        FROM hit8.documents d
+                        JOIN hit8.batches b ON d.batch_id = b.id
+                        WHERE d.type = %s
+                        ORDER BY d.doc_key
+                    """)
+                    cursor.execute(query_sql, (BATCH_TYPE_PROCEDURES,))
                 
                 # Fetch all results
                 results = []

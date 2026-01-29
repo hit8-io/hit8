@@ -10,9 +10,10 @@ ORG = "opgroeien"
 PROJECT = "poc"
 SYSTEM_PROMPT = "system_prompt"
 
-# Vector store collection names
-COLLECTION_PROCEDURES = "embeddings_proc"
-COLLECTION_REGELGEVING = "embeddings_regel"
+# Batch types for unified knowledge schema
+BATCH_TYPE_PROCEDURES = "proc"
+BATCH_TYPE_REGELGEVING = "regel"
+DEFAULT_BATCH_VERSION = "v1"  # Default version for backward compatibility
 
 # Vector search parameters
 VECTOR_SEARCH_DEFAULT_K = 40  # Default number of results for vector search
