@@ -37,98 +37,90 @@ def _is_running_in_docker() -> bool:
     return False
 
 
+def _get_ssl_cert_file_path() -> str:
+    """Write SSL certificate content to a temp file and return the path. Prd only."""
+    if not settings.DATABASE_SSL_ROOT_CERT:
+        raise ValueError("DATABASE_SSL_ROOT_CERT is required in production but not provided")
+    cert_dir = Path("/app/certs") if os.path.exists("/app/certs") else Path(tempfile.gettempdir()) / "hit8_certs"
+    cert_dir.mkdir(parents=True, exist_ok=True)
+    cert_file = cert_dir / "prod-ca-2021.crt"
+    cert_file.write_text(settings.DATABASE_SSL_ROOT_CERT, encoding="utf-8")
+    os.chmod(cert_file, 0o600)
+    return str(cert_file)
+
+
 def _build_connection_string() -> str:
-    """Build connection string with SSL parameters for production.
-    
-    Handles:
-    - Dev: Hostname conversion for Docker compatibility (localhost <-> host.docker.internal)
-    - Production: SSL certificate verification
-    
-    Returns:
-        Connection string ready for psycopg.connect()
+    """Build connection string. Mirrors backend/app/api/database.py.
+
+    - Dev: Hostname conversion for Docker (localhost <-> host.docker.internal).
+    - Prd: When DATABASE_SSL_ROOT_CERT is set, use cert (even if ENVIRONMENT not set by Doppler).
+    - Stg: SSL with system CA so libpq does not look for ~/.postgresql/root.crt.
     """
     conninfo = settings.DATABASE_CONNECTION_STRING
-    
-    # In dev, handle hostname conversion for Docker compatibility
-    if constants.ENVIRONMENT == "dev":
+
+    # Dev: hostname conversion when running against localhost (same as app)
+    if constants.ENVIRONMENT == "dev" and ("localhost" in conninfo or "host.docker.internal" in conninfo):
         is_in_docker = _is_running_in_docker()
-        
         if is_in_docker and "localhost" in conninfo:
             conninfo = conninfo.replace("localhost", "host.docker.internal")
         elif not is_in_docker and "host.docker.internal" in conninfo:
             conninfo = conninfo.replace("host.docker.internal", "localhost")
-    
-    # Production requires SSL with certificate verification
-    if constants.ENVIRONMENT == "prd":
-        # Remove any existing SSL parameters
+        return conninfo
+
+    # Prd: cert when DATABASE_SSL_ROOT_CERT is set (e.g. doppler --config prd may not set ENVIRONMENT)
+    if constants.ENVIRONMENT == "prd" or settings.DATABASE_SSL_ROOT_CERT:
         conninfo = re.sub(r'[&?]sslmode=[^&]*', '', conninfo)
         conninfo = re.sub(r'[&?]sslrootcert=[^&]*', '', conninfo)
         conninfo = re.sub(r'[?&]+', '&', conninfo)
         conninfo = conninfo.rstrip('&?')
-        
-        # Get certificate file path
-        cert_dir = Path(tempfile.gettempdir()) / "hit8_certs"
-        cert_dir.mkdir(parents=True, exist_ok=True)
-        cert_file = cert_dir / "prod-ca-2021.crt"
-        cert_file.write_text(settings.DATABASE_SSL_ROOT_CERT, encoding="utf-8")
-        os.chmod(cert_file, 0o600)
-        
+        cert_file_path = _get_ssl_cert_file_path()
         separator = "&" if "?" in conninfo else "?"
-        conninfo = f"{conninfo}{separator}sslmode=verify-full&sslrootcert={cert_file}"
-    
+        return f"{conninfo}{separator}sslmode=verify-full&sslrootcert={cert_file_path}"
+
+    # Stg: SSL, no custom cert — use system CA
+    if constants.ENVIRONMENT == "stg":
+        conninfo = re.sub(r'[&?]sslmode=[^&]*', '', conninfo)
+        conninfo = re.sub(r'[&?]sslrootcert=[^&]*', '', conninfo)
+        conninfo = re.sub(r'[?&]+', '&', conninfo)
+        conninfo = conninfo.rstrip('&?')
+        sep = "&" if "?" in conninfo else "?"
+        return f"{conninfo}{sep}sslmode=require&sslrootcert=system"
+
     return conninfo
 
 
 def get_db_connection(autocommit: bool = False, register_vector_type: bool = False) -> psycopg.Connection:
-    """Get database connection using the same logic as the app.
-    
-    Args:
-        autocommit: If True, connection uses autocommit mode. If False, uses explicit transactions.
-        register_vector_type: If True, registers pgvector type adapter for automatic conversion.
-        
-    Returns:
-        psycopg.Connection: Database connection
-        
-    Raises:
-        ValueError: If DATABASE_SSL_ROOT_CERT is required but not provided (production)
+    """Get database connection. Mirrors backend/app/api/database.py get_sync_connection().
+
+    - Dev: No SSL (local database).
+    - Stg: SSL with system CA (conninfo from _build_connection_string).
+    - Prd: SSL with certificate (DATABASE_SSL_ROOT_CERT only).
     """
     conninfo = _build_connection_string()
-    
-    # Production requires SSL with certificate verification
-    if constants.ENVIRONMENT == "prd":
+
+    # Prd: SSL with cert when DATABASE_SSL_ROOT_CERT is set (works even if ENVIRONMENT not set by Doppler)
+    if constants.ENVIRONMENT == "prd" or settings.DATABASE_SSL_ROOT_CERT:
         if not settings.DATABASE_SSL_ROOT_CERT:
-            raise ValueError(
-                "DATABASE_SSL_ROOT_CERT is required in production but not provided"
-            )
-        
-        # Extract SSL parameters from connection string if present
+            raise ValueError("DATABASE_SSL_ROOT_CERT is required in production but not provided")
         if "sslmode=" in conninfo and "sslrootcert=" in conninfo:
             conn = psycopg.connect(conninfo, autocommit=autocommit)
         else:
-            # Fallback: extract cert path from connection string or create it
-            cert_dir = Path(tempfile.gettempdir()) / "hit8_certs"
-            cert_dir.mkdir(parents=True, exist_ok=True)
-            cert_file = cert_dir / "prod-ca-2021.crt"
-            cert_file.write_text(settings.DATABASE_SSL_ROOT_CERT, encoding="utf-8")
-            os.chmod(cert_file, 0o600)
-            
+            cert_file_path = _get_ssl_cert_file_path()
             conn = psycopg.connect(
                 conninfo,
                 sslmode="verify-full",
-                sslrootcert=str(cert_file),
+                sslrootcert=cert_file_path,
                 autocommit=autocommit,
             )
     else:
-        # Dev: No SSL (local database)
+        # Dev / Stg: use conninfo as-is
         conn = psycopg.connect(conninfo, autocommit=autocommit)
-    
-    # Register vector type if requested
+
     if register_vector_type:
         try:
             from pgvector.psycopg import register_vector
             register_vector(conn)
         except ImportError:
-            # pgvector not available, skip registration
             pass
-    
+
     return conn

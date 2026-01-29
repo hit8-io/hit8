@@ -14,12 +14,19 @@ import sys
 import time
 from pathlib import Path
 
-# Add backend to path
-backend_path = Path(__file__).parent.parent.parent / "backend"
+# Add backend to path (same as archive_batch.py)
+backend_path = Path(__file__).resolve().parent.parent.parent / "backend"
 sys.path.insert(0, str(backend_path))
 
+# Add backend venv site-packages so structlog etc. are found when run with plain python
+_venv = backend_path / ".venv"
+if _venv.exists():
+    for _sp in _venv.glob("lib/python*/site-packages"):
+        sys.path.insert(0, str(_sp))
+        break
+
 # Add scripts directory to path for common module
-scripts_path = Path(__file__).parent
+scripts_path = Path(__file__).resolve().parent
 sys.path.insert(0, str(scripts_path))
 
 import structlog
