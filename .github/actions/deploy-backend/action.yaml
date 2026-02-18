@@ -137,15 +137,18 @@ runs:
         CONTAINER_DETAIL=$(scw container container get "$CONTAINER_ID" -o json)
         DOMAIN=$(echo "$CONTAINER_DETAIL" | jq -r '.domain_name')
         URL="https://${DOMAIN}/health"
-        echo "Waiting 30s for deployment..."
-        sleep 30
-        for i in 1 2 3 4 5; do
-          if curl -f -s "$URL" > /dev/null; then
-            echo "✅ Health check passed: $URL"
+        echo "Health check URL: $URL"
+        echo "Waiting 60s for deployment (cold start can be slow when MinScale=0)..."
+        sleep 60
+        MAX_ATTEMPTS=10
+        for i in $(seq 1 $MAX_ATTEMPTS); do
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$URL" || echo "000")
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "✅ Health check passed: $URL (HTTP $HTTP_CODE)"
             exit 0
           fi
-          echo "Attempt $i/5 failed, retrying..."
-          sleep 10
+          echo "Attempt $i/$MAX_ATTEMPTS failed (HTTP $HTTP_CODE), retrying in 15s..."
+          sleep 15
         done
-        echo "❌ Health check failed after 5 attempts"
+        echo "❌ Health check failed after $MAX_ATTEMPTS attempts"
         exit 1
