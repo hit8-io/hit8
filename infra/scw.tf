@@ -173,7 +173,7 @@ locals {
   )
 }
 
-# 4a. Managed Postgres
+# 4a. Managed Postgres (public IPv4 endpoint is created by default; see prd_rdb_public_endpoint output)
 resource "scaleway_rdb_instance" "prd_db" {
   name           = "hit8-db-prd"
   node_type      = "DB-DEV-S"
@@ -190,7 +190,7 @@ resource "scaleway_rdb_instance" "prd_db" {
   volume_size_in_gb = 10
 
   private_network {
-    pn_id      = scaleway_vpc_private_network.prd.id
+    pn_id       = scaleway_vpc_private_network.prd.id
     enable_ipam = true
   }
 
@@ -383,11 +383,22 @@ output "stg_ssh_command" {
   value = "ssh root@${scaleway_instance_ip.stg_vm_ipv6.address}"
 }
 
+# Public IPv4 endpoint (Scaleway creates the load balancer by default on RDB instances).
+output "prd_rdb_public_endpoint" {
+  value = length(scaleway_rdb_instance.prd_db.load_balancer) > 0 ? {
+    ip       = scaleway_rdb_instance.prd_db.load_balancer[0].ip
+    port     = scaleway_rdb_instance.prd_db.load_balancer[0].port
+    hostname = scaleway_rdb_instance.prd_db.load_balancer[0].hostname
+  } : null
+  description = "Production RDB public IPv4 endpoint (load balancer). Re-add in console if removed."
+}
+
 output "connection_info" {
   value = {
-    prd_db_ip        = scaleway_rdb_instance.prd_db.private_network[0].ip
-    prd_redis_ip     = local.prd_redis_private_ip
-    stg_vm_ip        = local.stg_vm_private_ip
-    note             = "Containers are attached to VPC (api_prd → prd PN, api_stg → stg PN) and use private IPs for DB/Redis."
+    prd_db_ip     = scaleway_rdb_instance.prd_db.private_network[0].ip
+    prd_db_public = length(scaleway_rdb_instance.prd_db.load_balancer) > 0 ? "${scaleway_rdb_instance.prd_db.load_balancer[0].ip}:${scaleway_rdb_instance.prd_db.load_balancer[0].port}" : null
+    prd_redis_ip  = local.prd_redis_private_ip
+    stg_vm_ip     = local.stg_vm_private_ip
+    note          = "Containers are attached to VPC (api_prd → prd PN, api_stg → stg PN) and use private IPs for DB/Redis."
   }
 }
