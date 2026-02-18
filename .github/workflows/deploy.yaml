@@ -1,98 +1,67 @@
-name: Build → Staging → Production
+name: Build & Deploy
 
 on:
   push:
-    branches:
-      - main
-    paths:
-      - 'backend/**'
-      - 'frontend/**'
-      - '.github/workflows/deploy.yaml'
+    branches: [main]
+    paths: ['backend/**', 'frontend/**', '.github/workflows/**']
   workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  REGION: europe-west1
-  IMAGE_BASE: europe-west1-docker.pkg.dev/hit8-poc/backend/api
-  CLOUDFLARE_PROJECT: hit8
-  API_URL_PRD: https://api-prd.hit8.io
-  API_URL_STG: https://api-stg.hit8.io
-
 jobs:
   # --------------------------------------------------------------------------
-  # 1A. BUILD BACKEND
+  # BUILD
   # --------------------------------------------------------------------------
-  build-backend:
-    name: Build Backend
+  build:
+    name: Build
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
+      packages: write
     outputs:
-      image_tag: ${{ steps.meta.outputs.image_tag }}
+      image_tag: ${{ steps.meta.outputs.tag }}
       version: ${{ steps.meta.outputs.version }}
-      digest: ${{ steps.build.outputs.digest }}
     steps:
       - uses: actions/checkout@v4
       
-      - name: Auth GCP
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-          
-      - name: Setup GCloud
-        uses: google-github-actions/setup-gcloud@v2
-        
-      - name: Configure Docker
-        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Determine Tag
+      - name: Docker meta
         id: meta
         run: |
+          VERSION=$(cat VERSION | tr -d '[:space:]')
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          if [ -f VERSION ]; then
-            VERSION=$(cat VERSION | tr -d '[:space:]')
-          else
-            echo "VERSION file missing" && exit 1
-          fi
-          echo "image_tag=${VERSION}-${SHORT_SHA}" >> $GITHUB_OUTPUT
+          echo "tag=${VERSION}-${SHORT_SHA}" >> $GITHUB_OUTPUT
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
-      - name: Build and Push
+      # GCP
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - run: gcloud auth configure-docker europe-west1-docker.pkg.dev
+
+      # Scaleway
+      - name: Login to Scaleway
+        run: echo "${{ secrets.SCW_SECRET_KEY }}" | docker login rg.fr-par.scw.cloud/hit8 -u nologin --password-stdin
+
+      # Build & Push (both registries at once)
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v5
         id: build
-        uses: docker/build-push-action@v5
         with:
           context: ./backend
           push: true
           platforms: linux/amd64
           tags: |
-            ${{ env.IMAGE_BASE }}:${{ steps.meta.outputs.image_tag }}
-            ${{ env.IMAGE_BASE }}:${{ steps.meta.outputs.version }}
-          build-args: |
-            VERSION=${{ steps.meta.outputs.version }}
+            europe-west1-docker.pkg.dev/hit8-poc/backend/api:${{ steps.meta.outputs.tag }}
+            europe-west1-docker.pkg.dev/hit8-poc/backend/api:${{ steps.meta.outputs.version }}
+            rg.fr-par.scw.cloud/hit8/api:${{ steps.meta.outputs.tag }}
+            rg.fr-par.scw.cloud/hit8/api:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Smoke test job command
-        run: |
-          docker run --rm --platform linux/amd64 \
-            "${{ env.IMAGE_BASE }}@${{ steps.build.outputs.digest }}" \
-            /usr/local/bin/python -c "import sys; print('Python', sys.version)"
-
-  # --------------------------------------------------------------------------
-  # 1B. BUILD FRONTEND
-  # --------------------------------------------------------------------------
-  build-frontend:
-    name: Build Frontend
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+      # Frontend (build all variants, upload as artifacts)
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -101,10 +70,22 @@ jobs:
       
       - run: cd frontend && npm ci
 
-      - name: Build Staging
-        run: cd frontend && npm run build
+      - name: Build frontends
+        run: |
+          set -e
+          # Staging
+          cd frontend
+          VITE_API_URL=https://api-stg.hit8.io npm run build
+          mv dist ../dist-stg
+          
+          # Production (GCP)
+          VITE_API_URL=https://api-prd.hit8.io npm run build
+          mv dist ../dist-prd
+          
+          # Production (Scaleway)
+          VITE_API_URL=https://scw-prd.hit8.io npm run build
+          mv dist ../dist-scw
         env:
-          VITE_API_URL: ${{ env.API_URL_STG }}
           VITE_GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
           VITE_GOOGLE_IDENTITY_PLATFORM_KEY: ${{ secrets.GOOGLE_IDENTITY_PLATFORM_KEY }}
           VITE_GOOGLE_IDENTITY_PLATFORM_DOMAIN: ${{ secrets.GOOGLE_IDENTITY_PLATFORM_DOMAIN }}
@@ -113,114 +94,113 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: frontend-dist-stg
-          path: frontend/dist
-          retention-days: 1
-
-      - name: Build Production
-        run: cd frontend && npm run build
-        env:
-          VITE_API_URL: ${{ env.API_URL_PRD }}
-          VITE_GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
-          VITE_GOOGLE_IDENTITY_PLATFORM_KEY: ${{ secrets.GOOGLE_IDENTITY_PLATFORM_KEY }}
-          VITE_GOOGLE_IDENTITY_PLATFORM_DOMAIN: ${{ secrets.GOOGLE_IDENTITY_PLATFORM_DOMAIN }}
-          VITE_API_TOKEN: ${{ secrets.API_TOKEN }}
-          VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: frontend-dist-prd
-          path: frontend/dist
+          name: frontends
+          path: |
+            dist-stg/
+            dist-prd/
+            dist-scw/
           retention-days: 1
 
   # --------------------------------------------------------------------------
-  # 2. DEPLOY STAGING
+  # DEPLOY STAGING (Parallel)
   # --------------------------------------------------------------------------
   deploy-staging:
-    name: Deploy Staging
-    needs: [build-backend, build-frontend]
+    name: Deploy Staging (${{ matrix.cloud }})
+    needs: build
     runs-on: ubuntu-latest
     environment: staging
-    permissions:
-      contents: read
-      id-token: write
+    strategy:
+      matrix:
+        cloud: [gcp, scw]
     steps:
-      - name: Auth GCP
-        uses: google-github-actions/auth@v2
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/deploy-backend
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          cloud: ${{ matrix.cloud }}
+          environment: staging
+          image_tag: ${{ needs.build.outputs.image_tag }}
+          gcp_sa_key: ${{ secrets.GCP_SA_KEY }}
+          scw_access_key: ${{ secrets.SCW_ACCESS_KEY }}
+          scw_secret_key: ${{ secrets.SCW_SECRET_KEY }}
+          scw_project_id: ${{ secrets.SCW_PROJECT_ID }}
 
-      - name: Setup GCloud
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Deploy Backend Service
-        run: |
-          gcloud run services update hit8-api-stg \
-            --image "${{ env.IMAGE_BASE }}@${{ needs.build-backend.outputs.digest }}" \
-            --region ${{ env.REGION }} \
-            --quiet
-
-      - name: Update Cloud Run Job
-        run: |
-          gcloud run jobs update hit8-report-job-stg \
-            --image "${{ env.IMAGE_BASE }}@${{ needs.build-backend.outputs.digest }}" \
-            --region ${{ env.REGION }} \
-            --quiet
-
+  deploy-frontend-staging:
+    name: Deploy Frontend (Staging)
+    needs: [build, deploy-staging]
+    runs-on: ubuntu-latest
+    steps:
       - uses: actions/download-artifact@v4
         with:
-          name: frontend-dist-stg
-          path: dist-stg
+          name: frontends
 
-      - name: Deploy Frontend
-        uses: cloudflare/wrangler-action@v3
+      - uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_PAGES_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist-stg --project-name=${{ env.CLOUDFLARE_PROJECT }} --branch=main-staging
+          command: pages deploy dist-stg --project-name=hit8 --branch=main-staging
 
   # --------------------------------------------------------------------------
-  # 3. DEPLOY PRODUCTION (Manual Approval)
+  # DEPLOY PRODUCTION (Manual Approval)
   # --------------------------------------------------------------------------
   deploy-production:
-    name: Deploy Production
-    needs: [deploy-staging, build-backend]
+    name: Deploy Production (${{ matrix.cloud }})
+    needs: [build, deploy-staging, deploy-frontend-staging]
     runs-on: ubuntu-latest
-    environment: production # <--- Manual Approval triggers here
-    permissions:
-      contents: read
-      id-token: write
+    environment: production
+    strategy:
+      matrix:
+        cloud: [gcp, scw]
     steps:
-      - name: Auth GCP
-        uses: google-github-actions/auth@v2
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/deploy-backend
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          cloud: ${{ matrix.cloud }}
+          environment: production
+          image_tag: ${{ needs.build.outputs.image_tag }}
+          gcp_sa_key: ${{ secrets.GCP_SA_KEY }}
+          scw_access_key: ${{ secrets.SCW_ACCESS_KEY }}
+          scw_secret_key: ${{ secrets.SCW_SECRET_KEY }}
+          scw_project_id: ${{ secrets.SCW_PROJECT_ID }}
 
-      - name: Setup GCloud
-        uses: google-github-actions/setup-gcloud@v2
-
-      - name: Deploy Backend Service
-        run: |
-          gcloud run services update hit8-api-prd \
-            --image "${{ env.IMAGE_BASE }}@${{ needs.build-backend.outputs.digest }}" \
-            --region ${{ env.REGION }} \
-            --quiet
-
-      - name: Update Cloud Run Job
-        run: |
-          gcloud run jobs update hit8-report-job-prd \
-            --image "${{ env.IMAGE_BASE }}@${{ needs.build-backend.outputs.digest }}" \
-            --region ${{ env.REGION }} \
-            --quiet
-
+  deploy-frontend-production:
+    name: Deploy Frontend (Production)
+    needs: [build, deploy-production]
+    runs-on: ubuntu-latest
+    steps:
       - uses: actions/download-artifact@v4
         with:
-          name: frontend-dist-prd
-          path: dist-prd
+          name: frontends
 
-      - name: Deploy Frontend
+      - name: Deploy www.hit8.io
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_PAGES_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist-prd --project-name=${{ env.CLOUDFLARE_PROJECT }} --branch=main --commit-dirty=true
+          command: pages deploy dist-prd --project-name=hit8 --branch=main --commit-dirty=true
+
+      - name: Deploy scw.hit8.io
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_PAGES_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist-scw --project-name=hit8 --branch=scaleway --commit-dirty=true
+
+  # --------------------------------------------------------------------------
+  # NOTIFY
+  # --------------------------------------------------------------------------
+  notify:
+    name: Notify Deployment
+    needs: [deploy-production, deploy-frontend-production]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Deployment Status
+        run: |
+          if [ "${{ needs.deploy-production.result }}" = "success" ] && [ "${{ needs.deploy-frontend-production.result }}" = "success" ]; then
+            echo "✅ Production deployment successful!"
+          else
+            echo "❌ Deployment failed or skipped (backend=${{ needs.deploy-production.result }}, frontend=${{ needs.deploy-frontend-production.result }})"
+            exit 1
+          fi

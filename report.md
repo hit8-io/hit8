@@ -36,6 +36,7 @@ Deze audit werd uitgevoerd middels een geavanceerde, AI-ondersteunde analyse van
 
 ---
 
+
 ## 3. Departementale Analyse
 # Topic: Aanbodsvormen
 
@@ -59,6 +60,7 @@ Positief is dat er recente en duidelijke procedures bestaan voor de rapportering
 
 ---
 
+
 ### PR-AV-02 - Aanvraag erkenning en subsidie
 *   **Status**: Risico | **Scores**: Leesbaarheid 7/10 - Juridisch 7/10
 *   **Bevinding**:
@@ -67,6 +69,7 @@ Positief is dat er recente en duidelijke procedures bestaan voor de rapportering
 *   **Advies**: Vervang de term "Opgroeien regie" door "Opgroeien" in het volledige document. Overweeg om de publieke en interne procedure op te splitsen in twee afzonderlijke, duidelijker afgebakende documenten.
 
 ---
+
 
 ### PR-AV-03 - Aanvraag subsidie
 *   **Status**: Conflict | **Scores**: Leesbaarheid 8/10 - Juridisch 3/10
@@ -77,6 +80,7 @@ Positief is dat er recente en duidelijke procedures bestaan voor de rapportering
 
 ---
 
+
 ### PR-AV-04 - Individuele rapportage KOALA
 *   **Status**: OK | **Scores**: Leesbaarheid 9/10 - Juridisch 9/10
 *   **Bevinding**:
@@ -85,6 +89,7 @@ Positief is dat er recente en duidelijke procedures bestaan voor de rapportering
 *   **Advies**: Geen directe actie vereist. Deze procedure kan als voorbeeld dienen voor andere documenten wat betreft helderheid en structuur.
 
 ---
+
 
 ### PR-AV-05 - Grensoverschrijdend gedrag en gevaar
 *   **Status**: Risico | **Scores**: Leesbaarheid 7/10 - Juridisch 8/10
@@ -95,6 +100,7 @@ Positief is dat er recente en duidelijke procedures bestaan voor de rapportering
 
 ---
 
+
 ### PR-AV-06 - Stopzetting aanbodsvorm
 *   **Status**: OK | **Scores**: Leesbaarheid 9/10 - Juridisch 9/10
 *   **Bevinding**:
@@ -104,6 +110,7 @@ Positief is dat er recente en duidelijke procedures bestaan voor de rapportering
 
 ---
 
+
 ### PR-AV-07 - Wijziging van de organisator
 *   **Status**: Conflict | **Scores**: Leesbaarheid 6/10 - Juridisch 5/10
 *   **Bevinding**:
@@ -112,6 +119,7 @@ Positief is dat er recente en duidelijke procedures bestaan voor de rapportering
 *   **Advies**: Haal deze procedure onmiddellijk offline. Voltooi het document door de ontbrekende link naar het beslissingsdocument (BD-AV-xx) toe te voegen. Valideer de volledige procedure en publiceer pas na goedkeuring. Verifieer de publicatiedatum.
 
 ---
+
 
 # Topic: Consultatiebureauarts
 
@@ -134,6 +142,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 
 ---
 
+
 ### PR-CA-03 - Kennismakingsgesprek
 *   **Status**: OK | **Scores**: Leesbaarheid 9/10 - Juridisch 9/10
 *   **Bevinding**: Deze procedure beschrijft helder het verloop en de inhoud van het kennismakingsgesprek met een nieuwe CB-arts. De focus ligt correct op de inhoudelijke en praktische aspecten van de functie, de samenwerking binnen het team en het mentorzittingentraject. De doelstellingen zijn goed gedefinieerd en de voorbereiding voor de medewerker is duidelijk.
@@ -141,6 +150,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 *   **Advies**: De procedure is van hoge kwaliteit. Er zijn geen directe verbeterpunten.
 
 ---
+
 
 ### PR-CA-04 - Opdrachten 1e jaar CB-arts
 *   **Status**: Risico | **Scores**: Leesbaarheid 7/10 - Juridisch 6/10
@@ -150,6 +160,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 
 ---
 
+
 ### PR-CA-05 - Opvolggesprek adviserend arts
 *   **Status**: OK | **Scores**: Leesbaarheid 9/10 - Juridisch 9/10
 *   **Bevinding**: De procedure geeft een uitstekend en gedetailleerd overzicht van de medisch-inhoudelijke thema's die aan bod moeten komen tijdens het opvolggesprek. Het fungeert als een goede checklist voor de adviserend arts om de kwaliteit en kennis van de nieuwe CB-arts te toetsen.
@@ -157,6 +168,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 *   **Advies**: Geen directe verbeterpunten. De procedure is duidelijk en doelgericht.
 
 ---
+
 
 ### PR-CA-06 - Uitbetaling vergoeding CB-arts
 *   **Status**: Risico | **Scores**: Leesbaarheid 5/10 - Juridisch 7/10
@@ -166,6 +178,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 
 ---
 
+
 ### PR-CA-07 - Stopzetting mentorarts
 *   **Status**: OK | **Scores**: Leesbaarheid 9/10 - Juridisch 9/10
 *   **Bevinding**: De procedure voor de stopzetting van een mentorarts is helder en beknopt. Het onderscheid tussen vrijwillige stopzetting en stopzetting wegens kwaliteitsissues is duidelijk en de te volgen stappen zijn logisch.
@@ -173,6 +186,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 *   **Advies**: Geen verbeterpunten nodig.
 
 ---
+
 
 ### PR-CA-08 - Maandelijkse controle accreditatie en wijziging accreditatiegegevens
 *   **Status**: OK | **Scores**: Leesbaarheid 8/10 - Juridisch 8/10
@@ -182,6 +196,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 
 ---
 
+
 ### PR-CA-09 - Opvolging erkenning en status arts
 *   **Status**: Conflict | **Scores**: Leesbaarheid 4/10 - Juridisch 3/10
 *   **Bevinding**: Deze procedure is geclassificeerd als "Conflict" omdat de vermelde datum in de toekomst ligt. De brontekst specificeert: "Datum: 13/11/2024". Werken op basis van een procedure die formeel nog niet van kracht is, is juridisch onhoudbaar en creëert een onaanvaardbare onzekerheid. De inhoud zelf is complex en beschrijft een gedetailleerd, maar zwaar manueel opvolgingsproces voor de status van artsen, wat het risico op fouten verhoogt.
@@ -189,6 +204,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 *   **Advies**: Corrigeer onmiddellijk de datum naar de correcte ingangsdatum. Vereenvoudig en automatiseer de opvolging van de status van artsen om de afhankelijkheid van manuele controles en taken in Kariboe te verminderen.
 
 ---
+
 
 ### PR-CA-10 - Wijziging identificatiegegevens
 *   **Status**: OK | **Scores**: Leesbaarheid 7/10 - Juridisch 7/10
@@ -198,6 +214,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 
 ---
 
+
 ### PR-CA-11 - Procedure noodCB's
 *   **Status**: Conflict | **Scores**: Leesbaarheid 4/10 - Juridisch 5/10
 *   **Bevinding**: Deze procedure is geclassificeerd als "Conflict". De vermelde datum in de metadata is "13/01/2025", wat in de toekomst ligt. Het hanteren van een nog niet geldige procedure voor het toekennen van extra vergoedingen is juridisch en financieel risicovol. De procedure zelf, die een oplossing biedt voor onderbemande consultatiebureaus, is inhoudelijk relevant.
@@ -205,6 +222,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 *   **Advies**: Pas de datum van de procedure onmiddellijk aan naar de correcte ingangsdatum. Zorg ervoor dat alle financiële regelingen gebaseerd zijn op formeel goedgekeurde en actuele documenten.
 
 ---
+
 
 ### PR-CA-12 - Aanvraag en beslissing toelating mentorarts
 *   **Status**: OK | **Scores**: Leesbaarheid 8/10 - Juridisch 9/10
@@ -214,6 +232,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 
 ---
 
+
 ### PR-CA-13 - Mentorzittingen studenten Manama
 *   **Status**: OK | **Scores**: Leesbaarheid 9/10 - Juridisch 9/10
 *   **Bevinding**: Een duidelijke en eenvoudige procedure voor het faciliteren van stages voor studenten van de ManaMa Jeugdgezondheidszorg. De stappen voor aanvraag, planning en vergoeding van de mentorarts zijn helder.
@@ -221,6 +240,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 *   **Advies**: Geen verbeterpunten.
 
 ---
+
 
 ### PR-CA-14 - Aanvraag en toekenning andere opdracht
 *   **Status**: Risico | **Scores**: Leesbaarheid 3/10 - Juridisch 5/10
@@ -230,6 +250,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 
 ---
 
+
 ### PR-CA-15 - Organisatie andere opdrachten
 *   **Status**: OK | **Scores**: Leesbaarheid 7/10 - Juridisch 8/10
 *   **Bevinding**: Deze procedure beschrijft de inhoudelijke organisatie en toewijzing van 'andere opdrachten'. Het proces is logisch opgebouwd, van het definiëren van de opdracht tot het informeren van de artsen. De procedure zelf is in orde, maar ze is onlosmakelijk verbonden met de risicovolle technische uitwerking in PR-CA-14.
@@ -237,6 +258,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 *   **Advies**: De procedure is inhoudelijk correct, maar de effectiviteit ervan wordt ondermijnd door de technische implementatie. De sanering van PR-CA-14 is hier prioritair.
 
 ---
+
 
 ### PR-CA-17 - Vergoeding CB-arts bij inkomstenverlies door fout medewerker Opgroeien
 *   **Status**: Conflict | **Scores**: Leesbaarheid 4/10 - Juridisch 5/10
@@ -246,6 +268,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 
 ---
 
+
 ### PR-CA-19 - Overlijden CB-arts
 *   **Status**: OK | **Scores**: Leesbaarheid 9/10 - Juridisch 9/10
 *   **Bevinding**: Een heldere en respectvolle procedure die de noodzakelijke administratieve stappen beschrijft bij het overlijden van een (voormalige) CB-arts.
@@ -253,6 +276,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 *   **Advies**: Geen verbeterpunten.
 
 ---
+
 
 ### PR-CA-20 - Meldingen door CB artsen
 *   **Status**: Conflict | **Scores**: Leesbaarheid 4/10 - Juridisch 5/10
@@ -262,6 +286,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 
 ---
 
+
 ### PR-CA-21 - Meldingen over CB artsen
 *   **Status**: Conflict | **Scores**: Leesbaarheid 4/10 - Juridisch 5/10
 *   **Bevinding**: Net als PR-CA-20, is deze procedure geclassificeerd als "Conflict" vanwege de toekomstige datum: "20/08/2025". Dit is onaanvaardbaar voor een kritieke procedure die de opvolging van klachten over professionals regelt. De inhoud beschrijft een gedetailleerd proces voor klachtenbehandeling, inclusief crisisdefinities en de rolverdeling tussen account en klantenbeheerder.
@@ -269,6 +294,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 *   **Advies**: Pas de datum onmiddellijk aan. De procedures voor meldingen (PR-CA-20 en PR-CA-21) moeten te allen tijde actueel en rechtsgeldig zijn om een correcte en verdedigbare klachtenbehandeling te garanderen.
 
 ---
+
 
 ### PR-CA-22 - Opvolgtraject CB-arts
 *   **Status**: OK | **Scores**: Leesbaarheid 8/10 - Juridisch 10/10
@@ -278,6 +304,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 
 ---
 
+
 ### PR-CA-23 - Bezwaarprocedure
 *   **Status**: OK | **Scores**: Leesbaarheid 8/10 - Juridisch 10/10
 *   **Bevinding**: Deze procedure beschrijft de formele bezwaarprocedure voor een arts tegen een beslissing van Opgroeien. Het proces, inclusief de rol van de Adviescommissie en de strikte termijnen, is helder en conform de wettelijke vereisten.
@@ -285,6 +312,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 *   **Advies**: De procedure is juridisch sluitend. Zorg ervoor dat de communicatie naar de arts over deze procedure (bv. in de beslissingsbrieven) altijd 100% accuraat is.
 
 ---
+
 
 ### PR-CA-24 - Beroep Raad van State
 *   **Status**: OK | **Scores**: Leesbaarheid 8/10 - Juridisch 10/10
@@ -294,6 +322,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 
 ---
 
+
 ### PR-CA-25 - Behouden structurele zittingen
 *   **Status**: OK | **Scores**: Leesbaarheid 8/10 - Juridisch 8/10
 *   **Bevinding**: De procedure biedt een duidelijk en redelijk kader voor artsen die hun structurele zittingen tijdelijk niet kunnen opnemen. Het onderscheid tussen overmacht (bv. ziekte, zwangerschap) en eigen keuze is relevant en de gemaakte afspraken lijken billijk.
@@ -301,6 +330,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 *   **Advies**: Geen directe verbeterpunten. De procedure biedt een goede balans tussen flexibiliteit voor de arts en de continuïteit van de dienstverlening.
 
 ---
+
 
 ### PR-CA-26 - Opvolgen vorming artsen
 *   **Status**: Risico | **Scores**: Leesbaarheid 6/10 - Juridisch 7/10
@@ -310,6 +340,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 
 ---
 
+
 ### PR-CA-27 - Wijziging rekening- en ondernemingsnummer
 *   **Status**: Conflict | **Scores**: Leesbaarheid 4/10 - Juridisch 5/10
 *   **Bevinding**: Deze procedure is geclassificeerd als "Conflict" omdat de datum in de metadata ("29/04/2025") in de toekomst ligt. Het aanpassen van cruciale financiële gegevens op basis van een ongeldige procedure is een groot risico. De procedure beschrijft een complex proces voor het wijzigen van een ondernemingsnummer, inclusief mogelijke terugvorderingen, wat de noodzaak van een correcte, actuele procedure onderstreept.
@@ -317,6 +348,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 *   **Advies**: Corrigeer onmiddellijk de datum van de procedure. Overweeg een vereenvoudiging van de procedure voor het wijzigen van een ondernemingsnummer, mogelijk via een geleide workflow in Kariboe om fouten te minimaliseren.
 
 ---
+
 
 ### PR-CA-28 - Wijziging status en statuut
 *   **Status**: OK | **Scores**: Leesbaarheid 8/10 - Juridisch 8/10
@@ -326,6 +358,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 
 ---
 
+
 ### PR-CA-29 - Formulieren die een arts kan opvragen
 *   **Status**: OK | **Scores**: Leesbaarheid 8/10 - Juridisch 8/10
 *   **Bevinding**: Een korte en duidelijke procedure die twee specifieke administratieve vragen van artsen behandelt (formulier mutualiteit en attest tewerkstelling).
@@ -333,6 +366,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 *   **Advies**: Geen verbeterpunten.
 
 ---
+
 
 ### PR-CA-30 - HaiO en PO
 *   **Status**: OK | **Scores**: Leesbaarheid 8/10 - Juridisch 8/10
@@ -342,6 +376,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 
 ---
 
+
 ### PR-CA-31 - Opvolgen andere opdracht coronavragen
 *   **Status**: OK | **Scores**: Leesbaarheid 7/10 - Juridisch 7/10
 *   **Bevinding**: Dit is een zeer specifieke procedure voor een opdracht gelinkt aan de coronapandemie. Hoewel de relevantie ervan afneemt, is de procedure zelf duidelijk. Het toont aan dat er snel ad-hoc procedures opgesteld kunnen worden voor specifieke noden.
@@ -349,6 +384,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 *   **Advies**: Archiveer deze procedure wanneer ze niet langer relevant is om de procedurelijst overzichtelijk te houden.
 
 ---
+
 
 ### PR-CA-32 - Stopzetting erkenning (arts nooit gestart)
 *   **Status**: OK | **Scores**: Leesbaarheid 9/10 - Juridisch 9/10
@@ -358,6 +394,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 
 ---
 
+
 ### PR-CA-33 - Contact met arts 6 maanden na eerste zitting
 *   **Status**: OK | **Scores**: Leesbaarheid 8/10 - Juridisch 8/10
 *   **Bevinding**: Deze procedure formaliseert een belangrijk contactmoment in het opvolgtraject van een nieuwe arts. Het is een goed moment om de samenwerking te evalueren en eventuele problemen vroegtijdig te detecteren.
@@ -365,6 +402,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 *   **Advies**: Geen verbeterpunten.
 
 ---
+
 
 ### PR-CA-34 - Organiseren vorming voor artsen
 *   **Status**: OK | **Scores**: Leesbaarheid 8/10 - Juridisch 8/10
@@ -374,6 +412,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 
 ---
 
+
 ### PR-CA-35 - Opvragen uittreksel strafregister CB arts
 *   **Status**: OK | **Scores**: Leesbaarheid 9/10 - Juridisch 10/10
 *   **Bevinding**: Dit is een uitstekende en zeer belangrijke procedure die de wettelijke verplichting rond de controle van het strafregister correct vertaalt naar een werkbaar proces. Het beschrijft duidelijk wanneer en hoe het attest opgevraagd moet worden, hoe het beoordeeld moet worden (inclusief handvaten voor veroordelingen), en wat de gevolgen zijn. De aandacht voor beveiligde verzending is een pluspunt.
@@ -381,6 +420,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 *   **Advies**: Deze procedure is van hoge kwaliteit en cruciaal voor de veiligheid. Zorg dat deze strikt wordt nageleefd.
 
 ---
+
 
 ### PR-CA-36 - Afspraken registratie meldingen in Vario voor team artsen en CB-management
 *   **Status**: OK | **Scores**: Leesbaarheid 7/10 - Juridisch 7/10
@@ -390,6 +430,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 
 ---
 
+
 ### PR-CA-37 - BIG-registratie voor Nederlandse artsen
 *   **Status**: OK | **Scores**: Leesbaarheid 8/10 - Juridisch 8/10
 *   **Bevinding**: Een zeer specifieke procedure voor artsen die een Nederlandse BIG-registratie nodig hebben. De stappen voor het invullen van de nodige formulieren zijn zeer gedetailleerd en praktisch uitgewerkt, wat de kans op fouten verkleint.
@@ -397,6 +438,7 @@ Tot slot zijn er inhoudelijke onduidelijkheden, zoals de regeling rond de vergoe
 *   **Advies**: Geen verbeterpunten. Dit is een goed voorbeeld van een praktische, ondersteunende procedure voor een specifieke doelgroep.
 
 ---
+
 
 # Topic: Consultatiebureau
 
@@ -422,6 +464,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 
 ---
 
+
 ### PR-CB-02 - Vrijwillige stopzetting van een CB
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 8/10
 *   **Bevinding**:
@@ -430,6 +473,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 *   **Advies**: Geen acuut advies. De procedure is robuust.
 
 ---
+
 
 ### PR-CB-03 - Aanvraag voor de verhuis van een consultatiebureau
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 9/10 - Juridisch 9/10
@@ -440,6 +484,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 
 ---
 
+
 ### PR-CB-04 - Uren toekennen aan een CB of CBA
 *   **Status**: Risico | **Scores**: Leesbaarheid 7/10 - Juridisch 6/10
 *   **Bevinding**:
@@ -448,6 +493,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 *   **Advies**: Definieer en objectiveer het begrip "aangetoonde nood" door concrete, meetbare indicatoren vast te leggen. Dit verhoogt de transparantie en rechtszekerheid voor organisatoren van een CBA.
 
 ---
+
 
 ### PR-CB-05 - Zittingsuren overdragen
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 9/10 - Juridisch 9/10
@@ -458,6 +504,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 
 ---
 
+
 ### PR-CB-06 - Extra zittinguren aanvragen
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 8/10
 *   **Bevinding**:
@@ -466,6 +513,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 *   **Advies**: Geen. De procedure is conform en functioneel.
 
 ---
+
 
 ### PR-CB-07 - Het aantal toegekende uren voor CBs berekenen
 *   **Status**: Risico | **Scores**: Leesbaarheid 5/10 - Juridisch 7/10
@@ -476,6 +524,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 
 ---
 
+
 ### PR-CB-08 - Overdracht erkenning CB binnen lokaal bestuur
 *   **Status**: Conflict | **Scores**: Leesbaarheid 7/10 - Juridisch 2/10
 *   **Bevinding**:
@@ -484,6 +533,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 *   **Advies**: Creëer met spoed een formeel juridisch kader (aanpassing BVR) voor de overdracht van erkenningen binnen een lokaal bestuur. Publiceer de procedure om de transparantie te verhogen.
 
 ---
+
 
 ### PR-CB-10 - Aanvraag nieuwe erkenning owv wijziging onderneming
 *   **Status**: Conflict | **Scores**: Leesbaarheid 7/10 - Juridisch 2/10
@@ -494,6 +544,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 
 ---
 
+
 ### PR-CB-11 - Afvalbeheer consultatiebureau
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 9/10 - Juridisch 9/10
 *   **Bevinding**:
@@ -502,6 +553,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 *   **Advies**: Geen. De procedure is duidelijk en effectief.
 
 ---
+
 
 ### PR-CB-12 - Uren toekennen voor specifieke doelgroepen op locatie buiten CB
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 8/10
@@ -512,6 +564,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 
 ---
 
+
 ### PR-CB-13 - Opstart nieuw CB
 *   **Status**: Risico | **Scores**: Leesbaarheid 7/10 - Juridisch 7/10
 *   **Bevinding**:
@@ -520,6 +573,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 *   **Advies**: Ontwikkel een gestandaardiseerd en transparant model voor het bepalen van het start-aantal uren voor nieuwe consultatiebureaus, eventueel gebaseerd op een raming van de parameters die in het reguliere model worden gebruikt.
 
 ---
+
 
 ### PR-CB-14 - Terugvordering teveel betaalde subsidie CB
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 9/10
@@ -530,6 +584,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 
 ---
 
+
 ### PR-CB-18 - Toezicht erkenningsvoorwaarden en -voorschriften
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 9/10
 *   **Bevinding**:
@@ -538,6 +593,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 *   **Advies**: Geen. Dit is een fundamentele en goed uitgewerkte procedure.
 
 ---
+
 
 ### PR-CB-19 - Melding problemen luchtverversing CB
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 9/10 - Juridisch 8/10
@@ -548,6 +604,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 
 ---
 
+
 ### PR-CB-20 - Melding problemen vrijwilligers CB
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 7/10 - Juridisch 7/10
 *   **Bevinding**:
@@ -556,6 +613,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 *   **Advies**: Geen. De procedure is proportioneel.
 
 ---
+
 
 ### PR-CB-21 - Voornemen tot opheffing van de erkenning van een CB
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 9/10
@@ -566,6 +624,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 
 ---
 
+
 ### PR-CB-22 - Bezwaarprocedure
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 9/10
 *   **Bevinding**:
@@ -574,6 +633,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 *   **Advies**: Geen. Dit is een procedure die voldoet aan de hoogste juridische standaarden.
 
 ---
+
 
 ### PR-CB-23 - Staand order CB
 *   **Status**: Risico | **Scores**: Leesbaarheid 6/10 - Juridisch 6/10
@@ -584,6 +644,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 
 ---
 
+
 ### PR-CB-24 - Grensoverschrijdend gedrag en gevaar
 *   **Status**: Conflict | **Scores**: Leesbaarheid 3/10 - Juridisch 2/10
 *   **Bevinding**:
@@ -592,6 +653,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 *   **Advies**: Trek dit document onmiddellijk terug en vervang het door een gevalideerde en volledige procedure. De onduidelijkheid over verantwoordelijkheden in geval van crisis is onaanvaardbaar.
 
 ---
+
 
 ### PR-CB-25 - Verluchting, ventilatie en CO²-meters
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 9/10 - Juridisch 8/10
@@ -602,6 +664,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 
 ---
 
+
 ### PR-CB-26 - Programmatie cb
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 8/10
 *   **Bevinding**:
@@ -610,6 +673,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 *   **Advies**: Geen. De procedure is goed onderbouwd.
 
 ---
+
 
 ### PR-CB-27 - Schorsing erkenning
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 9/10
@@ -620,6 +684,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 
 ---
 
+
 ### PR-CB-28 - Gemachtigde personen portaal
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 8/10
 *   **Bevinding**:
@@ -628,6 +693,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 *   **Advies**: Geen. De procedure is functioneel.
 
 ---
+
 
 ### PR-CB-29 - Werkwijze opmaak planningskalender
 *   **Status**: Risico | **Scores**: Leesbaarheid 5/10 - Juridisch 7/10
@@ -638,6 +704,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 
 ---
 
+
 ### PR-CB-30 - Opheffing van de erkenning en subsidiëring van een consultatiebureau
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 9/10
 *   **Bevinding**:
@@ -646,6 +713,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 *   **Advies**: Geen. De procedure is een logisch en correct sluitstuk van het handhavingsbeleid.
 
 ---
+
 
 ### PR-CB-31 - Verhangen blokplanning van een CB omwille van wijziging dossiernummer
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 7/10 - Juridisch 8/10
@@ -656,6 +724,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 
 ---
 
+
 ### PR-CB-33 - Meldingen door Consultatiebureaus
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 8/10
 *   **Bevinding**:
@@ -664,6 +733,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 *   **Advies**: Geen. De procedure is goed gestructureerd.
 
 ---
+
 
 ### PR-CB-34 - Meldingen over een Consultatiebureau
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 8/10
@@ -674,6 +744,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 
 ---
 
+
 ### PR-CB-35 - Aanmaken inspectieopdrachten voor consultatiebureau
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 8/10
 *   **Bevinding**:
@@ -682,6 +753,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 *   **Advies**: Geen. De procedure is een praktische en noodzakelijke werkinstructie.
 
 ---
+
 
 ### PR-CB-36 - Procedure behandelen verslagen Zorginspectie CB
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 7/10 - Juridisch 8/10
@@ -692,6 +764,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 
 ---
 
+
 ### PR-CB-37 - Opheffing erkenning en stopzetting bijhorende subsidie CB -210u
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 9/10 - Juridisch 9/10
 *   **Bevinding**:
@@ -700,6 +773,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 *   **Advies**: Geen. De procedure is helder, objectief en eerlijk.
 
 ---
+
 
 ### PR-CB-38 - Terugvordering niet (correct) bestede subsidies
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 9/10
@@ -710,6 +784,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 
 ---
 
+
 ### PR-CB-39 - Rapportage CB
 *   **Status**: Risico | **Scores**: Leesbaarheid 6/10 - Juridisch 7/10
 *   **Bevinding**:
@@ -718,6 +793,7 @@ De trend is een verschuiving naar meer objectieve, data-gedreven sturing (bv. he
 *   **Advies**: Moderniseer het rapportageproces. Vervang de Excel-gebaseerde verzending en verwerking door een web-based portaal waarin organisatoren hun data direct kunnen invoeren. Dit verhoogt de datakwaliteit, vermindert de manuele werklast en verlaagt het risico op fouten.
 
 ---
+
 
 # Topic: Handhaving
 
@@ -739,6 +815,7 @@ De grootste risico's situeren zich op drie domeinen. Ten eerste, de procedures v
 
 ---
 
+
 ### PR-HA-02 - Opvolging toezicht en voortraject
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 9/10 - Juridisch 9/10
 *   **Bevinding**:
@@ -747,6 +824,7 @@ De grootste risico's situeren zich op drie domeinen. Ten eerste, de procedures v
 *   **Advies**: Geen. De procedure is duidelijk en goed onderbouwd.
 
 ---
+
 
 ### PR-HA-03 - Aanmaning vergunningsvoorwaarden
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 9/10
@@ -757,6 +835,7 @@ De grootste risico's situeren zich op drie domeinen. Ten eerste, de procedures v
 
 ---
 
+
 ### PR-HA-04 - Voornemen en hoorrecht Vergunningsvoorwaarden
 *   **Status**: Risico | **Scores**: Leesbaarheid 7/10 - Juridisch 7/10
 *   **Bevinding**:
@@ -765,6 +844,7 @@ De grootste risico's situeren zich op drie domeinen. Ten eerste, de procedures v
 *   **Advies**: Evalueer de juridische houdbaarheid van de reactietermijn van 7 kalenderdagen en overweeg een standaardtermijn van bijvoorbeeld 14 of 15 dagen om de rechten van verdediging beter te garanderen.
 
 ---
+
 
 ### PR-HA-05 - Wijziging van de vergunning
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 8/10
@@ -775,6 +855,7 @@ De grootste risico's situeren zich op drie domeinen. Ten eerste, de procedures v
 
 ---
 
+
 ### PR-HA-06 - Schorsing van de vergunning
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 9/10
 *   **Bevinding**:
@@ -783,6 +864,7 @@ De grootste risico's situeren zich op drie domeinen. Ten eerste, de procedures v
 *   **Advies**: Geen. De procedure is zeer volledig en goed gestructureerd.
 
 ---
+
 
 ### PR-HA-07 - Opheffing van de vergunning
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 9/10
@@ -793,6 +875,7 @@ De grootste risico's situeren zich op drie domeinen. Ten eerste, de procedures v
 
 ---
 
+
 ### PR-HA-08 - Voornemen en hoorrecht Bestuurlijke geldboete
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 8/10
 *   **Bevinding**:
@@ -801,6 +884,7 @@ De grootste risico's situeren zich op drie domeinen. Ten eerste, de procedures v
 *   **Advies**: Geen. De procedure is consistent met de andere 'voornemen'-procedures.
 
 ---
+
 
 ### PR-HA-10 - Schorsing dringende noodzakelijkheid
 *   **Status**: Conflict | **Scores**: Leesbaarheid 7/10 - Juridisch 6/10
@@ -811,6 +895,7 @@ De grootste risico's situeren zich op drie domeinen. Ten eerste, de procedures v
 
 ---
 
+
 ### PR-HA-11 - Bestuurlijke maatregel terugvordering subsidie
 *   **Status**: Conflict | **Scores**: Leesbaarheid 8/10 - Juridisch 7/10
 *   **Bevinding**:
@@ -819,6 +904,7 @@ De grootste risico's situeren zich op drie domeinen. Ten eerste, de procedures v
 *   **Advies**: Voorzie een standaard begeleidende communicatie die de wettelijke verplichting en het gebrek aan appreciatieruimte voor Opgroeien helder uitlegt aan de organisator, om onbegrip en escalatie te proberen voorkomen.
 
 ---
+
 
 ### PR-HA-12 - Bestuurlijke maatregel vermindering subsidie
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 8/10
@@ -829,6 +915,7 @@ De grootste risico's situeren zich op drie domeinen. Ten eerste, de procedures v
 
 ---
 
+
 ### PR-HA-13 - Bestuurlijke maatregel schorsing subsidie
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 8/10
 *   **Bevinding**:
@@ -837,6 +924,7 @@ De grootste risico's situeren zich op drie domeinen. Ten eerste, de procedures v
 *   **Advies**: Geen. De procedure is consistent en duidelijk.
 
 ---
+
 
 ### PR-HA-14 - Bestuurlijke maatregel stopzetting subsidie
 *   **Status**: Risico | **Scores**: Leesbaarheid 6/10 - Juridisch 5/10
@@ -847,6 +935,7 @@ De grootste risico's situeren zich op drie domeinen. Ten eerste, de procedures v
 
 ---
 
+
 ### PR-HA-15 - Bestuurlijke geldboete
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 9/10
 *   **Bevinding**:
@@ -855,6 +944,7 @@ De grootste risico's situeren zich op drie domeinen. Ten eerste, de procedures v
 *   **Advies**: Geen. De procedure is volledig en juridisch solide.
 
 ---
+
 
 ### PR-HA-16 - Voornemen en hoorrecht dringende noodzakelijkheid
 *   **Status**: Risico | **Scores**: Leesbaarheid 7/10 - Juridisch 7/10
@@ -865,6 +955,7 @@ De grootste risico's situeren zich op drie domeinen. Ten eerste, de procedures v
 
 ---
 
+
 ### PR-HA-18 - Aanpak niet insturen verplichte gegevens
 *   **Status**: Risico | **Scores**: Leesbaarheid 7/10 - Juridisch 6/10
 *   **Bevinding**:
@@ -873,6 +964,7 @@ De grootste risico's situeren zich op drie domeinen. Ten eerste, de procedures v
 *   **Advies**: Verifieer via `get_regelgeving` of het Vergunningsbesluit (artikel 60) nog steeds de expliciete jaarlijkse opvraag vereist, of dat de data via IKT/KO-toeslag juridisch volstaat als alternatief. Pas de procedure aan op basis van deze verificatie om handhaving op een mogelijk redundante verplichting te vermijden.
 
 ---
+
 
 ### PR-HA-20 - Aanpak melding misleidende informatie
 *   **Status**: Risico | **Scores**: Leesbaarheid 7/10 - Juridisch 7/10
@@ -883,6 +975,7 @@ De grootste risico's situeren zich op drie domeinen. Ten eerste, de procedures v
 
 ---
 
+
 ### PR-HA-21 - Steekproefcontroles organisatoren
 *   **Status**: Conflict | **Scores**: Leesbaarheid 3/10 - Juridisch 2/10
 *   **Bevinding**:
@@ -891,6 +984,7 @@ De grootste risico's situeren zich op drie domeinen. Ten eerste, de procedures v
 *   **Advies**: De procedure moet onmiddellijk en volledig worden herzien. Alle verwijzingen naar verouderde data, specifieke personen en niet-werkende bestandslocaties moeten worden verwijderd. De methodologie voor het trekken van steekproeven moet worden geactualiseerd en verankerd in de huidige IT-systemen (EDISON).
 
 ---
+
 
 ### PR-HA-22 - Handhaving na de eerste steekproeven
 *   **Status**: Conflict | **Scores**: Leesbaarheid 4/10 - Juridisch 3/10
@@ -901,6 +995,7 @@ De grootste risico's situeren zich op drie domeinen. Ten eerste, de procedures v
 
 ---
 
+
 ### PR-HA-29 - Aanmaning met intensief ondersteuningstraject
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 9/10 - Juridisch 8/10
 *   **Bevinding**:
@@ -909,6 +1004,7 @@ De grootste risico's situeren zich op drie domeinen. Ten eerste, de procedures v
 *   **Advies**: Evalueer periodiek de effectiviteit van de intensieve ondersteuningstrajecten om de impact en de return on investment van deze aanpak te meten.
 
 ---
+
 
 ### PR-HA-31 - Bezwaar tegen beslissing Opgroeien
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 9/10
@@ -919,6 +1015,7 @@ De grootste risico's situeren zich op drie domeinen. Ten eerste, de procedures v
 
 ---
 
+
 ### PR-HA-32 - Beroep indienen bij Raad Van State tegen beslissing Opgroeien
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 9/10 - Juridisch 9/10
 *   **Bevinding**:
@@ -927,6 +1024,7 @@ De grootste risico's situeren zich op drie domeinen. Ten eerste, de procedures v
 *   **Advies**: Geen. De procedure is helder en informatief.
 
 ---
+
 
 ### PR-HA-34 & PR-HA-34_1 - Opvolging subsidievoorwaarden 2023/2024
 *   **Status**: Conflict | **Scores**: Leesbaarheid 5/10 - Juridisch 4/10
@@ -937,6 +1035,7 @@ De grootste risico's situeren zich op drie domeinen. Ten eerste, de procedures v
 
 ---
 
+
 ### PR-HA-35 - Voortraject en opvragen plan van aanpak subsidievoorwaarden
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 8/10
 *   **Bevinding**:
@@ -945,6 +1044,7 @@ De grootste risico's situeren zich op drie domeinen. Ten eerste, de procedures v
 *   **Advies**: Geen. De procedure is een goede praktische handleiding.
 
 ---
+
 
 ### PR-HA-36 - Aanmaning subsidievoorwaarden
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 8/10
@@ -955,6 +1055,7 @@ De grootste risico's situeren zich op drie domeinen. Ten eerste, de procedures v
 
 ---
 
+
 ### PR-HA-37 - Overdracht van een handhaving naar een nieuwe locatie of een nieuwe organisator
 *   **Status**: Risico | **Scores**: Leesbaarheid 7/10 - Juridisch 6/10
 *   **Bevinding**:
@@ -963,6 +1064,7 @@ De grootste risico's situeren zich op drie domeinen. Ten eerste, de procedures v
 *   **Advies**: Vraag een bindend juridisch advies over hoe om te gaan met de datering en publicatie van overgedragen handhavingen die dateren van voor de ingebruikname van de publieke handhavingslijst op de KO-zoeker. Neem dit advies op in de procedure.
 
 ---
+
 
 # Topic: Huizen van het Kind
 
@@ -984,6 +1086,7 @@ De financiële component is prominent aanwezig, met aparte procedures voor diver
 
 ---
 
+
 ### PR-HK-02 - Aanvraag erkenning en subsidie
 *   **Status**: Conflict | **Scores**: Leesbaarheid 7/10 - Juridisch 4/10
 *   **Bevinding**:
@@ -992,6 +1095,7 @@ De financiële component is prominent aanwezig, met aparte procedures voor diver
 *   **Advies**: Lijn de startdatum van de beslissingstermijn van 3 maanden in de externe en interne procedures op elkaar af. Communiceer eenduidig welke datum als startpunt geldt.
 
 ---
+
 
 ### PR-HK-03 - Aanvraag subsidie
 *   **Status**: Conflict | **Scores**: Leesbaarheid 6/10 - Juridisch 4/10
@@ -1002,6 +1106,7 @@ De financiële component is prominent aanwezig, met aparte procedures voor diver
 
 ---
 
+
 ### PR-HK-04 - Stopzetting Huis van het Kind
 *   **Status**: Risico | **Scores**: Leesbaarheid 8/10 - Juridisch 6/10
 *   **Bevinding**:
@@ -1010,6 +1115,7 @@ De financiële component is prominent aanwezig, met aparte procedures voor diver
 *   **Advies**: Voeg de opzegtermijn van 6 maanden expliciet toe aan de interne procedure (PR-HU-05) om te verzekeren dat klantenbeheerders de volledigheid van de voorwaarden controleren.
 
 ---
+
 
 ### PR-HK-05 - Splitsing of fusie Huis van het Kind
 *   **Status**: Conflict | **Scores**: Leesbaarheid 6/10 - Juridisch 4/10
@@ -1020,6 +1126,7 @@ De financiële component is prominent aanwezig, met aparte procedures voor diver
 
 ---
 
+
 ### PR-HK-06 - Wijziging vertegenwoordiger
 *   **Status**: Risico | **Scores**: Leesbaarheid 7/10 - Juridisch 7/10
 *   **Bevinding**:
@@ -1029,6 +1136,7 @@ De financiële component is prominent aanwezig, met aparte procedures voor diver
 
 ---
 
+
 ### PR-HK-07 - Wijziging rechtsvorm
 *   **Status**: Risico | **Scores**: Leesbaarheid 7/10 - Juridisch 6/10
 *   **Bevinding**:
@@ -1037,6 +1145,7 @@ De financiële component is prominent aanwezig, met aparte procedures voor diver
 *   **Advies**: Integreer de deadline van 31 december prominent in de interne procedure om te verzekeren dat aanvragen correct op tijdigheid worden beoordeeld.
 
 ---
+
 ### PR-HK-08 - Wijziging rekeningnummer
 *   **Status**: Risico | **Scores**: Leesbaarheid 8/10 - Juridisch 7/10
 *   **Bevinding**:
@@ -1045,6 +1154,7 @@ De financiële component is prominent aanwezig, met aparte procedures voor diver
 *   **Advies**: Voeg aan de externe procedure een duidelijke vermelding toe over de termijn voor vervollediging en de consequentie (afsluiten van de aanvraag) indien deze niet wordt gerespecteerd.
 
 ---
+
 ### PR-HK-09 - Toezicht, voortraject en aanmaning
 *   **Status**: OK | **Scores**: Leesbaarheid 7/10 - Juridisch 8/10
 *   **Bevinding**:
@@ -1053,6 +1163,7 @@ De financiële component is prominent aanwezig, met aparte procedures voor diver
 *   **Advies**: Geen acuut advies. De procedure is complex maar lijkt intern consistent en goed onderbouwd.
 
 ---
+
 ### PR-HK-10 - Voornemen opheffing erkenning aanbodsvorm
 *   **Status**: OK | **Scores**: Leesbaarheid 7/10 - Juridisch 9/10
 *   **Bevinding**:
@@ -1061,6 +1172,7 @@ De financiële component is prominent aanwezig, met aparte procedures voor diver
 *   **Advies**: Zorg voor continue vorming bij klantenbeheerders en juristen over de interpretatie van 'dringende noodzakelijkheid' om juridische risico's bij onmiddellijke schorsing te minimaliseren.
 
 ---
+
 ### PR-HK-11 - Opheffen erkenning
 *   **Status**: OK | **Scores**: Leesbaarheid 8/10 - Juridisch 8/10
 *   **Bevinding**:
@@ -1069,6 +1181,7 @@ De financiële component is prominent aanwezig, met aparte procedures voor diver
 *   **Advies**: Geen. De procedure is helder en volgt een logische, juridisch onderbouwde flow.
 
 ---
+
 ### PR-HK-12 - Stopzetting subsidies HvhK en aanbodsvorm
 *   **Status**: OK | **Scores**: Leesbaarheid 7/10 - Juridisch 8/10
 *   **Bevinding**:
@@ -1077,6 +1190,7 @@ De financiële component is prominent aanwezig, met aparte procedures voor diver
 *   **Advies**: Geen. Dit is een duidelijke interne werkinstructie.
 
 ---
+
 ### PR-HK-13 - Terugvordering van de subsidies
 *   **Status**: Risico | **Scores**: Leesbaarheid 7/10 - Juridisch 6/10
 *   **Bevinding**:
@@ -1085,6 +1199,7 @@ De financiële component is prominent aanwezig, met aparte procedures voor diver
 *   **Advies**: Stel een aparte juridische nota op die de verjaringstermijnen voor de terugvordering van subsidies onder de verschillende wettelijke kaders (Rekendecreet, wet van 16 mei 2003) eenduidig vastlegt en voorbeelden geeft.
 
 ---
+
 ### PR-HK-14 - Schorsing en hoorrecht aanbodsvorm
 *   **Status**: Risico | **Scores**: Leesbaarheid 8/10 - Juridisch 7/10
 *   **Bevinding**:
@@ -1093,6 +1208,7 @@ De financiële component is prominent aanwezig, met aparte procedures voor diver
 *   **Advies**: Maak van de "OPGELET"-passage een verplicht te doorlopen beslissingspunt in de checklist voor de klantenbeheerder in elke situatie waar een organisator zelf de werking tijdelijk stopzet.
 
 ---
+
 ### PR-HK-15 - Bezwaarprocedure
 *   **Status**: Conflict | **Scores**: Leesbaarheid 6/10 - Juridisch 5/10
 *   **Bevinding**:
@@ -1101,6 +1217,7 @@ De financiële component is prominent aanwezig, met aparte procedures voor diver
 *   **Advies**: Voer een volledige revisie en harmonisatie door van de bezwaarprocedure. Actualiseer beide documenten naar dezelfde versie en zorg dat alle termijnen en scenario's (negatief, positief, geen advies) eenduidig en consistent beschreven zijn.
 
 ---
+
 ### PR-HK-16 - Raad van State
 *   **Status**: Risico | **Scores**: Leesbaarheid 5/10 - Juridisch 3/10
 *   **Bevinding**:
@@ -1109,6 +1226,7 @@ De financiële component is prominent aanwezig, met aparte procedures voor diver
 *   **Advies**: Werk dit document uit tot een volwaardige interne procedure die beschrijft hoe te handelen wanneer Opgroeien een verzoekschrift van de Raad van State ontvangt, inclusief de rol van de juridische dienst en de termijnen voor het samenstellen van het administratief dossier.
 
 ---
+
 ### PR-HK-19 - Aanvraag en beslissing subsidies vernieuwend aanbod
 *   **Status**: OK | **Scores**: Leesbaarheid 8/10 - Juridisch 8/10
 *   **Bevinding**:
@@ -1117,6 +1235,7 @@ De financiële component is prominent aanwezig, met aparte procedures voor diver
 *   **Advies**: Geen. De procedure is adequaat voor een eenmalige oproep.
 
 ---
+
 ### PR-HK-21 - Financiële rapportage HvK
 *   **Status**: Conflict | **Scores**: Leesbaarheid 6/10 - Juridisch 5/10
 *   **Bevinding**:
@@ -1125,6 +1244,7 @@ De financiële component is prominent aanwezig, met aparte procedures voor diver
 *   **Advies**: Verduidelijk de procedure rond laattijdige indiening. Definieer expliciet of er een periode van gedogen is en wat de juridische status is van de herinneringsmail. De sanctie moet proportioneel en duidelijk voorspelbaar zijn.
 
 ---
+
 ### PR-HK-21_1 - Inhoudelijke en financiele rapportage vernieuwend aanbod
 *   **Status**: Conflict | **Scores**: Leesbaarheid 7/10 - Juridisch 5/10
 *   **Bevinding**:
@@ -1133,6 +1253,7 @@ De financiële component is prominent aanwezig, met aparte procedures voor diver
 *   **Advies**: Harmoniseer de deadlines in de interne en externe documenten. Als er verschillende deadlines zijn voor inhoudelijke en financiële rapportage, maak dit dan in beide documenten expliciet duidelijk.
 
 ---
+
 ### PR-HK-22 - Aanvraag en principiële beslissing subsidie HvhK Brussel
 *   **Status**: OK | **Scores**: Leesbaarheid 8/10 - Juridisch 8/10
 *   **Bevinding**:
@@ -1141,6 +1262,7 @@ De financiële component is prominent aanwezig, met aparte procedures voor diver
 *   **Advies**: Geen. De procedure is een goed voorbeeld van een gestructureerde aanpak voor een specifieke oproep.
 
 ---
+
 ### PR-HK-23 - Grensoverschrijdend gedrag en gevaar
 *   **Status**: Risico | **Scores**: Leesbaarheid 9/10 - Juridisch 7/10
 *   **Bevinding**:
@@ -1149,6 +1271,7 @@ De financiële component is prominent aanwezig, met aparte procedures voor diver
 *   **Advies**: Organiseer periodieke intervisiemomenten met de Huizen van het Kind om casuïstiek te bespreken en de interpretatie van 'ernstige situatie' te kalibreren.
 
 ---
+
 ### PR-HK-24 - Wijziging werkingsgebied
 *   **Status**: Conflict | **Scores**: Leesbaarheid 7/10 - Juridisch 5/10
 *   **Bevinding**:
@@ -1157,6 +1280,7 @@ De financiële component is prominent aanwezig, met aparte procedures voor diver
 *   **Advies**: Lijn de communicatietermijn in de externe procedure uit met de interne realiteit. Communiceer bijvoorbeeld een beslissingstermijn van X dagen na ontvangst, en een verzendingstermijn van Y dagen na de beslissing.
 
 ---
+
 ### PR-HK-25 - Hoe omgaan met meldingen door een PGJO-voorziening
 *   **Status**: OK | **Scores**: Leesbaarheid 8/10 - Juridisch 8/10
 *   **Bevinding**:
@@ -1165,6 +1289,7 @@ De financiële component is prominent aanwezig, met aparte procedures voor diver
 *   **Advies**: Geen. De procedure lijkt een solide basis voor een correcte en traceerbare afhandeling.
 
 ---
+
 ### PR-HK-26 - Hoe omgaan met meldingen over een PGJO-voorziening
 *   **Status**: OK | **Scores**: Leesbaarheid 8/10 - Juridisch 8/10
 *   **Bevinding**:
@@ -1173,6 +1298,7 @@ De financiële component is prominent aanwezig, met aparte procedures voor diver
 *   **Advies**: Geen. De procedure is goed doordacht en dekt de belangrijkste aspecten van klachtenbehandeling.
 
 ---
+
 ### PR-HK-27 - Aanvraag en beslissing pilots 2025
 *   **Status**: Risico | **Scores**: Leesbaarheid 7/10 - Juridisch N/A
 *   **Bevinding**:
@@ -1182,7 +1308,9 @@ De financiële component is prominent aanwezig, met aparte procedures voor diver
 
 ---
 
+
 ---
+
 
 # Topic: Algemeen
 
@@ -1202,6 +1330,7 @@ De grootste risico's bevinden zich echter in de uitvoering van deze procedures. 
 
 ---
 
+
 ### PR-JH-02 - Meldingen over een jeugdhulpvoorziening
 *   **Status**: Conflict | **Scores**: Leesbaarheid 6/10 - Juridisch 4/10
 *   **Bevinding**:
@@ -1210,6 +1339,7 @@ De grootste risico's bevinden zich echter in de uitvoering van deze procedures. 
 *   **Advies**: Geef absolute prioriteit aan het finaliseren van de passage over meldingen betreffende pleegzorg in samenwerking met het juridisch team. Dit is essentieel om juridische risico's en operationele onduidelijkheid weg te nemen.
 
 ---
+
 
 ### PR-JH-03 - Verwerking zelfevaluatieformulieren
 *   **Status**: Risico | **Scores**: Leesbaarheid 8/10 - Juridisch 6/10
@@ -1220,6 +1350,7 @@ De grootste risico's bevinden zich echter in de uitvoering van deze procedures. 
 
 ---
 
+
 ### PR-JH-04 - Ontvangst en ontvankelijkheid aanvraag erkenning
 *   **Status**: OK | **Scores**: Leesbaarheid 7/10 - Juridisch 8/10
 *   **Bevinding**:
@@ -1228,6 +1359,7 @@ De grootste risico's bevinden zich echter in de uitvoering van deze procedures. 
 *   **Advies**: Overweeg de ontwikkeling van een online aanvraagportaal. Dit kan de ontvankelijkheidstoets automatiseren door verplichte velden en validaties in te bouwen, wat de administratieve last van het opvragen van ontbrekende informatie aanzienlijk zou verminderen.
 
 ---
+
 
 ### PR-JH-05 - Voornemen toekenning of weigering erkenning
 *   **Status**: Risico | **Scores**: Leesbaarheid 6/10 - Juridisch 7/10
@@ -1238,6 +1370,7 @@ De grootste risico's bevinden zich echter in de uitvoering van deze procedures. 
 
 ---
 
+
 ### PR-JH-06 - Beslissing toekenning erkenning
 *   **Status**: Risico | **Scores**: Leesbaarheid 5/10 - Juridisch 5/10
 *   **Bevinding**:
@@ -1246,6 +1379,7 @@ De grootste risico's bevinden zich echter in de uitvoering van deze procedures. 
 *   **Advies**: Er moet onmiddellijk een audit gebeuren naar de praktijk van het niet-toetsen van de erkenningsvoorwaarden. De procedure moet dwingend worden gemaakt en de uitvoering ervan moet worden gecontroleerd. Als de stap niet relevant is, moet de procedure formeel worden herzien met een duidelijke risicoanalyse en motivering.
 
 ---
+
 
 ### PR-JH-07 - Aanvraag en toekenning projectsubsidies
 *   **Status**: OK | **Scores**: Leesbaarheid 6/10 - Juridisch 8/10
@@ -1256,6 +1390,7 @@ De grootste risico's bevinden zich echter in de uitvoering van deze procedures. 
 
 ---
 
+
 ### PR-JH-09 - Wijzigen gegevens vzw - subsidie
 *   **Status**: Risico | **Scores**: Leesbaarheid 7/10 - Juridisch 6/10
 *   **Bevinding**:
@@ -1264,6 +1399,7 @@ De grootste risico's bevinden zich echter in de uitvoering van deze procedures. 
 *   **Advies**: Centraliseer het beheer van VZW-gegevens in één master-systeem (een database of een robuuste SharePoint-omgeving). Dit systeem moet als enige bron van waarheid dienen en eventuele andere bestanden of systemen automatisch voeden om manuele, dubbele invoer te vermijden.
 
 ---
+
 
 ### PR-JH-11 - Financieel traject - subsidie
 *   **Status**: Risico | **Scores**: Leesbaarheid 3/10 - Juridisch 5/10
@@ -1274,7 +1410,9 @@ De grootste risico's bevinden zich echter in de uitvoering van deze procedures. 
 
 ---
 
+
 ---
+
 
 # Topic: Algemeen
 
@@ -1293,6 +1431,7 @@ Het voornaamste risico is van juridische aard. Meerdere kernprocedures (PR-LL-01
 *   **Advies**: De procedure moet dringend in lijn worden gebracht met het geldende decreet. Indien een decretale wijziging wordt verwacht, dient de procedure dit formeel te kaderen en de risico's voor de aanvrager te benoemen tot de wijziging van kracht is.
 
 ---
+
 ### PR-LL-02 - Aanmelding LLKO
 *   **Status**: Conflict | **Scores**: Leesbaarheid 8/10 - Juridisch 4/10
 *   **Bevinding**:
@@ -1301,6 +1440,7 @@ Het voornaamste risico is van juridische aard. Meerdere kernprocedures (PR-LL-01
 *   **Advies**: Het is noodzakelijk om de procedure te aligneren met de huidige wetgeving. De instructie om "pragmatisch" te handelen moet vervangen worden door een decretaal onderbouwde richtlijn.
 
 ---
+
 ### PR-LL-03 - Wijzigen werkingsgebied LLKO
 *   **Status**: OK | **Scores**: Leesbaarheid 9/10 - Juridisch 7/10
 *   **Bevinding**:
@@ -1309,6 +1449,7 @@ Het voornaamste risico is van juridische aard. Meerdere kernprocedures (PR-LL-01
 *   **Advies**: Geen direct advies voor deze procedure, maar de geldigheid ervan hangt af van de oplossing voor het conflict in de bovenliggende procedures.
 
 ---
+
 ### PR-LL-04 - Te melden wijzigingen LLKO
 *   **Status**: OK | **Scores**: Leesbaarheid 8/10 - Juridisch 8/10
 *   **Bevinding**:
@@ -1317,6 +1458,7 @@ Het voornaamste risico is van juridische aard. Meerdere kernprocedures (PR-LL-01
 *   **Advies**: Voer een review uit om te verzekeren dat de procedure nog volledig actueel is, gezien de relatief oude datum. Controleer of de verwijzing naar procedure PR-OV-17 nog correct is.
 
 ---
+
 ### PR-LL-07 - Wijziging organisator LLKO
 *   **Status**: Risico | **Scores**: Leesbaarheid 7/10 - Juridisch 6/10
 *   **Bevinding**:
@@ -1325,6 +1467,7 @@ Het voornaamste risico is van juridische aard. Meerdere kernprocedures (PR-LL-01
 *   **Advies**: Ontwikkel een standaardprotocol of checklist voor de dataoverdracht tussen de oude en nieuwe organisator. Opgroeien zou hierin een meer faciliterende of controlerende rol kunnen spelen om de continuïteit van de cruciale registratiegegevens te waarborgen.
 
 ---
+
 ### PR-LL-09 - Jaarlijkse registratie LLKO
 *   **Status**: Risico | **Scores**: Leesbaarheid 7/10 - Juridisch 6/10
 *   **Bevinding**:
@@ -1333,6 +1476,7 @@ Het voornaamste risico is van juridische aard. Meerdere kernprocedures (PR-LL-01
 *   **Advies**: Automatiseer het verzendproces van de registratiemails los van een specifieke persoon. Stel een vaste, niet-onderhandelbare sanctie vast voor het laattijdig indienen van registraties, en neem deze expliciet op in de procedure om consistentie en rechtszekerheid te garanderen.
 
 ---
+
 
 # Topic: OverKop
 
@@ -1355,6 +1499,7 @@ De procedures zijn sterk gericht op administratieve correctheid, maar soms ten k
 
 ---
 
+
 ### PR-OH-02 - Aanvraag bijkomend Overkophuis
 *   **Status**: Conflict | **Scores**: Leesbaarheid 7/10 - Juridisch 4/10
 *   **Bevinding**: Er is een directe tegenspraak in de communicatie over de beslissingstermijn. Enerzijds stelt de procedure: *"Opgroeien beoordeelt je aanvraag binnen de dertig dagen na ontvangst en bezorgt je dan een gemotiveerde beslissing."* Anderzijds, onder de titel "Beslissing", staat: *"Uiterlijk 3 maanden na ontvangst van de aanvraag (postdatum geldt als datum van ontvangst) beslist Opgroeien of de aanvraag voor een bijkomende Overkophuis voldoet aan de voorwaarden om te kunnen opstarten."* Deze inconsistentie is een juridisch risico en creëert onduidelijkheid voor de aanvrager.
@@ -1362,6 +1507,7 @@ De procedures zijn sterk gericht op administratieve correctheid, maar soms ten k
 *   **Advies**: De beslissingstermijn moet eenduidig worden vastgelegd en gecommuniceerd. De procedure moet onmiddellijk worden gecorrigeerd naar één enkele, juridisch bindende termijn.
 
 ---
+
 
 ### PR-OH-03 - Financiële rapportage
 *   **Status**: Risico | **Scores**: Leesbaarheid 8/10 - Juridisch 3/10
@@ -1371,6 +1517,7 @@ De procedures zijn sterk gericht op administratieve correctheid, maar soms ten k
 
 ---
 
+
 ### PR-OH-04 - Aanvraag en beslissing uitbreiding Overkop 2024
 *   **Status**: OK | **Scores**: Leesbaarheid 7/10 - Juridisch 7/10
 *   **Bevinding**: Deze procedure is specifiek voor de uitbreidingsronde van 2024. De beoordelingsprocedure lijkt deels subjectief en persoonsafhankelijk ("Nele, Ruth, Els Meert lezen alle aanvragen"). Hoewel dit in een kleine, wendbare organisatie kan werken, schaalt dit moeilijk en introduceert het een risico op inconsistentie en gebrek aan transparantie. De termijnen zijn zeer krap ("In de week van 22 januari worden de beslissingen genomen"), wat de druk op de beoordelaars verhoogt.
@@ -1378,6 +1525,7 @@ De procedures zijn sterk gericht op administratieve correctheid, maar soms ten k
 *   **Advies**: Formaliseer de beoordelingsprocedure met een anoniem en gerandomiseerd systeem van meerdere lezers per aanvraag. Gebruik een gestandaardiseerd scoreformulier met duidelijke criteria om de objectiviteit te verhogen.
 
 ---
+
 
 ### PR-OH-05 - Aanvraag wijziging organisator overkopnetwerk
 *   **Status**: Conflict | **Scores**: Leesbaarheid 6/10 - Juridisch 5/10
@@ -1387,6 +1535,7 @@ De procedures zijn sterk gericht op administratieve correctheid, maar soms ten k
 
 ---
 
+
 ### PR-OH-06 - Grensoverschrijdend gedrag en crisis
 *   **Status**: OK | **Scores**: Leesbaarheid 9/10 - Juridisch 8/10
 *   **Bevinding**: Dit is een goede, heldere procedure die de organisatoren van OverKophuizen ondersteunt bij het opstellen van hun eigen crisisprocedures. De procedure legt de verantwoordelijkheid duidelijk bij de organisator, maar biedt een goed kader. Een potentieel risico is de interpretatie van "ernstige crisissituatie". Wat voor de ene persoon ernstig is, is dat voor de andere misschien niet, wat kan leiden tot onder- of overrapportering.
@@ -1394,6 +1543,7 @@ De procedures zijn sterk gericht op administratieve correctheid, maar soms ten k
 *   **Advies**: Verfijn de definitie van een "ernstige" crisissituatie door een lijst met concrete, niet-limitatieve voorbeelden op te nemen van incidenten die altijd gemeld moeten worden (bv. elke fysieke agressie, elke melding met politie-interventie, etc.).
 
 ---
+
 
 # Topic: Overkoepelend
 
@@ -1417,6 +1567,7 @@ De financiële gezondheid van organisatoren (PR-OV-24) wordt opgevolgd aan de ha
 
 ---
 
+
 ### PR-OV-04 - Correct omgaan met aangetekende zendingen
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 9/10 - Juridisch 9/10
 *   **Bevinding**:
@@ -1425,6 +1576,7 @@ De financiële gezondheid van organisatoren (PR-OV-24) wordt opgevolgd aan de ha
 *   **Advies**: Voeg een visueel pictogram (bv. een rood 'stop'-teken) toe naast de instructie "mag de enveloppe niet worden opengemaakt" in de interne documentatie om de absolute aard van dit verbod te benadrukken.
 
 ---
+
 
 ### PR-OV-05 - Motivering van beslissingen - algemene principes
 *   **Status**: Risico | **Scores**: Leesbaarheid 7/10 - Juridisch 8/10
@@ -1435,6 +1587,7 @@ De financiële gezondheid van organisatoren (PR-OV-24) wordt opgevolgd aan de ha
 
 ---
 
+
 ### PR-OV-06 - Aanmaken inspectieopdrachten
 *   **Status**: Risico | **Scores**: Leesbaarheid 5/10 - Juridisch 6/10
 *   **Bevinding**:
@@ -1443,6 +1596,7 @@ De financiële gezondheid van organisatoren (PR-OV-24) wordt opgevolgd aan de ha
 *   **Advies**: Integreer visuele hulpmiddelen zoals screenshots van de Modular 2-interface in de procedure. Vereenvoudig de tabel en voorzie een duidelijker beleid voor het communiceren van tijdelijke wijzigingen in de aanvraagprocedure.
 
 ---
+
 
 ### PR-OV-08 - Opvolging kennis Nederlands
 *   **Status**: Risico | **Scores**: Leesbaarheid 7/10 - Juridisch 6/10
@@ -1453,6 +1607,7 @@ De financiële gezondheid van organisatoren (PR-OV-24) wordt opgevolgd aan de ha
 
 ---
 
+
 ### PR-OV-09 - De bevoegdheid van Opgroeien voor kinderopvanglocaties in Brussel-Hoofdstad
 *   **Status**: Conflict | **Scores**: Leesbaarheid 5/10 - Juridisch 5/10
 *   **Bevinding**:
@@ -1461,6 +1616,7 @@ De financiële gezondheid van organisatoren (PR-OV-24) wordt opgevolgd aan de ha
 *   **Advies**: Formaliseer het beoordelingsproces van de "werkgroep bevoegdheid" met een gewogen scoremodel om de "globale afweging" objectiever, consistenter en juridisch beter verdedigbaar te maken.
 
 ---
+
 
 ### PR-OV-13 - Crisismelding KO
 *   **Status**: Risico | **Scores**: Leesbaarheid 6/10 - Juridisch 8/10
@@ -1471,6 +1627,7 @@ De financiële gezondheid van organisatoren (PR-OV-24) wordt opgevolgd aan de ha
 
 ---
 
+
 ### PR-OV-14 - Behandeling meldingen door Mentes en pools gezinsopvang
 *   **Status**: Conflict | **Scores**: Leesbaarheid 7/10 - Juridisch 7/10
 *   **Bevinding**:
@@ -1479,6 +1636,7 @@ De financiële gezondheid van organisatoren (PR-OV-24) wordt opgevolgd aan de ha
 *   **Advies**: Organiseer verplichte, jaarlijkse juridische trainingen voor de medewerkers van Mentes en de pools die deze meldingen behandelen, met een focus op correcte bewijsvoering en het principe van tegenspraak.
 
 ---
+
 
 ### PR-OV-18 - Expertise VECK inschakelen
 *   **Status**: Risico | **Scores**: Leesbaarheid 7/10 - Juridisch 8/10
@@ -1489,6 +1647,7 @@ De financiële gezondheid van organisatoren (PR-OV-24) wordt opgevolgd aan de ha
 
 ---
 
+
 ### PR-OV-20 - Fusie door Overneming
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 7/10
 *   **Bevinding**:
@@ -1497,6 +1656,7 @@ De financiële gezondheid van organisatoren (PR-OV-24) wordt opgevolgd aan de ha
 *   **Advies**: Automatiseer de workflow: wanneer een organisator in Edison de status 'gestopt' krijgt, zou er automatisch een taak moeten worden aangemaakt voor de budgetcel om de reden te verifiëren en na te gaan of het om een fusie gaat.
 
 ---
+
 
 ### PR-OV-21 - Hoe omgaan met meldingen over een voorziening KO
 *   **Status**: Risico | **Scores**: Leesbaarheid 5/10 - Juridisch 8/10
@@ -1507,6 +1667,7 @@ De financiële gezondheid van organisatoren (PR-OV-24) wordt opgevolgd aan de ha
 
 ---
 
+
 ### PR-OV-22 - Hoe omgaan met meldingen door een voorziening KO
 *   **Status**: Risico | **Scores**: Leesbaarheid 6/10 - Juridisch 7/10
 *   **Bevinding**:
@@ -1515,6 +1676,7 @@ De financiële gezondheid van organisatoren (PR-OV-24) wordt opgevolgd aan de ha
 *   **Advies**: Structureer de keuze voor een opvolgactie door een risicomatrix te ontwikkelen die, op basis van het type incident en de historiek van de organisator, een aanbevolen actie voorstelt.
 
 ---
+
 
 ### PR-OV-23 - Snelinfo's en specials kinderopvang
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 7/10
@@ -1525,6 +1687,7 @@ De financiële gezondheid van organisatoren (PR-OV-24) wordt opgevolgd aan de ha
 
 ---
 
+
 ### PR-OV-24 - Financiële opvolging Kinderopvang
 *   **Status**: Risico | **Scores**: Leesbaarheid 6/10 - Juridisch 7/10
 *   **Bevinding**:
@@ -1533,6 +1696,7 @@ De financiële gezondheid van organisatoren (PR-OV-24) wordt opgevolgd aan de ha
 *   **Advies**: Ontwikkel een proactief financieel dashboard dat de verschillende signalen (boekhoudkundige ratio's, subsidie-afhankelijkheid, personeelsverloop, klachten) combineert tot een risicoscore per organisator, zodat problemen vroeger gedetecteerd kunnen worden.
 
 ---
+
 
 ### PR-OV-25 - Melding van discriminatie - melding bij VMRI
 *   **Status**: Risico | **Scores**: Leesbaarheid 8/10 - Juridisch 6/10
@@ -1543,6 +1707,7 @@ De financiële gezondheid van organisatoren (PR-OV-24) wordt opgevolgd aan de ha
 
 ---
 
+
 ### PR-OV-27 - Hoe omgaan met reacties van ouders op beslissingen van Opgroeien
 *   **Status**: Risico | **Scores**: Leesbaarheid 6/10 - Juridisch 7/10
 *   **Bevinding**:
@@ -1551,6 +1716,7 @@ De financiële gezondheid van organisatoren (PR-OV-24) wordt opgevolgd aan de ha
 *   **Advies**: Ontwikkel duidelijkere, objectieve criteria voor de escalatie van een dossier naar de Klachtendienst. Voorzie standaard communicatieblokken voor KMC's om op een empathische, maar juridisch correcte en consistente manier te antwoorden op veelvoorkomende vragen van ouders.
 
 ---
+
 
 # Topic: Subsidiëren
 
@@ -1570,6 +1736,7 @@ De grootste risico's concentreren zich in de procedures die handelen over financ
 
 ---
 
+
 ### PR-SU-02 - Aanvraag subsidietoekenning na subsidiebelofte
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 6/10
 *   **Bevinding**:
@@ -1578,6 +1745,7 @@ De grootste risico's concentreren zich in de procedures die handelen over financ
 *   **Advies**: Een checklist voor de organisator toevoegen met alle vereiste documenten en voorwaarden kan helpen om onvolledige aanvragen te verminderen.
 
 ---
+
 
 ### PR-SU-03 - Verlenging van de subsidiebelofte
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 9/10 - Juridisch 5/10
@@ -1588,6 +1756,7 @@ De grootste risico's concentreren zich in de procedures die handelen over financ
 
 ---
 
+
 ### PR-SU-04 - Aanvraag tot overheveling subsidieerbare plaatsen
 *   **Status**: Risico | **Scores**: Leesbaarheid 5/10 - Juridisch 8/10
 *   **Bevinding**:
@@ -1596,6 +1765,7 @@ De grootste risico's concentreren zich in de procedures die handelen over financ
 *   **Advies**: Ontwikkel een interactieve beslisboom of wizard op de website om organisatoren te helpen bepalen of ze in aanmerking komen voor een specifiek type overheveling en welke voorwaarden van toepassing zijn.
 
 ---
+
 
 ### PR-SU-05 - Vermindering of stopzetting subsidie door organisator
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 5/10
@@ -1606,6 +1776,7 @@ De grootste risico's concentreren zich in de procedures die handelen over financ
 
 ---
 
+
 ### PR-SU-07 - Aanvraag subsidie individuele inclusieve opvang
 *   **Status**: Risico | **Scores**: Leesbaarheid 6/10 - Juridisch 8/10
 *   **Bevinding**:
@@ -1614,6 +1785,7 @@ De grootste risico's concentreren zich in de procedures die handelen over financ
 *   **Advies**: Centraliseer de interne tools (Excel, SharePoint) in één geïntegreerd systeem (bv. EDISON) om dubbele data-invoer te vermijden en het proces voor klantenbeheerders te stroomlijnen en te beveiligen.
 
 ---
+
 
 ### PR-SU-08 - Aanvraag lokaal bestuur tot tussenkomst als uitbetalingsinstelling
 *   **Status**: Risico | **Scores**: Leesbaarheid 6/10 - Juridisch 9/10
@@ -1624,6 +1796,7 @@ De grootste risico's concentreren zich in de procedures die handelen over financ
 
 ---
 
+
 ### PR-SU-10 - Aanvraag subsidiebelofte Basissubsidie vrije toegang
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 7/10 - Juridisch 6/10
 *   **Bevinding**:
@@ -1632,6 +1805,7 @@ De grootste risico's concentreren zich in de procedures die handelen over financ
 *   **Advies**: Communiceer proactief en transparant op de website over de status van het beschikbare budget om onontvankelijke aanvragen te voorkomen.
 
 ---
+
 
 ### PR-SU-11 - Aanvraag en beslissing Doorgaande lijn
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 7/10 - Juridisch 6/10
@@ -1642,6 +1816,7 @@ De grootste risico's concentreren zich in de procedures die handelen over financ
 
 ---
 
+
 ### PR-SU-12 - Subsidie voor versterking medewerkersbeleid
 *   **Status**: Risico | **Scores**: Leesbaarheid 4/10 - Juridisch 8/10
 *   **Bevinding**:
@@ -1650,6 +1825,7 @@ De grootste risico's concentreren zich in de procedures die handelen over financ
 *   **Advies**: Ontwikkel een verplichte, gestandaardiseerde digitale rekentool die organisatoren moeten gebruiken voor hun aanvraag. Dit reduceert de kans op rekenfouten en vereenvoudigt de controle door Opgroeien.
 
 ---
+
 
 ### PR-SU-20 - Maandelijkse voorschotten en blokkering subsidie
 *   **Status**: Conflict | **Scores**: Leesbaarheid 7/10 - Juridisch 9/10
@@ -1660,6 +1836,7 @@ De grootste risico's concentreren zich in de procedures die handelen over financ
 
 ---
 
+
 ### PR-SU-21 - Betalingen FCUD
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 6/10 - Juridisch 7/10
 *   **Bevinding**:
@@ -1668,6 +1845,7 @@ De grootste risico's concentreren zich in de procedures die handelen over financ
 *   **Advies**: Digitaliseer de 'samenvattende staat' en de personeelsregisters in een beveiligd portaal waar zowel de organisator, Opgroeien als Zorginspectie toegang toe hebben, om de manuele verwerking en doorsturing van Excel-bestanden te elimineren.
 
 ---
+
 
 ### PR-SU-30 - Einde van een subsidiebelofte
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 5/10
@@ -1678,6 +1856,7 @@ De grootste risico's concentreren zich in de procedures die handelen over financ
 
 ---
 
+
 ### PR-SU-31 - Organisatoren KO in financiële moeilijkheden
 *   **Status**: Conflict | **Scores**: Leesbaarheid 6/10 - Juridisch 10/10
 *   **Bevinding**:
@@ -1686,6 +1865,7 @@ De grootste risico's concentreren zich in de procedures die handelen over financ
 *   **Advies**: Organiseer periodieke trainingen voor klantenbeheerders, in samenwerking met de juridische dienst en de budgetcel, om hen uit te rusten met de nodige kennis om de eerste signalen van financiële problemen correct te identificeren en te escaleren.
 
 ---
+
 
 ### PR-SU-32 - Terugvordering teveel betaalde subsidie
 *   **Status**: Risico | **Scores**: Leesbaarheid 7/10 - Juridisch 8/10
@@ -1696,6 +1876,7 @@ De grootste risico's concentreren zich in de procedures die handelen over financ
 
 ---
 
+
 ### PR-SU-33 - Derdenbeslag
 *   **Status**: Conflict | **Scores**: Leesbaarheid 6/10 - Juridisch 10/10
 *   **Bevinding**:
@@ -1704,6 +1885,7 @@ De grootste risico's concentreren zich in de procedures die handelen over financ
 *   **Advies**: Ontwikkel een 'noodprotocol' of een 'quick reference card' voor derdenbeslag, zodat medewerkers die de akte ontvangen onmiddellijk de juiste eerste stappen kunnen zetten en de correcte personen kunnen alarmeren, zelfs buiten de kantooruren.
 
 ---
+
 
 ### PR-SU-34 - Collectieve schuldenregeling
 *   **Status**: Conflict | **Scores**: Leesbaarheid 6/10 - Juridisch 10/10
@@ -1714,6 +1896,7 @@ De grootste risico's concentreren zich in de procedures die handelen over financ
 
 ---
 
+
 ### PR-SU-35 - Faillissement en vereffening
 *   **Status**: Conflict | **Scores**: Leesbaarheid 7/10 - Juridisch 10/10
 *   **Bevinding**:
@@ -1722,6 +1905,7 @@ De grootste risico's concentreren zich in de procedures die handelen over financ
 *   **Advies**: Stel een vast 'crisisteam faillissement' aan (met leden van juridische dienst, budgetcel, klantenbeheer en communicatie) dat onmiddellijk kan samenkomen wanneer een faillissement wordt gemeld, om een gecoördineerde en snelle respons te garanderen.
 
 ---
+
 
 ### PR-SU-37 - Verminderen subsidieerbare plaatsen einde voorbehoud
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 7/10 - Juridisch 6/10
@@ -1732,6 +1916,7 @@ De grootste risico's concentreren zich in de procedures die handelen over financ
 
 ---
 
+
 ### PR-SU-38 - Stopzetten subsidieerbare plaatsen einde voorbehoud
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 7/10 - Juridisch 6/10
 *   **Bevinding**:
@@ -1740,6 +1925,7 @@ De grootste risico's concentreren zich in de procedures die handelen over financ
 *   **Advies**: Combineer de procedures PR-SU-37 en PR-SU-38 in één document, aangezien ze beide handelen over de gevolgen van 'einde voorbehoud', om de documentatie te stroomlijnen.
 
 ---
+
 
 ### PR-SU-58 - Fiscale fiche 281.50
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 4/10
@@ -1750,6 +1936,7 @@ De grootste risico's concentreren zich in de procedures die handelen over financ
 
 ---
 
+
 ### PR-SU-60 - Invordering via VLABEL
 *   **Status**: Conflict | **Scores**: Leesbaarheid 7/10 - Juridisch 9/10
 *   **Bevinding**:
@@ -1758,6 +1945,7 @@ De grootste risico's concentreren zich in de procedures die handelen over financ
 *   **Advies**: Zorg voor een sluitende digitale koppeling (API) tussen EDISON en het systeem van VLABEL om de manuele overdracht van Excel-bestanden via SharePoint te vervangen. Dit verhoogt de efficiëntie en de data-integriteit.
 
 ---
+
 
 ### PR-SU-69 - IKT-Mix
 *   **Status**: Risico | **Scores**: Leesbaarheid 6/10 - Juridisch 7/10
@@ -1768,6 +1956,7 @@ De grootste risico's concentreren zich in de procedures die handelen over financ
 
 ---
 
+
 ### PR-SU-78 - Aanvraag en beslissing toestemming tijdelijke vervangcapaciteit (extern)
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 9/10 - Juridisch 6/10
 *   **Bevinding**:
@@ -1776,6 +1965,7 @@ De grootste risico's concentreren zich in de procedures die handelen over financ
 *   **Advies**: Voorzie een specifiek, afgeschermd webformulier voor lokale besturen om de aanvraag in te dienen, wat de verwerking kan versnellen en de datakwaliteit kan verbeteren.
 
 ---
+
 
 ### PR-SU-79 - Aanvraag en beslissing subsidie tijdelijke vervangcapaciteit (extern)
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 7/10
@@ -1786,6 +1976,7 @@ De grootste risico's concentreren zich in de procedures die handelen over financ
 
 ---
 
+
 ### PR-SU-80 - Aanvraag en beslissing subsidie tijdelijk vervangcapaciteit (intern)
 *   **Status**: Risico | **Scores**: Leesbaarheid 6/10 - Juridisch 7/10
 *   **Bevinding**:
@@ -1794,6 +1985,7 @@ De grootste risico's concentreren zich in de procedures die handelen over financ
 *   **Advies**: Integreer de 'opvolglijst' in EDISON en creëer een specifiek dossier-type voor 'Vervangcapaciteit' om alle gerelateerde communicatie, beslissingen en betalingen centraal te beheren.
 
 ---
+
 
 ### PR-SU-82 - Aanvraag verlenging toestemming tijdelijke vervangcapaciteit (extern)
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 9/10 - Juridisch 5/10
@@ -1804,6 +1996,7 @@ De grootste risico's concentreren zich in de procedures die handelen over financ
 
 ---
 
+
 ### PR-SU-83 - Vorderingen
 *   **Status**: Risico | **Scores**: Leesbaarheid 6/10 - Juridisch 8/10
 *   **Bevinding**:
@@ -1812,6 +2005,7 @@ De grootste risico's concentreren zich in de procedures die handelen over financ
 *   **Advies**: Prioriteer de ontwikkeling van een volledige integratie tussen EDISON en Orafin, zodat de status van vorderingen en de gedane betalingen automatisch en real-time worden gesynchroniseerd. Dit vermindert de noodzaak voor manuele rapportage en opvolging.
 
 ---
+
 
 ### PR-SU-84 - Vermindering van de toegekende aantal VTE Onthaalouder WN
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 7/10 - Juridisch 7/10
@@ -1822,6 +2016,7 @@ De grootste risico's concentreren zich in de procedures die handelen over financ
 
 ---
 
+
 ### PR-SU-85 - Aanvraag tot overname subsidie CIK
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 6/10
 *   **Bevinding**:
@@ -1831,6 +2026,7 @@ De grootste risico's concentreren zich in de procedures die handelen over financ
 
 ---
 
+
 ### PR-SU-86 - Preadvies inclusieve opvang
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 7/10 - Juridisch 7/10
 *   **Bevinding**:
@@ -1839,6 +2035,7 @@ De grootste risico's concentreren zich in de procedures die handelen over financ
 *   **Advies**: Integreer de ROG-lijst als een digitale checklist of beslisboom binnen het adviesplatform (SharePoint/EDISON) om de pre-adviseur nog beter te gidsen en de consistentie van de adviezen te verhogen.
 
 ---
+
 
 # Topic: Vergunnen
 
@@ -1860,6 +2057,7 @@ Intern is er een sterke nadruk op gestandaardiseerde controle, zoals blijkt uit 
 
 ---
 
+
 ### PR-VE-02 - Aanvraag verslag infrastructuur
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 9/10 - Juridisch 9/10
 *   **Bevinding**:
@@ -1868,6 +2066,7 @@ Intern is er een sterke nadruk op gestandaardiseerde controle, zoals blijkt uit 
 *   **Advies**: Geen verbeterpunten. De procedure is beknopt en effectief.
 
 ---
+
 
 ### PR-VE-03 - Aanvraag van een vergunning voor groepsopvang (na 1 juli 2024)
 *   **Status**: Risico | **Scores**: Leesbaarheid 7/10 - Juridisch 9/10
@@ -1878,6 +2077,7 @@ Intern is er een sterke nadruk op gestandaardiseerde controle, zoals blijkt uit 
 
 ---
 
+
 ### PR-VE-04 - Aanvraag van een vergunning voor gezinsopvang (na 1 juli 2024)
 *   **Status**: Risico | **Scores**: Leesbaarheid 7/10 - Juridisch 9/10
 *   **Bevinding**:
@@ -1886,6 +2086,7 @@ Intern is er een sterke nadruk op gestandaardiseerde controle, zoals blijkt uit 
 *   **Advies**: Voeg concrete voorbeelden toe om de berekening van het aantal aanwezige kinderen te illustreren, inclusief de eigen kinderen van de begeleider.
 
 ---
+
 
 ### PR-VE-05 - Een feitelijke vereniging en maatschap
 *   **Status**: Risico | **Scores**: Leesbaarheid 6/10 - Juridisch 7/10
@@ -1896,6 +2097,7 @@ Intern is er een sterke nadruk op gestandaardiseerde controle, zoals blijkt uit 
 
 ---
 
+
 ### PR-VE-06 - Aanvraag vergunning informatie bij het onderzoek
 *   **Status**: Risico | **Scores**: Leesbaarheid 8/10 - Juridisch 9/10
 *   **Bevinding**:
@@ -1904,6 +2106,7 @@ Intern is er een sterke nadruk op gestandaardiseerde controle, zoals blijkt uit 
 *   **Advies**: Ontwikkel een intern referentiekader of een set van geanonimiseerde case studies om klantenbeheerders te trainen in het consistent identificeren en beoordelen van "dossiermatige tegenindicaties".
 
 ---
+
 
 ### PR-VE-07 - Start opvangactiviteiten
 *   **Status**: Risico | **Scores**: Leesbaarheid 9/10 - Juridisch 10/10
@@ -1914,6 +2117,7 @@ Intern is er een sterke nadruk op gestandaardiseerde controle, zoals blijkt uit 
 
 ---
 
+
 ### PR-VE-08 - Uittreksel strafregister en attest medische geschiktheid
 *   **Status**: Risico | **Scores**: Leesbaarheid 7/10 - Juridisch 6/10
 *   **Bevinding**:
@@ -1922,6 +2126,7 @@ Intern is er een sterke nadruk op gestandaardiseerde controle, zoals blijkt uit 
 *   **Advies**: Trek deze procedure onmiddellijk in en archiveer ze. Verwijs uitsluitend naar de meest recente procedure PR-VE-25 om juridische conflicten en inconsistente beoordelingen te vermijden.
 
 ---
+
 
 ### PR-VE-09 - Aanvraag brandveiligheidsattest
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 9/10 - Juridisch 9/10
@@ -1932,6 +2137,7 @@ Intern is er een sterke nadruk op gestandaardiseerde controle, zoals blijkt uit 
 
 ---
 
+
 ### PR-VE-10 - Verhuizing kinderopvanglocatie
 *   **Status**: Risico | **Scores**: Leesbaarheid 8/10 - Juridisch 8/10
 *   **Bevinding**:
@@ -1940,6 +2146,7 @@ Intern is er een sterke nadruk op gestandaardiseerde controle, zoals blijkt uit 
 *   **Advies**: Benadruk in de communicatie naar de organisator explicieter de mogelijke financiële gevolgen van een verhuis buiten de subsidiegroep. Een voorbeeldberekening of case study zou dit risico tastbaarder kunnen maken.
 
 ---
+
 
 ### PR-VE-11 - Wijziging van het aantal vergunde plaatsen
 *   **Status**: Risico | **Scores**: Leesbaarheid 8/10 - Juridisch 8/10
@@ -1950,6 +2157,7 @@ Intern is er een sterke nadruk op gestandaardiseerde controle, zoals blijkt uit 
 
 ---
 
+
 ### PR-VE-12 - Het starterstraject
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 9/10
 *   **Bevinding**:
@@ -1958,6 +2166,7 @@ Intern is er een sterke nadruk op gestandaardiseerde controle, zoals blijkt uit 
 *   **Advies**: Formaliseer de criteria voor het toekennen van een vrijstelling in de interne procedure (PR-VE-06 of hier) om een consistente beoordeling door alle klantenbeheerders te garanderen.
 
 ---
+
 
 ### PR-VE-13 - Aanvraag opportuniteitsadvies
 *   **Status**: Risico | **Scores**: Leesbaarheid 8/10 - Juridisch 7/10
@@ -1968,6 +2177,7 @@ Intern is er een sterke nadruk op gestandaardiseerde controle, zoals blijkt uit 
 
 ---
 
+
 ### PR-VE-14 - Stopzetting vergunning kinderopvanglocatie door Opgroeien
 *   **Status**: Risico | **Scores**: Leesbaarheid 8/10 - Juridisch 10/10
 *   **Bevinding**:
@@ -1976,6 +2186,7 @@ Intern is er een sterke nadruk op gestandaardiseerde controle, zoals blijkt uit 
 *   **Advies**: Zorg ervoor dat de controlelijsten in EDISON deze uitzondering voor aangesloten onthaalouders feilloos kunnen detecteren om het risico op foutieve stopzettingen te elimineren.
 
 ---
+
 
 ### PR-VE-15 - Tijdelijke stopzetting kinderopvanglocatie
 *   **Status**: Risico | **Scores**: Leesbaarheid 7/10 - Juridisch 8/10
@@ -1986,6 +2197,7 @@ Intern is er een sterke nadruk op gestandaardiseerde controle, zoals blijkt uit 
 
 ---
 
+
 ### PR-VE-16 - Stopzetting kinderopvanglocatie
 *   **Status**: Risico | **Scores**: Leesbaarheid 7/10 - Juridisch 8/10
 *   **Bevinding**:
@@ -1994,6 +2206,7 @@ Intern is er een sterke nadruk op gestandaardiseerde controle, zoals blijkt uit 
 *   **Advies**: Ontwikkel een aparte, gedetailleerde infofiche voor organisatoren die specifiek de procedure en de gevolgen van het aanvragen (of niet aanvragen) van voorbehoud van subsidies uitlegt, met concrete voorbeelden.
 
 ---
+
 
 ### PR-VE-17 - Wijzigingen zonder gevolgen voor de vergunning
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 9/10 - Juridisch 9/10
@@ -2004,6 +2217,7 @@ Intern is er een sterke nadruk op gestandaardiseerde controle, zoals blijkt uit 
 
 ---
 
+
 ### PR-VE-18 - Afwijking infrastructuur en leefgroepindeling
 *   **Status**: Risico | **Scores**: Leesbaarheid 8/10 - Juridisch 8/10
 *   **Bevinding**:
@@ -2012,6 +2226,7 @@ Intern is er een sterke nadruk op gestandaardiseerde controle, zoals blijkt uit 
 *   **Advies**: Zorg voor een goede registratie en analyse van de toegekende afwijkingen om trends te monitoren en de consistentie van de besluitvorming op lange termijn te borgen.
 
 ---
+
 
 ### PR-VE-19 - Aanvraag afwijking brandveiligheidsvoorschriften
 *   **Status**: Risico | **Scores**: Leesbaarheid 8/10 - Juridisch 9/10
@@ -2022,6 +2237,7 @@ Intern is er een sterke nadruk op gestandaardiseerde controle, zoals blijkt uit 
 
 ---
 
+
 ### PR-VE-22 - Erkenning beroepskwalificaties van Europese onderdanen en gelijkgestelde personen
 *   **Status**: Risico | **Scores**: Leesbaarheid 6/10 - Juridisch 8/10
 *   **Bevinding**:
@@ -2030,6 +2246,7 @@ Intern is er een sterke nadruk op gestandaardiseerde controle, zoals blijkt uit 
 *   **Advies**: Gezien de complexiteit en de afhankelijkheid van externe (buitenlandse) partijen, is het essentieel dat de klantenbeheerders die dit behandelen (team centrum) continue opleiding en ondersteuning krijgen. De handleidingen voor IMI moeten steeds up-to-date zijn.
 
 ---
+
 
 ### PR-VE-24 - Inzet van niet-gekwalificeerde medewerkers
 *   **Status**: Risico | **Scores**: Leesbaarheid 9/10 - Juridisch 8/10
@@ -2040,6 +2257,7 @@ Intern is er een sterke nadruk op gestandaardiseerde controle, zoals blijkt uit 
 
 ---
 
+
 ### PR-VE-25 - Procedure uittreksel strafregister Kinderopvang
 *   **Status**: Risico | **Scores**: Leesbaarheid 8/10 - Juridisch 9/10
 *   **Bevinding**:
@@ -2049,6 +2267,7 @@ Intern is er een sterke nadruk op gestandaardiseerde controle, zoals blijkt uit 
 
 ---
 
+
 ### PR-VE-26 - Afwijkingsmogelijkheden-vergunningsvoorwaarden
 *   **Status**: Stabiel | **Scores**: Leesbaarheid 8/10 - Juridisch 8/10
 *   **Bevinding**:
@@ -2057,6 +2276,7 @@ Intern is er een sterke nadruk op gestandaardiseerde controle, zoals blijkt uit 
 *   **Advies**: Zorg ervoor dat de links in dit document naar de specifieke aanvraagprocedures (PR-VE-18 en PR-VE-19) steeds actueel zijn.
 
 ---
+
 
 ## 4. Slotbeschouwing
 Dit eindrapport presenteert een diepgaande analyse van het procedurele landschap binnen Opgroeien. De vastgestelde risico's, met name op het vlak van procedureel beheer, technologische veroudering en juridische consistentie, vragen om een gerichte en gecoördineerde aanpak. De implementatie van de geformuleerde prioriteiten zal niet alleen de geïdentificeerde kwetsbaarheden mitigeren, maar ook de efficiëntie, transparantie en rechtszekerheid van de organisatie significant verhogen. Het is van cruciaal belang dat de aanbevelingen worden vertaald naar een concreet actieplan met duidelijke verantwoordelijkheden en tijdlijnen. Continu kwaliteitsbeheer, ondersteund door periodieke audits en een cultuur van voortdurende verbetering, is de sleutel tot een robuuste en toekomstbestendige werking die de maatschappelijke opdracht van Opgroeien optimaal kan vervullen.

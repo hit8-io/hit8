@@ -1,0 +1,741 @@
+cloudflare_account_member.admin: Refreshing state... [id=aedd616d946509d910826a1cb22f6c20]
+cloudflare_record.root: Refreshing state... [id=fee97698e87da6be91871fdfed8a9183]
+cloudflare_record.api_endpoints["stg"]: Refreshing state... [id=460d3eb9319c3bcb21eb3d08f22b6e72]
+cloudflare_pages_project.hit8: Refreshing state... [id=hit8]
+cloudflare_zone_settings_override.main_settings: Refreshing state... [id=12913dce4b9e34176e2f2b2f1ed3386a]
+cloudflare_record.api_endpoints["prd"]: Refreshing state... [id=c8f996fda93372e20346278617c6edc2]
+cloudflare_ruleset.redirects: Refreshing state... [id=63ef218284f442f195eb583711fca4f7]
+cloudflare_record.mx_records["alt1.aspmx.l.google.com"]: Refreshing state... [id=83524ba8b5e39ac191e9bd7aed19e979]
+cloudflare_record.mx_records["alt2.aspmx.l.google.com"]: Refreshing state... [id=7cc87e614a02d005ff5c7dd8574d284d]
+cloudflare_record.mx_records["aspmx.l.google.com"]: Refreshing state... [id=8059237cf60db8e3ca769bf154ec5331]
+cloudflare_record.mx_records["alt3.aspmx.l.google.com"]: Refreshing state... [id=0c4ece9073bbd756dd186f7c12eb6301]
+cloudflare_record.mx_records["alt4.aspmx.l.google.com"]: Refreshing state... [id=2ff4ecdc8abf7fc861ea31fe28f8a46e]
+cloudflare_ruleset.waf_custom: Refreshing state... [id=c28974b3a25f44de983fa7a325f45ebb]
+cloudflare_record.txt_records["spf"]: Refreshing state... [id=b5cc82791025d2433adb841277019907]
+cloudflare_record.txt_records["firebase"]: Refreshing state... [id=2a35ce28d0aebfbd78586138af386d18]
+cloudflare_record.firebase_dkim["firebase1._domainkey"]: Refreshing state... [id=d51543ec01d34cee6c970a2090f669cd]
+cloudflare_record.firebase_dkim["firebase2._domainkey"]: Refreshing state... [id=af8f09ef03d7398537458b77bb0645b9]
+cloudflare_record.services["scw"]: Refreshing state... [id=fa3c39bbf323558036ef257f8dd5e294]
+cloudflare_record.services["www"]: Refreshing state... [id=aaf414b7e759ad0d429a9a0cac5a63f5]
+data.archive_file.on_before_user_created_source: Reading...
+data.archive_file.on_before_user_created_source: Read complete after 0s [id=513285f4872f9e9fd5cdf2531f20d82901a54373]
+google_project_service.identity_platform: Refreshing state... [id=hit8-poc/identitytoolkit.googleapis.com]
+google_secret_manager_secret.doppler_stg: Refreshing state... [id=projects/hit8-poc/secrets/doppler-hit8-stg]
+google_storage_bucket.knowledge_stg: Refreshing state... [id=hit8-poc-stg-knowledge]
+google_storage_bucket.knowledge_prd: Refreshing state... [id=hit8-poc-prd-knowledge]
+google_artifact_registry_repository.backend_api: Refreshing state... [id=projects/hit8-poc/locations/europe-west1/repositories/backend]
+google_storage_bucket.chat_documents_prd: Refreshing state... [id=hit8-poc-prd-chat]
+google_secret_manager_secret.doppler_secrets: Refreshing state... [id=projects/hit8-poc/secrets/doppler-hit8-prd]
+google_service_account.api_runner: Refreshing state... [id=projects/hit8-poc/serviceAccounts/api-runner-sa@hit8-poc.iam.gserviceaccount.com]
+google_service_account.vertex_sa: Refreshing state... [id=projects/hit8-poc/serviceAccounts/vertex@hit8-poc.iam.gserviceaccount.com]
+google_storage_bucket.terraform_state: Refreshing state... [id=hit8-poc-prd-tfstate]
+google_storage_bucket.chat_documents_stg: Refreshing state... [id=hit8-poc-stg-chat]
+google_storage_bucket.chat_documents_dev: Refreshing state... [id=hit8-poc-dev-chat]
+google_storage_bucket.function_source: Refreshing state... [id=hit8-poc-functions]
+google_compute_address.egress_ip: Refreshing state... [id=projects/hit8-poc/regions/europe-west1/addresses/shared-static-egress-ip]
+google_storage_bucket.knowledge_dev: Refreshing state... [id=hit8-poc-dev-knowledge]
+google_compute_network.vpc: Refreshing state... [id=projects/hit8-poc/global/networks/production-vpc]
+google_storage_bucket_object.on_before_user_created_source: Refreshing state... [id=hit8-poc-functions-onBeforeUserCreated-v2-1d2a83d4b9f9843293f005457a63e752.zip]
+google_cloudfunctions_function.on_before_user_created: Refreshing state... [id=projects/hit8-poc/locations/europe-west1/functions/onBeforeUserCreated-v2]
+google_compute_router.router: Refreshing state... [id=projects/hit8-poc/regions/europe-west1/routers/production-router]
+google_compute_subnetwork.subnet: Refreshing state... [id=projects/hit8-poc/regions/europe-west1/subnetworks/production-subnet]
+google_storage_bucket_iam_member.api_knowledge_access_dev: Refreshing state... [id=b/hit8-poc-dev-knowledge/roles/storage.objectAdmin/serviceAccount:api-runner-sa@hit8-poc.iam.gserviceaccount.com]
+google_storage_bucket_iam_member.api_chat_access_prd: Refreshing state... [id=b/hit8-poc-prd-chat/roles/storage.objectAdmin/serviceAccount:api-runner-sa@hit8-poc.iam.gserviceaccount.com]
+google_storage_bucket_iam_member.api_chat_access_dev: Refreshing state... [id=b/hit8-poc-dev-chat/roles/storage.objectAdmin/serviceAccount:api-runner-sa@hit8-poc.iam.gserviceaccount.com]
+google_storage_bucket_iam_member.api_knowledge_access_stg: Refreshing state... [id=b/hit8-poc-stg-knowledge/roles/storage.objectAdmin/serviceAccount:api-runner-sa@hit8-poc.iam.gserviceaccount.com]
+google_storage_bucket_iam_member.api_knowledge_access_prd: Refreshing state... [id=b/hit8-poc-prd-knowledge/roles/storage.objectAdmin/serviceAccount:api-runner-sa@hit8-poc.iam.gserviceaccount.com]
+google_storage_bucket_iam_member.api_chat_access_stg: Refreshing state... [id=b/hit8-poc-stg-chat/roles/storage.objectAdmin/serviceAccount:api-runner-sa@hit8-poc.iam.gserviceaccount.com]
+google_storage_bucket_iam_member.vertex_chat_access_prd: Refreshing state... [id=b/hit8-poc-prd-chat/roles/storage.objectAdmin/serviceAccount:vertex@hit8-poc.iam.gserviceaccount.com]
+google_storage_bucket_iam_member.vertex_knowledge_access_stg: Refreshing state... [id=b/hit8-poc-stg-knowledge/roles/storage.objectAdmin/serviceAccount:vertex@hit8-poc.iam.gserviceaccount.com]
+google_storage_bucket_iam_member.vertex_chat_access_stg: Refreshing state... [id=b/hit8-poc-stg-chat/roles/storage.objectAdmin/serviceAccount:vertex@hit8-poc.iam.gserviceaccount.com]
+google_storage_bucket_iam_member.vertex_chat_access_dev: Refreshing state... [id=b/hit8-poc-dev-chat/roles/storage.objectAdmin/serviceAccount:vertex@hit8-poc.iam.gserviceaccount.com]
+google_storage_bucket_iam_member.vertex_knowledge_access_dev: Refreshing state... [id=b/hit8-poc-dev-knowledge/roles/storage.objectAdmin/serviceAccount:vertex@hit8-poc.iam.gserviceaccount.com]
+google_secret_manager_secret_iam_member.api_secret_access["prd"]: Refreshing state... [id=projects/hit8-poc/secrets/doppler-hit8-prd/roles/secretmanager.secretAccessor/serviceAccount:api-runner-sa@hit8-poc.iam.gserviceaccount.com]
+google_secret_manager_secret_iam_member.api_secret_access["stg"]: Refreshing state... [id=projects/hit8-poc/secrets/doppler-hit8-stg/roles/secretmanager.secretAccessor/serviceAccount:api-runner-sa@hit8-poc.iam.gserviceaccount.com]
+google_storage_bucket_iam_member.vertex_knowledge_access_prd: Refreshing state... [id=b/hit8-poc-prd-knowledge/roles/storage.objectAdmin/serviceAccount:vertex@hit8-poc.iam.gserviceaccount.com]
+google_project_iam_member.vertex_ai_user: Refreshing state... [id=hit8-poc/roles/aiplatform.user/serviceAccount:vertex@hit8-poc.iam.gserviceaccount.com]
+google_compute_router_nat.nat: Refreshing state... [id=hit8-poc/europe-west1/production-router/production-nat-gateway]
+google_cloud_run_v2_job.report_job["prd"]: Refreshing state... [id=projects/hit8-poc/locations/europe-west1/jobs/hit8-report-job-prd]
+google_cloud_run_v2_job.report_job["stg"]: Refreshing state... [id=projects/hit8-poc/locations/europe-west1/jobs/hit8-report-job-stg]
+google_cloud_run_v2_service.api["prd"]: Refreshing state... [id=projects/hit8-poc/locations/europe-west1/services/hit8-api-prd]
+google_cloud_run_v2_service.api["stg"]: Refreshing state... [id=projects/hit8-poc/locations/europe-west1/services/hit8-api-stg]
+google_cloud_run_v2_job_iam_member.vertex_jobs_runner["prd"]: Refreshing state... [id=projects/hit8-poc/locations/europe-west1/jobs/hit8-report-job-prd/roles/run.developer/serviceAccount:vertex@hit8-poc.iam.gserviceaccount.com]
+google_cloud_run_v2_job_iam_member.vertex_jobs_runner["stg"]: Refreshing state... [id=projects/hit8-poc/locations/europe-west1/jobs/hit8-report-job-stg/roles/run.developer/serviceAccount:vertex@hit8-poc.iam.gserviceaccount.com]
+google_cloud_run_v2_job_iam_member.api_jobs_runner["stg"]: Refreshing state... [id=projects/hit8-poc/locations/europe-west1/jobs/hit8-report-job-stg/roles/run.developer/serviceAccount:api-runner-sa@hit8-poc.iam.gserviceaccount.com]
+google_cloud_run_v2_job_iam_member.api_jobs_runner["prd"]: Refreshing state... [id=projects/hit8-poc/locations/europe-west1/jobs/hit8-report-job-prd/roles/run.developer/serviceAccount:api-runner-sa@hit8-poc.iam.gserviceaccount.com]
+google_cloud_run_v2_service_iam_member.public_access["prd"]: Refreshing state... [id=projects/hit8-poc/locations/europe-west1/services/hit8-api-prd/roles/run.invoker/allUsers]
+google_cloud_run_domain_mapping.api["prd"]: Refreshing state... [id=locations/europe-west1/namespaces/hit8-poc/domainmappings/api-prd.hit8.io]
+google_cloud_run_domain_mapping.api["stg"]: Refreshing state... [id=locations/europe-west1/namespaces/hit8-poc/domainmappings/api-stg.hit8.io]
+google_cloud_run_v2_service_iam_member.public_access["stg"]: Refreshing state... [id=projects/hit8-poc/locations/europe-west1/services/hit8-api-stg/roles/run.invoker/allUsers]
+google_project_service_identity.identity_platform_agent: Refreshing state... [id=projects/hit8-poc/services/identitytoolkit.googleapis.com]
+google_identity_platform_config.auth_config: Refreshing state... [id=projects/hit8-poc/config]
+google_cloudfunctions_function_iam_member.identity_platform_invoker: Refreshing state... [id=projects/hit8-poc/locations/europe-west1/functions/onBeforeUserCreated-v2/roles/cloudfunctions.invoker/serviceAccount:service-617962194338@gcp-sa-identitytoolkit.iam.gserviceaccount.com]
+
+Terraform used the selected providers to generate the following execution
+plan. Resource actions are indicated with the following symbols:
+  + create
+  ~ update in-place
+-/+ destroy and then create replacement
+ <= read (data resources)
+
+Terraform will perform the following actions:
+
+  # data.scaleway_instance_private_nic.prd_redis will be read during apply
+  # (config refers to values not yet known)
+ <= data "scaleway_instance_private_nic" "prd_redis" {
+      + id                 = (known after apply)
+      + ip_ids             = (known after apply)
+      + ipam_ip_ids        = (known after apply)
+      + mac_address        = (known after apply)
+      + private_ips        = (known after apply)
+      + private_network_id = (known after apply)
+      + server_id          = (known after apply)
+    }
+
+  # data.scaleway_instance_private_nic.stg_vm will be read during apply
+  # (config refers to values not yet known)
+ <= data "scaleway_instance_private_nic" "stg_vm" {
+      + id                 = (known after apply)
+      + ip_ids             = (known after apply)
+      + ipam_ip_ids        = (known after apply)
+      + mac_address        = (known after apply)
+      + private_ips        = (known after apply)
+      + private_network_id = (known after apply)
+      + server_id          = (known after apply)
+    }
+
+  # cloudflare_pages_domain.scw will be created
+  + resource "cloudflare_pages_domain" "scw" {
+      + account_id   = (sensitive value)
+      + domain       = "scw.hit8.io"
+      + id           = (known after apply)
+      + project_name = "hit8"
+      + status       = (known after apply)
+    }
+
+  # cloudflare_pages_project.hit8 will be updated in-place
+  ~ resource "cloudflare_pages_project" "hit8" {
+        id                = "hit8"
+        name              = "hit8"
+        # (5 unchanged attributes hidden)
+
+      ~ deployment_configs {
+          ~ preview {
+              ~ environment_variables                = {
+                  + "VITE_API_URL" = "https://scw-stg.hit8.io"
+                }
+              ~ fail_open                            = true -> false
+              ~ usage_model                          = "standard" -> "bundled"
+                # (8 unchanged attributes hidden)
+            }
+          ~ production {
+              ~ environment_variables                = {
+                  + "VITE_API_URL" = "https://api-prd.hit8.io"
+                }
+              ~ fail_open                            = true -> false
+              ~ usage_model                          = "standard" -> "bundled"
+                # (8 unchanged attributes hidden)
+            }
+        }
+
+        # (2 unchanged blocks hidden)
+    }
+
+  # cloudflare_record.scw_api["scw-prd"] will be created
+  + resource "cloudflare_record" "scw_api" {
+      + allow_overwrite = false
+      + content         = (known after apply)
+      + created_on      = (known after apply)
+      + hostname        = (known after apply)
+      + id              = (known after apply)
+      + metadata        = (known after apply)
+      + modified_on     = (known after apply)
+      + name            = "scw-prd"
+      + proxiable       = (known after apply)
+      + proxied         = true
+      + ttl             = 1
+      + type            = "CNAME"
+      + value           = (known after apply)
+      + zone_id         = (sensitive value)
+    }
+
+  # cloudflare_record.scw_api["scw-stg"] will be created
+  + resource "cloudflare_record" "scw_api" {
+      + allow_overwrite = false
+      + content         = (known after apply)
+      + created_on      = (known after apply)
+      + hostname        = (known after apply)
+      + id              = (known after apply)
+      + metadata        = (known after apply)
+      + modified_on     = (known after apply)
+      + name            = "scw-stg"
+      + proxiable       = (known after apply)
+      + proxied         = true
+      + ttl             = 1
+      + type            = "CNAME"
+      + value           = (known after apply)
+      + zone_id         = (sensitive value)
+    }
+
+  # cloudflare_record.services["scw"] is tainted, so must be replaced
+-/+ resource "cloudflare_record" "services" {
+      ~ created_on      = "2026-02-18T16:09:42.516657Z" -> (known after apply)
+      ~ hostname        = "scw.hit8.io" -> (known after apply)
+      ~ id              = "fa3c39bbf323558036ef257f8dd5e294" -> (known after apply)
+      ~ metadata        = {} -> (known after apply)
+      ~ modified_on     = "2026-02-18T16:09:42.516657Z" -> (known after apply)
+        name            = "scw"
+      ~ proxiable       = true -> (known after apply)
+      - tags            = [] -> null
+      + value           = (known after apply)
+        # (7 unchanged attributes hidden)
+    }
+
+  # cloudflare_ruleset.rate_limit will be created
+  + resource "cloudflare_ruleset" "rate_limit" {
+      + description = (known after apply)
+      + id          = (known after apply)
+      + kind        = "zone"
+      + name        = "rate_limiting"
+      + phase       = "http_ratelimit"
+      + zone_id     = (sensitive value)
+
+      + rules {
+          + action      = "block"
+          + description = "Rate Limit API Endpoints - Strict for Sensitive Paths"
+          + enabled     = true
+          + expression  = "(http.host in {\"api-prd.hit8.io\" \"api-stg.hit8.io\" \"scw-prd.hit8.io\" \"scw-stg.hit8.io\"}) and (http.request.uri.path contains \"/auth\" or http.request.uri.path contains \"/admin\")"
+          + id          = (known after apply)
+          + ref         = (known after apply)
+
+          + action_parameters {
+              + response {
+                  + content      = jsonencode(
+                        {
+                          + error = "Rate limit exceeded for sensitive endpoint. Maximum 10 requests per minute."
+                        }
+                    )
+                  + content_type = "application/json"
+                  + status_code  = 429
+                }
+            }
+
+          + ratelimit {
+              + characteristics     = [
+                  + "cf.colo.id",
+                  + "ip.src",
+                ]
+              + mitigation_timeout  = 1800
+              + period              = 60
+              + requests_per_period = 10
+              + requests_to_origin  = false
+            }
+        }
+      + rules {
+          + action      = "block"
+          + description = "Rate Limit API Endpoints - General Traffic"
+          + enabled     = true
+          + expression  = "(http.host in {\"api-prd.hit8.io\" \"api-stg.hit8.io\" \"scw-prd.hit8.io\" \"scw-stg.hit8.io\"})"
+          + id          = (known after apply)
+          + ref         = (known after apply)
+
+          + action_parameters {
+              + response {
+                  + content      = jsonencode(
+                        {
+                          + error = "Rate limit exceeded. Maximum 100 requests per minute."
+                        }
+                    )
+                  + content_type = "application/json"
+                  + status_code  = 429
+                }
+            }
+
+          + ratelimit {
+              + characteristics     = [
+                  + "cf.colo.id",
+                  + "ip.src",
+                ]
+              + mitigation_timeout  = 600
+              + period              = 60
+              + requests_per_period = 100
+              + requests_to_origin  = false
+            }
+        }
+    }
+
+  # google_identity_platform_config.auth_config will be updated in-place
+  ~ resource "google_identity_platform_config" "auth_config" {
+        id                         = "projects/hit8-poc/config"
+        name                       = "projects/617962194338/config"
+        # (3 unchanged attributes hidden)
+
+      ~ blocking_functions {
+          - forward_inbound_credentials {
+              - access_token  = false -> null
+              - id_token      = false -> null
+              - refresh_token = false -> null
+            }
+
+            # (1 unchanged block hidden)
+        }
+
+      - multi_tenant {
+          - allow_tenants           = false -> null
+            # (1 unchanged attribute hidden)
+        }
+
+        # (5 unchanged blocks hidden)
+    }
+
+  # scaleway_container.api_prd will be created
+  + resource "scaleway_container" "api_prd" {
+      + cpu_limit             = 1000
+      + cron_status           = (known after apply)
+      + deploy                = false
+      + domain_name           = (known after apply)
+      + environment_variables = (known after apply)
+      + error_message         = (known after apply)
+      + http_option           = "enabled"
+      + id                    = (known after apply)
+      + local_storage_limit   = (known after apply)
+      + max_concurrency       = (known after apply)
+      + max_scale             = 5
+      + memory_limit          = 2048
+      + min_scale             = 1
+      + name                  = "hit8-api-prd"
+      + namespace_id          = (known after apply)
+      + port                  = 8080
+      + privacy               = "public"
+      + private_network_id    = (known after apply)
+      + protocol              = "http1"
+      + registry_image        = (known after apply)
+      + sandbox               = (known after apply)
+      + status                = (known after apply)
+      + timeout               = (known after apply)
+
+      + health_check (known after apply)
+
+      + scaling_option (known after apply)
+    }
+
+  # scaleway_container.api_stg will be created
+  + resource "scaleway_container" "api_stg" {
+      + cpu_limit             = 500
+      + cron_status           = (known after apply)
+      + deploy                = false
+      + domain_name           = (known after apply)
+      + environment_variables = (known after apply)
+      + error_message         = (known after apply)
+      + http_option           = "enabled"
+      + id                    = (known after apply)
+      + local_storage_limit   = (known after apply)
+      + max_concurrency       = (known after apply)
+      + max_scale             = 2
+      + memory_limit          = 1024
+      + min_scale             = 0
+      + name                  = "hit8-api-stg"
+      + namespace_id          = (known after apply)
+      + port                  = 8080
+      + privacy               = "public"
+      + private_network_id    = (known after apply)
+      + protocol              = "http1"
+      + registry_image        = (known after apply)
+      + sandbox               = (known after apply)
+      + status                = (known after apply)
+      + timeout               = (known after apply)
+
+      + health_check (known after apply)
+
+      + scaling_option (known after apply)
+    }
+
+  # scaleway_container_domain.prd will be created
+  + resource "scaleway_container_domain" "prd" {
+      + container_id = (known after apply)
+      + hostname     = "scw-prd.hit8.io"
+      + id           = (known after apply)
+      + url          = (known after apply)
+    }
+
+  # scaleway_container_domain.stg will be created
+  + resource "scaleway_container_domain" "stg" {
+      + container_id = (known after apply)
+      + hostname     = "scw-stg.hit8.io"
+      + id           = (known after apply)
+      + url          = (known after apply)
+    }
+
+  # scaleway_container_namespace.api will be created
+  + resource "scaleway_container_namespace" "api" {
+      + activate_vpc_integration = true
+      + description              = "Namespace for Hit8 API containers"
+      + destroy_registry         = false
+      + environment_variables    = {
+          + "TZ" = "Europe/Brussels"
+        }
+      + id                       = (known after apply)
+      + name                     = "hit8-api-ns"
+      + organization_id          = (known after apply)
+      + project_id               = (sensitive value)
+      + registry_endpoint        = (known after apply)
+      + registry_namespace_id    = (known after apply)
+    }
+
+  # scaleway_instance_ip.prd_redis_ipv6 will be created
+  + resource "scaleway_instance_ip" "prd_redis_ipv6" {
+      + address         = (known after apply)
+      + id              = (known after apply)
+      + organization_id = (known after apply)
+      + prefix          = (known after apply)
+      + project_id      = (sensitive value)
+      + reverse         = (known after apply)
+      + server_id       = (known after apply)
+      + type            = "routed_ipv6"
+    }
+
+  # scaleway_instance_ip.stg_vm_ipv6 will be created
+  + resource "scaleway_instance_ip" "stg_vm_ipv6" {
+      + address         = (known after apply)
+      + id              = (known after apply)
+      + organization_id = (known after apply)
+      + prefix          = (known after apply)
+      + project_id      = (sensitive value)
+      + reverse         = (known after apply)
+      + server_id       = (known after apply)
+      + type            = "routed_ipv6"
+    }
+
+  # scaleway_instance_security_group.prd_redis_sg will be created
+  + resource "scaleway_instance_security_group" "prd_redis_sg" {
+      + enable_default_security = true
+      + external_rules          = false
+      + id                      = (known after apply)
+      + inbound_default_policy  = "accept"
+      + name                    = "hit8-prd-redis-sg"
+      + organization_id         = (known after apply)
+      + outbound_default_policy = "accept"
+      + project_id              = (sensitive value)
+      + stateful                = true
+
+      + inbound_rule {
+          + action   = "accept"
+          + ip_range = "10.0.0.0/8"
+          + port     = 6379
+          + protocol = "TCP"
+        }
+      + inbound_rule {
+          + action   = "accept"
+          + ip_range = "::/0"
+          + port     = 22
+          + protocol = "TCP"
+        }
+    }
+
+  # scaleway_instance_security_group.stg_vm will be created
+  + resource "scaleway_instance_security_group" "stg_vm" {
+      + enable_default_security = true
+      + external_rules          = false
+      + id                      = (known after apply)
+      + inbound_default_policy  = "accept"
+      + name                    = "hit8-stg-sg"
+      + organization_id         = (known after apply)
+      + outbound_default_policy = "accept"
+      + project_id              = (sensitive value)
+      + stateful                = true
+
+      + inbound_rule {
+          + action   = "accept"
+          + ip_range = "::/0"
+          + port     = 22
+          + protocol = "TCP"
+        }
+      + inbound_rule {
+          + action     = "accept"
+          + ip_range   = "10.0.0.0/8"
+          + port_range = "5432-6432"
+          + protocol   = "TCP"
+        }
+    }
+
+  # scaleway_instance_server.prd_redis will be created
+  + resource "scaleway_instance_server" "prd_redis" {
+      + boot_type                        = "local"
+      + bootscript_id                    = (known after apply)
+      + cloud_init                       = (known after apply)
+      + enable_dynamic_ip                = false
+      + id                               = (known after apply)
+      + image                            = "ubuntu_jammy"
+      + ip_id                            = (known after apply)
+      + name                             = "hit8-prd-redis"
+      + organization_id                  = (known after apply)
+      + placement_group_policy_respected = (known after apply)
+      + project_id                       = (sensitive value)
+      + protected                        = false
+      + replace_on_type_change           = false
+      + security_group_id                = (known after apply)
+      + state                            = (known after apply)
+      + type                             = "DEV1-S"
+      + user_data                        = {
+          + "cloud-init" = <<-EOT
+                #cloud-config
+                package_update: true
+                packages:
+                  - redis-server
+                  - fail2ban
+                write_files:
+                  - path: /etc/ssh/sshd_config.d/99-hardening.conf
+                    content: |
+                      PermitRootLogin prohibit-password
+                      PasswordAuthentication no
+                      ChallengeResponseAuthentication no
+                      MaxAuthTries 3
+                      MaxSessions 5
+                      ClientAliveInterval 300
+                      ClientAliveCountMax 2
+                  - path: /etc/fail2ban/jail.local
+                    content: |
+                      [sshd]
+                      enabled = true
+                      maxretry = 3
+                      findtime = 600
+                      bantime = 3600
+                runcmd:
+                  - sed -i 's/^bind 127.0.0.1 ::1/bind 0.0.0.0 ::1/' /etc/redis/redis.conf
+                  - echo "maxmemory 512mb" >> /etc/redis/redis.conf
+                  - echo "maxmemory-policy allkeys-lru" >> /etc/redis/redis.conf
+                  - systemctl restart sshd
+                  - systemctl enable fail2ban
+                  - systemctl start fail2ban
+                  - systemctl restart redis-server
+            EOT
+        }
+
+      + filesystems (known after apply)
+
+      + private_ips (known after apply)
+
+      + private_network {
+          + mac_address = (known after apply)
+          + pn_id       = (known after apply)
+          + pnic_id     = (known after apply)
+          + status      = (known after apply)
+        }
+
+      + public_ips (known after apply)
+
+      + root_volume (known after apply)
+    }
+
+  # scaleway_instance_server.stg_vm will be created
+  + resource "scaleway_instance_server" "stg_vm" {
+      + boot_type                        = "local"
+      + bootscript_id                    = (known after apply)
+      + cloud_init                       = (known after apply)
+      + enable_dynamic_ip                = false
+      + id                               = (known after apply)
+      + image                            = "ubuntu_jammy"
+      + ip_id                            = (known after apply)
+      + name                             = "hit8-stg-vm"
+      + organization_id                  = (known after apply)
+      + placement_group_policy_respected = (known after apply)
+      + project_id                       = (sensitive value)
+      + protected                        = false
+      + replace_on_type_change           = false
+      + security_group_id                = (known after apply)
+      + state                            = (known after apply)
+      + type                             = "DEV1-S"
+      + user_data                        = {
+          + "cloud-init" = <<-EOT
+                #cloud-config
+                package_update: true
+                packages:
+                  - docker.io
+                  - docker-compose
+                  - fail2ban
+                write_files:
+                  - path: /etc/ssh/sshd_config.d/99-hardening.conf
+                    content: |
+                      PermitRootLogin prohibit-password
+                      PasswordAuthentication no
+                      ChallengeResponseAuthentication no
+                      MaxAuthTries 3
+                      MaxSessions 5
+                      ClientAliveInterval 300
+                      ClientAliveCountMax 2
+                  - path: /etc/fail2ban/jail.local
+                    content: |
+                      [sshd]
+                      enabled = true
+                      maxretry = 3
+                      findtime = 600
+                      bantime = 3600
+                  - path: /root/docker-compose.yml
+                    content: |
+                      services:
+                        postgres:
+                          image: postgres:17-alpine
+                          restart: always
+                          environment:
+                            POSTGRES_USER: hit8
+                            POSTGRES_PASSWORD: hit8
+                            POSTGRES_DB: hit8
+                          volumes:
+                            - pgdata:/var/lib/postgresql/data
+                        redis:
+                          image: redis:7-alpine
+                          restart: always
+                          command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+                        pgbouncer:
+                          image: edoburu/pgbouncer:latest
+                          restart: always
+                          environment:
+                            DATABASE_URL: "postgres://hit8:hit8@postgres:5432/hit8"
+                            POOL_MODE: transaction
+                            MAX_CLIENT_CONN: 100
+                            AUTH_TYPE: trust
+                          ports:
+                            - "6432:6432"
+                          depends_on:
+                            - postgres
+                      volumes:
+                        pgdata:
+                runcmd:
+                  - systemctl restart sshd
+                  - systemctl enable fail2ban
+                  - systemctl start fail2ban
+                  - cd /root && docker-compose up -d
+            EOT
+        }
+
+      + filesystems (known after apply)
+
+      + private_ips (known after apply)
+
+      + private_network {
+          + mac_address = (known after apply)
+          + pn_id       = (known after apply)
+          + pnic_id     = (known after apply)
+          + status      = (known after apply)
+        }
+
+      + public_ips (known after apply)
+
+      + root_volume (known after apply)
+    }
+
+  # scaleway_rdb_instance.prd_db will be created
+  + resource "scaleway_rdb_instance" "prd_db" {
+      + backup_same_region        = (known after apply)
+      + backup_schedule_frequency = (known after apply)
+      + backup_schedule_retention = (known after apply)
+      + certificate               = (known after apply)
+      + disable_backup            = false
+      + endpoint_ip               = (known after apply)
+      + endpoint_port             = (known after apply)
+      + engine                    = "PostgreSQL-17"
+      + id                        = (known after apply)
+      + is_ha_cluster             = false
+      + name                      = "hit8-db-prd"
+      + node_type                 = "DB-DEV-S"
+      + organization_id           = (known after apply)
+      + password                  = (sensitive value)
+      + password_wo               = (write-only attribute)
+      + project_id                = (sensitive value)
+      + read_replicas             = (known after apply)
+      + settings                  = (known after apply)
+      + upgradable_versions       = (known after apply)
+      + user_name                 = "hit8"
+      + volume_size_in_gb         = 10
+      + volume_type               = "bssd"
+
+      + logs_policy (known after apply)
+
+      + private_ip (known after apply)
+
+      + private_network {
+          + enable_ipam = (known after apply)
+          + endpoint_id = (known after apply)
+          + hostname    = (known after apply)
+          + ip          = (known after apply)
+          + ip_net      = (known after apply)
+          + name        = (known after apply)
+          + pn_id       = (known after apply)
+          + port        = (known after apply)
+        }
+    }
+
+  # scaleway_registry_namespace.main will be created
+  + resource "scaleway_registry_namespace" "main" {
+      + description     = "Main Registry"
+      + endpoint        = (known after apply)
+      + id              = (known after apply)
+      + is_public       = false
+      + name            = "hit8-registry"
+      + organization_id = (known after apply)
+      + project_id      = (sensitive value)
+    }
+
+  # scaleway_vpc_private_network.prd will be created
+  + resource "scaleway_vpc_private_network" "prd" {
+      + created_at                       = (known after apply)
+      + enable_default_route_propagation = (known after apply)
+      + id                               = (known after apply)
+      + is_regional                      = (known after apply)
+      + name                             = "hit8-vpc-prd"
+      + organization_id                  = (known after apply)
+      + project_id                       = (sensitive value)
+      + tags                             = [
+          + "hit8",
+          + "prd",
+        ]
+      + updated_at                       = (known after apply)
+      + vpc_id                           = (known after apply)
+      + zone                             = (known after apply)
+
+      + ipv4_subnet (known after apply)
+
+      + ipv6_subnets (known after apply)
+    }
+
+  # scaleway_vpc_private_network.stg will be created
+  + resource "scaleway_vpc_private_network" "stg" {
+      + created_at                       = (known after apply)
+      + enable_default_route_propagation = (known after apply)
+      + id                               = (known after apply)
+      + is_regional                      = (known after apply)
+      + name                             = "hit8-vpc-stg"
+      + organization_id                  = (known after apply)
+      + project_id                       = (sensitive value)
+      + tags                             = [
+          + "hit8",
+          + "stg",
+        ]
+      + updated_at                       = (known after apply)
+      + vpc_id                           = (known after apply)
+      + zone                             = (known after apply)
+
+      + ipv4_subnet (known after apply)
+
+      + ipv6_subnets (known after apply)
+    }
+
+Plan: 20 to add, 2 to change, 1 to destroy.
+
+Changes to Outputs:
+  + connection_info              = {
+      + note         = "Containers are attached to VPC (api_prd → prd PN, api_stg → stg PN) and use private IPs for DB/Redis."
+      + prd_db_ip    = (known after apply)
+      + prd_redis_ip = (known after apply)
+      + stg_vm_ip    = (known after apply)
+    }
+  + prd_redis_ipv6               = (known after apply)
+  + registry_login               = (known after apply)
+  + scw_registry_endpoint        = (known after apply)
+  + stg_ssh_command              = (known after apply)
+  + stg_vm_ipv6                  = (known after apply)
+
+─────────────────────────────────────────────────────────────────────────────
+
+Note: You didn't use the -out option to save this plan, so Terraform can't
+guarantee to take exactly these actions if you run "terraform apply" now.

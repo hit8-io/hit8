@@ -6,7 +6,7 @@ locals {
   # Adjust path as needed: "${path.module}/../VERSION"
   # Note: Image tags are managed by CI/CD, not Terraform. This is only used for initial resource creation.
   # CI/CD builds images with tags: {VERSION}-{SHORT_SHA} and updates Cloud Run services/jobs after each build.
-  image_version = var.image_tag != null ? var.image_tag : trimspace(file("${path.module}/../VERSION"))
+  image_version = var.IMAGE_TAG != null ? var.IMAGE_TAG : trimspace(file("${path.module}/../VERSION"))
 
   envs = {
     prd = {
@@ -29,7 +29,7 @@ locals {
 # They are shared across all environments (prd, stg, dev) despite the name
 resource "google_compute_address" "egress_ip" {
   name   = "shared-static-egress-ip"  # Already renamed in GCP
-  region = var.region
+  region = var.GCP_REGION
 }
 
 resource "google_compute_network" "vpc" {
@@ -40,20 +40,20 @@ resource "google_compute_network" "vpc" {
 resource "google_compute_subnetwork" "subnet" {
   name          = "production-subnet"
   ip_cidr_range = "10.0.0.0/24"
-  region        = var.region
+  region        = var.GCP_REGION
   network       = google_compute_network.vpc.id
 }
 
 resource "google_compute_router" "router" {
   name    = "production-router"
   network = google_compute_network.vpc.id
-  region  = var.region
+  region  = var.GCP_REGION
 }
 
 resource "google_compute_router_nat" "nat" {
   name                               = "production-nat-gateway"
   router                             = google_compute_router.router.name
-  region                             = var.region
+  region                             = var.GCP_REGION
   nat_ip_allocate_option             = "MANUAL_ONLY"
   nat_ips                            = [google_compute_address.egress_ip.self_link]
   source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_PRIMARY_IP_RANGES"
@@ -64,16 +64,13 @@ resource "google_compute_router_nat" "nat" {
 # ==============================================================================
 # Artifact Registry
 resource "google_artifact_registry_repository" "backend_api" {
-  location      = var.region
-  repository_id = var.artifact_registry_repository
+  location      = var.GCP_REGION
+  repository_id = var.ARTIFACT_REGISTRY_REPOSITORY
   description   = "Docker repository for backend API"
   format        = "DOCKER"
 
-  # DISABLED Dry Run to enforce immediately
   cleanup_policy_dry_run = false
 
-  # Policy 1: Explicitly KEEP the 5 most recent versions
-  # (This takes precedence over the delete policy below)
   cleanup_policies {
     id     = "keep-most-recent-5"
     action = "KEEP"
@@ -82,69 +79,99 @@ resource "google_artifact_registry_repository" "backend_api" {
     }
   }
 
-  # Policy 2: DELETE everything else
-  # (Matches anything older than 1 hour; the Keep policy above rescues the top 5)
   cleanup_policies {
     id     = "delete-older-versions"
     action = "DELETE"
     condition {
-      tag_state  = "ANY"      # Matches both tagged and untagged images
-      older_than = "3600s"    # 1 hour (adjust to "86400s" for 1 day if preferred)
+      tag_state  = "ANY"
+      older_than = "86400s"
     }
   }
 }
 
 # Chat Documents (Dev)
 resource "google_storage_bucket" "chat_documents_dev" {
-  name                        = "${var.project_id}-dev-chat"
-  location                    = var.region
+  name                        = "${var.GCP_PROJECT_ID}-dev-chat"
+  location                    = var.GCP_REGION
   storage_class               = "STANDARD"
   uniform_bucket_level_access = true
+
+  labels = {
+    environment = "dev"
+    project     = "hit8"
+    managed_by  = "terraform"
+    purpose     = "chat-documents"
+  }
+
   autoclass {
     enabled = true
   }
   lifecycle_rule {
-    condition { age = 1 }
+    condition { age = 7 }
     action { type = "Delete" }
   }
 }
 
 # Chat Documents (Prd)
 resource "google_storage_bucket" "chat_documents_prd" {
-  name                        = "${var.project_id}-prd-chat"
-  location                    = var.region
+  name                        = "${var.GCP_PROJECT_ID}-prd-chat"
+  location                    = var.GCP_REGION
   storage_class               = "STANDARD"
   uniform_bucket_level_access = true
+
+  labels = {
+    environment = "prd"
+    project     = "hit8"
+    managed_by  = "terraform"
+    purpose     = "chat-documents"
+  }
+
   autoclass {
     enabled = true
   }
   lifecycle_rule {
-    condition { age = 1 }
+    condition { age = 7 }
     action { type = "Delete" }
   }
 }
 
 # Chat Documents (Stg)
 resource "google_storage_bucket" "chat_documents_stg" {
-  name                        = "${var.project_id}-stg-chat"
-  location                    = var.region
+  name                        = "${var.GCP_PROJECT_ID}-stg-chat"
+  location                    = var.GCP_REGION
   storage_class               = "STANDARD"
   uniform_bucket_level_access = true
+
+  labels = {
+    environment = "stg"
+    project     = "hit8"
+    managed_by  = "terraform"
+    purpose     = "chat-documents"
+  }
+
   autoclass {
     enabled = true
   }
   lifecycle_rule {
-    condition { age = 1 }
+    condition { age = 7 }
     action { type = "Delete" }
   }
 }
 
 # Knowledge Storage (Dev)
 resource "google_storage_bucket" "knowledge_dev" {
-  name                        = "${var.project_id}-dev-knowledge"
-  location                    = var.region
+  name                        = "${var.GCP_PROJECT_ID}-dev-knowledge"
+  location                    = var.GCP_REGION
   storage_class               = "STANDARD"
   uniform_bucket_level_access = true
+
+  labels = {
+    environment = "dev"
+    project     = "hit8"
+    managed_by  = "terraform"
+    purpose     = "knowledge"
+  }
+
   autoclass {
     enabled = true
   }
@@ -153,10 +180,18 @@ resource "google_storage_bucket" "knowledge_dev" {
 
 # Knowledge Storage (Stg)
 resource "google_storage_bucket" "knowledge_stg" {
-  name                        = "${var.project_id}-stg-knowledge"
-  location                    = var.region
+  name                        = "${var.GCP_PROJECT_ID}-stg-knowledge"
+  location                    = var.GCP_REGION
   storage_class               = "STANDARD"
   uniform_bucket_level_access = true
+
+  labels = {
+    environment = "stg"
+    project     = "hit8"
+    managed_by  = "terraform"
+    purpose     = "knowledge"
+  }
+
   autoclass {
     enabled = true
   }
@@ -165,10 +200,18 @@ resource "google_storage_bucket" "knowledge_stg" {
 
 # Knowledge Storage (Prd)
 resource "google_storage_bucket" "knowledge_prd" {
-  name                        = "${var.project_id}-prd-knowledge"
-  location                    = var.region
+  name                        = "${var.GCP_PROJECT_ID}-prd-knowledge"
+  location                    = var.GCP_REGION
   storage_class               = "STANDARD"
   uniform_bucket_level_access = true
+
+  labels = {
+    environment = "prd"
+    project     = "hit8"
+    managed_by  = "terraform"
+    purpose     = "knowledge"
+  }
+
   autoclass {
     enabled = true
   }
@@ -177,10 +220,17 @@ resource "google_storage_bucket" "knowledge_prd" {
 
 # Function Source Code
 resource "google_storage_bucket" "function_source" {
-  name                        = "${var.project_id}-functions"
-  location                    = var.region
+  name                        = "${var.GCP_PROJECT_ID}-functions"
+  location                    = var.GCP_REGION
   storage_class               = "STANDARD"
   uniform_bucket_level_access = true
+
+  labels = {
+    project     = "hit8"
+    managed_by  = "terraform"
+    purpose     = "functions-source"
+  }
+
   autoclass {
     enabled = true
   }
@@ -196,10 +246,16 @@ resource "google_storage_bucket" "function_source" {
 # Note: Autoclass is NOT enabled for this bucket as Terraform state files are accessed frequently
 resource "google_storage_bucket" "terraform_state" {
   name                        = "hit8-poc-prd-tfstate"
-  location                    = var.region      # Single Region
+  location                    = var.GCP_REGION      # Single Region
   storage_class               = "STANDARD"      # Regional Class
   force_destroy               = false
   uniform_bucket_level_access = true
+
+  labels = {
+    project     = "hit8"
+    managed_by  = "terraform"
+    purpose     = "terraform-state"
+  }
 
   versioning {
     enabled = true
@@ -228,7 +284,7 @@ resource "google_service_account" "vertex_sa" {
 
 # Grant "Vertex AI User" role (Project Level)
 resource "google_project_iam_member" "vertex_ai_user" {
-  project = var.project_id
+  project = var.GCP_PROJECT_ID
   role    = "roles/aiplatform.user"
   member  = "serviceAccount:${google_service_account.vertex_sa.email}"
 }
@@ -243,7 +299,7 @@ resource "google_service_account" "api_runner" {
 # Secrets
 # Ensure var.secret_name == "doppler-hit8-prd"
 resource "google_secret_manager_secret" "doppler_secrets" {
-  secret_id = var.secret_name 
+  secret_id = var.SECRET_NAME 
   replication {
     auto {} 
   }
@@ -276,7 +332,13 @@ resource "google_cloud_run_v2_service" "api" {
   for_each = local.envs
 
   name     = "hit8-api${each.value.suffix}"  # hit8-api-prd / hit8-api-stg
-  location = var.region
+  location = var.GCP_REGION
+
+  labels = {
+    environment = each.key
+    project     = "hit8"
+    managed_by  = "terraform"
+  }
 
   # Image tags are managed by CI/CD, not Terraform
   # CI/CD updates services after building new images
@@ -292,7 +354,7 @@ resource "google_cloud_run_v2_service" "api" {
 
     containers {
       # Initial image reference (CI/CD will update this after each build)
-      image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.artifact_registry_repository}/api:${local.image_version}"
+      image = "${var.GCP_REGION}-docker.pkg.dev/${var.GCP_PROJECT_ID}/${var.ARTIFACT_REGISTRY_REPOSITORY}/api:${local.image_version}"
 
       ports {
         container_port = 8080
@@ -361,7 +423,7 @@ resource "google_cloud_run_v2_service" "api" {
 resource "google_cloud_run_v2_service_iam_member" "public_access" {
   for_each = google_cloud_run_v2_service.api
 
-  project  = var.project_id
+  project  = var.GCP_PROJECT_ID
   location = each.value.location
   name     = each.value.name
   role     = "roles/run.invoker"
@@ -373,8 +435,8 @@ resource "google_cloud_run_domain_mapping" "api" {
   for_each = local.envs
 
   name     = "${each.value.host}.hit8.io" # api-prd.hit8.io / api-stg.hit8.io
-  location = var.region
-  metadata { namespace = var.project_id }
+  location = var.GCP_REGION
+  metadata { namespace = var.GCP_PROJECT_ID }
 
   spec {
     route_name = google_cloud_run_v2_service.api[each.key].name
@@ -390,8 +452,14 @@ resource "google_cloud_run_v2_job" "report_job" {
   for_each = local.envs  # <--- LOOP ENABLED
 
   name                = "hit8-report-job${each.value.suffix}" # hit8-report-job-prd / -stg
-  location            = var.region
+  location            = var.GCP_REGION
   deletion_protection = true
+
+  labels = {
+    environment = each.key
+    project     = "hit8"
+    managed_by  = "terraform"
+  }
 
   # Image tags are managed by CI/CD, not Terraform
   # CI/CD updates jobs after building new images
@@ -410,7 +478,7 @@ resource "google_cloud_run_v2_job" "report_job" {
         name = "api"
         
         # Initial image reference (CI/CD will update this after each build)
-        image = "${var.region}-docker.pkg.dev/${var.project_id}/${var.artifact_registry_repository}/api:${local.image_version}"
+        image = "${var.GCP_REGION}-docker.pkg.dev/${var.GCP_PROJECT_ID}/${var.ARTIFACT_REGISTRY_REPOSITORY}/api:${local.image_version}"
         
         command = ["/usr/local/bin/python", "-u", "-m", "app.batch.run_report_job"]
         
@@ -440,7 +508,7 @@ resource "google_cloud_run_v2_job" "report_job" {
       }
       
       timeout     = "3600s"
-      max_retries = 0
+      max_retries = 2
       
       vpc_access {
         network_interfaces {
@@ -466,8 +534,8 @@ resource "google_cloud_run_v2_job" "report_job" {
 resource "google_cloud_run_v2_job_iam_member" "api_jobs_runner" {
   for_each = google_cloud_run_v2_job.report_job # <--- LOOP OVER JOBS
 
-  project  = var.project_id
-  location = var.region
+  project  = var.GCP_PROJECT_ID
+  location = var.GCP_REGION
   name     = each.value.name
   role     = "roles/run.developer"  # Required to run Cloud Run v2 jobs (includes run.jobs.run permission)
   member   = "serviceAccount:${google_service_account.api_runner.email}"
@@ -477,8 +545,8 @@ resource "google_cloud_run_v2_job_iam_member" "api_jobs_runner" {
 resource "google_cloud_run_v2_job_iam_member" "vertex_jobs_runner" {
   for_each = google_cloud_run_v2_job.report_job # <--- LOOP OVER JOBS
 
-  project  = var.project_id
-  location = var.region
+  project  = var.GCP_PROJECT_ID
+  location = var.GCP_REGION
   name     = each.value.name
   role     = "roles/run.developer"  # Required to run Cloud Run v2 jobs (includes run.jobs.run permission)
   member   = "serviceAccount:${google_service_account.vertex_sa.email}"
@@ -490,7 +558,7 @@ resource "google_cloud_run_v2_job_iam_member" "vertex_jobs_runner" {
 # Enable Identity Platform API
 resource "google_project_service" "identity_platform" {
   provider = google-beta
-  project  = var.project_id
+  project  = var.GCP_PROJECT_ID
   service  = "identitytoolkit.googleapis.com"
   
   disable_on_destroy = false
@@ -514,7 +582,7 @@ resource "google_storage_bucket_object" "on_before_user_created_source" {
 resource "google_project_service_identity" "identity_platform_agent" {
   provider = google-beta
   service  = "identitytoolkit.googleapis.com"
-  project  = var.project_id
+  project  = var.GCP_PROJECT_ID
   
   depends_on = [google_project_service.identity_platform]
 }
@@ -524,7 +592,7 @@ resource "google_cloudfunctions_function" "on_before_user_created" {
   name        = "onBeforeUserCreated-v2"
   description = "Firebase Auth blocking hook"
   runtime     = "nodejs20"
-  region      = var.region
+  region      = var.GCP_REGION
   
   available_memory_mb = 256
   entry_point         = "onBeforeUserCreated"
@@ -543,8 +611,8 @@ resource "google_cloudfunctions_function" "on_before_user_created" {
 
 # SECURE IAM: Allow ONLY Identity Platform to invoke
 resource "google_cloudfunctions_function_iam_member" "identity_platform_invoker" {
-  project        = var.project_id
-  region         = var.region
+  project        = var.GCP_PROJECT_ID
+  region         = var.GCP_REGION
   cloud_function = google_cloudfunctions_function.on_before_user_created.name
   role           = "roles/cloudfunctions.invoker"
   member         = "serviceAccount:${google_project_service_identity.identity_platform_agent.email}"
@@ -553,7 +621,7 @@ resource "google_cloudfunctions_function_iam_member" "identity_platform_invoker"
 # Configure Identity Platform to use the blocking function
 resource "google_identity_platform_config" "auth_config" {
   provider = google-beta
-  project  = var.project_id
+  project  = var.GCP_PROJECT_ID
 
   # Authorized domains for OAuth operations
   authorized_domains = [

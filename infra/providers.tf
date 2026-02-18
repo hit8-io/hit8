@@ -1,4 +1,3 @@
-# This merges with your backend.tf configuration
 terraform {
   required_providers {
     google = {
@@ -17,28 +16,33 @@ terraform {
       source  = "cloudflare/cloudflare"
       version = "~> 4.0"
     }
+    scaleway = {
+      source  = "scaleway/scaleway"
+      version = "~> 2.39"
+    }
   }
 }
 
 provider "google" {
-  project = var.project_id
-  region  = var.region
-  zone    = var.zone
+  project = var.GCP_PROJECT_ID
+  region  = var.GCP_REGION
+  zone    = var.GCP_ZONE
 }
 
 provider "google-beta" {
-  project = var.project_id
-  region  = var.region
-  zone    = var.zone
+  project                = var.GCP_PROJECT_ID
+  region                 = var.GCP_REGION
+  zone                   = var.GCP_ZONE
   user_project_override = true
 }
 
 provider "cloudflare" {
   # API token is provided via CLOUDFLARE_API_TOKEN environment variable (set via Doppler)
-  # Minimal retries to fail fast on authentication/IP restriction errors
-  retries            = 1
-  min_backoff        = 1
-  max_backoff        = 2
-  # Enable API client logging for better error messages
-  api_client_logging = true
+}
+
+provider "scaleway" {
+  region     = var.SCW_REGION
+  zone       = var.SCW_ZONE
+  project_id = var.SCW_PROJECT_ID
+  # Access Key / Secret Key picked up from ENV vars (SCW_ACCESS_KEY, SCW_SECRET_KEY)
 }

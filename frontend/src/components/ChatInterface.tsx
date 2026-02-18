@@ -9,7 +9,7 @@ import { Input } from './ui/input'
 import { Card } from './ui/card'
 import { ScrollArea } from './ui/scroll-area'
 import type { ExecutionState } from '../types'
-import { getAvailableModels } from '../utils/api'
+import { getAvailableModels, getApiUrl } from '../utils/api'
 import { WELCOME_TEXT } from '../constants/welcomeText'
 
 interface ChatInterfaceProps {
@@ -23,7 +23,7 @@ interface ChatInterfaceProps {
   readonly project?: string
 }
 
-const API_URL = import.meta.env.VITE_API_URL
+const API_URL = getApiUrl()
 
 export default function ChatInterface({ token, threadId, onChatStateChange, onExecutionStateUpdate, isExpanded = false, onToggleExpand, org, project }: ChatInterfaceProps) {
   const navigate = useNavigate()

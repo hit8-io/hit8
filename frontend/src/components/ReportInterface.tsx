@@ -3,7 +3,7 @@ import { FileText, Play, Square, Loader2, CheckCircle, AlertCircle, X, Plus } fr
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card"
 import { ScrollArea } from "./ui/scroll-area"
 import { Button } from "./ui/button"
-import { getApiHeaders, getAvailableModels } from "../utils/api"
+import { getApiHeaders, getAvailableModels, getApiUrl } from "../utils/api"
 import GraphView from "./GraphView"
 import ObservabilityWindow from "./ObservabilityWindow"
 import StateView from "./StateView"
@@ -82,7 +82,7 @@ export default function ReportInterface({ token, onExecutionStateUpdate, org, pr
   const pendingStateUpdateRef = React.useRef<ExecutionState | null>(null);
   const eventLogScrollRef = React.useRef<HTMLDivElement | null>(null);
 
-  const API_URL = import.meta.env.VITE_API_URL;
+  const API_URL = getApiUrl();
 
   // Fetch available models on mount
   React.useEffect(() => {

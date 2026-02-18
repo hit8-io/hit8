@@ -3,7 +3,16 @@ import { getApps } from 'firebase/app'
 import { logError } from './errorHandling'
 
 const API_TOKEN = import.meta.env.VITE_API_TOKEN
-const API_URL = import.meta.env.VITE_API_URL
+
+/** API URL - scw.hit8.io uses Scaleway backend, others use VITE_API_URL */
+export function getApiUrl(): string {
+  if (typeof window !== 'undefined' && window.location.hostname === 'scw.hit8.io') {
+    return 'https://scw-prd.hit8.io'
+  }
+  return import.meta.env.VITE_API_URL || ''
+}
+
+const API_URL = getApiUrl()
 
 /**
  * Refreshes the Firebase ID token by forcing a new token from the current user.

@@ -6,7 +6,7 @@ import type { ExecutionState, StreamEvent } from "../types/execution"
 import { ClusterInspectionModal } from "./ClusterInspectionModal"
 import { useState, useEffect, useMemo } from "react"
 import { Button } from "./ui/button"
-import { getApiHeaders } from "../utils/api"
+import { getApiHeaders, getApiUrl } from "../utils/api"
 
 interface Procedure {
   doc?: string;
@@ -102,7 +102,7 @@ export default function StateView({ state, executionState, token, threadId }: St
   // cluster_status comes from state prop (unified for both streaming and polling)
   const clusterStatus = state?.cluster_status || {}
 
-  const API_URL = import.meta.env.VITE_API_URL
+  const API_URL = getApiUrl()
 
   const handleDownloadFinalReport = async () => {
     if (!token || !threadId || !state?.final_report) {

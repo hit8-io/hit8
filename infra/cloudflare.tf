@@ -4,14 +4,11 @@
 
 resource "cloudflare_record" "services" {
   for_each = {
-    "langfuse" = "8e1e99a0-9f3f-4c30-90da-2cc2d18b9f94.cfargotunnel.com"
-    "n8n"      = "8e1e99a0-9f3f-4c30-90da-2cc2d18b9f94.cfargotunnel.com"
-    "neo4j"    = "8e1e99a0-9f3f-4c30-90da-2cc2d18b9f94.cfargotunnel.com"
-    "traefik"  = "8e1e99a0-9f3f-4c30-90da-2cc2d18b9f94.cfargotunnel.com"
-    "www"      = "hit8.pages.dev"
+    "www" = "hit8.pages.dev"
+    "scw" = "hit8.pages.dev"
   }
 
-  zone_id = var.cloudflare_zone_id
+  zone_id = var.CLOUDFLARE_ZONE_ID
   name    = each.key
   content = each.value
   type    = "CNAME"
@@ -19,10 +16,26 @@ resource "cloudflare_record" "services" {
   ttl     = 1
 }
 
+# Scaleway containers (scw-prd, scw-stg) - CNAME targets from Scaleway container domain setup
+# Commented out until containers are created (after images are built and pushed)
+# resource "cloudflare_record" "scw_api" {
+#   for_each = {
+#     "scw-prd" = scaleway_container_domain.prd.url
+#     "scw-stg" = scaleway_container_domain.stg.url
+#   }
+#
+#   zone_id = var.CLOUDFLARE_ZONE_ID
+#   name    = each.key
+#   content = each.value
+#   type    = "CNAME"
+#   proxied = true
+#   ttl     = 1
+# }
+
 resource "cloudflare_record" "api_endpoints" {
   for_each = local.envs
 
-  zone_id = var.cloudflare_zone_id
+  zone_id = var.CLOUDFLARE_ZONE_ID
   name    = each.value.host # api-prd / api-stg
   content = "ghs.googlehosted.com"
   type    = "CNAME"
@@ -35,20 +48,10 @@ resource "cloudflare_record" "api_endpoints" {
 # Root domain CNAME record pointing to Cloudflare Pages
 # This record was imported from existing Cloudflare configuration
 resource "cloudflare_record" "root" {
-  zone_id = var.cloudflare_zone_id
-  name    = var.domain_name
+  zone_id = var.CLOUDFLARE_ZONE_ID
+  name    = var.DOMAIN_NAME
   content = "hit8.pages.dev"
   type    = "CNAME"
-  proxied = true
-  ttl     = 1
-}
-
-# Dummy A record for chat subdomain - actual routing handled by redirect ruleset
-resource "cloudflare_record" "chat_dummy" {
-  zone_id = var.cloudflare_zone_id
-  name    = "chat"
-  content = "192.0.2.1" # RFC 3330 documentation address
-  type    = "A"
   proxied = true
   ttl     = 1
 }
@@ -62,8 +65,8 @@ resource "cloudflare_record" "mx_records" {
     "alt4.aspmx.l.google.com" = 10
   }
 
-  zone_id  = var.cloudflare_zone_id
-  name     = var.domain_name
+  zone_id  = var.CLOUDFLARE_ZONE_ID
+  name     = var.DOMAIN_NAME
   content  = each.key
   priority = each.value
   type     = "MX"
@@ -77,8 +80,8 @@ resource "cloudflare_record" "txt_records" {
     "firebase" = "firebase=hit8-poc"
   }
 
-  zone_id = var.cloudflare_zone_id
-  name    = var.domain_name
+  zone_id = var.CLOUDFLARE_ZONE_ID
+  name    = var.DOMAIN_NAME
   content = each.value
   type    = "TXT"
   proxied = false
@@ -91,7 +94,7 @@ resource "cloudflare_record" "firebase_dkim" {
     "firebase2._domainkey" = "mail-hit8-io.dkim2._domainkey.firebasemail.com."
   }
 
-  zone_id = var.cloudflare_zone_id
+  zone_id = var.CLOUDFLARE_ZONE_ID
   name    = each.key
   content = each.value
   type    = "CNAME"
@@ -103,44 +106,11 @@ resource "cloudflare_record" "firebase_dkim" {
 #                             RULESETS & REDIRECTS                             #
 ################################################################################
 
-resource "cloudflare_ruleset" "cache_settings" {
-  kind    = "zone"
-  name    = "default"
-  phase   = "http_request_cache_settings"
-  zone_id = var.cloudflare_zone_id
-
-  rules {
-    description = "Bypass Cache for Chat"
-    enabled     = true
-    expression  = "(http.request.full_uri contains \"chat.hit8.io\")"
-    action      = "set_cache_settings"
-    action_parameters {
-      cache = false
-    }
-  }
-}
-
 resource "cloudflare_ruleset" "redirects" {
   kind    = "zone"
   name    = "default"
   phase   = "http_request_dynamic_redirect"
-  zone_id = var.cloudflare_zone_id
-
-  rules {
-    description = "chat.hit8.io Redirect"
-    enabled     = true
-    expression  = "(http.request.full_uri contains \"chat.hit8.io\")"
-    action      = "redirect"
-    action_parameters {
-      from_value {
-        status_code           = 302
-        preserve_query_string = true
-        target_url {
-          value = var.chat_webhook_url
-        }
-      }
-    }
-  }
+  zone_id = var.CLOUDFLARE_ZONE_ID
 
   rules {
     description = "Root to WWW"
@@ -159,19 +129,57 @@ resource "cloudflare_ruleset" "redirects" {
   }
 }
 
+################################################################################
+#                            WAF CUSTOM RULES                                   #
+################################################################################
+
 resource "cloudflare_ruleset" "waf_custom" {
   kind    = "zone"
   name    = "default"
   phase   = "http_request_firewall_custom"
-  zone_id = var.cloudflare_zone_id
+  zone_id = var.CLOUDFLARE_ZONE_ID
 
-  # Block direct API access - only allow requests from our frontend (hit8.pages.dev) and www.hit8.io
-  # This prevents unauthorized direct API calls while allowing legitimate frontend requests
   rules {
     description = "Block Direct API Access"
     enabled     = true
-    expression  = "((http.host eq \"api-prd.hit8.io\" or http.host eq \"api-stg.hit8.io\") and not http.referer contains \"hit8.pages.dev\" and not http.referer contains \"www.hit8.io\")"
+    expression  = "((http.host eq \"api-prd.hit8.io\" or http.host eq \"api-stg.hit8.io\" or http.host eq \"scw-prd.hit8.io\" or http.host eq \"scw-stg.hit8.io\") and not http.referer contains \"hit8.pages.dev\" and not http.referer contains \"www.hit8.io\" and not http.referer contains \"scw.hit8.io\")"
     action      = "block"
+  }
+}
+
+################################################################################
+#                            RATE LIMITING                                      #
+################################################################################
+
+resource "cloudflare_ruleset" "rate_limit" {
+  kind    = "zone"
+  name    = "rate_limiting"
+  phase   = "http_ratelimit"
+  zone_id = var.CLOUDFLARE_ZONE_ID
+
+  # Cloudflare only allows 1 rule in http_ratelimit phase
+  # Using a single rule with 20 req/10s limit (120 req/min) for all API endpoints
+  # Note: Cloudflare free plan only supports period=10 (10 seconds)
+  rules {
+    description = "Rate Limit API Endpoints"
+    enabled     = true
+    expression  = "(http.host in {\"api-prd.hit8.io\" \"api-stg.hit8.io\" \"scw-prd.hit8.io\" \"scw-stg.hit8.io\"})"
+    action      = "block"
+
+    action_parameters {
+      response {
+        status_code  = 429
+        content      = "{\"error\": \"Rate limit exceeded. Maximum 20 requests per 10 seconds.\"}"
+        content_type = "application/json"
+      }
+    }
+
+    ratelimit {
+      characteristics     = ["ip.src", "cf.colo.id"]
+      period              = 10
+      requests_per_period = 20
+      mitigation_timeout  = 10
+    }
   }
 }
 
@@ -180,7 +188,7 @@ resource "cloudflare_ruleset" "waf_custom" {
 ################################################################################
 
 resource "cloudflare_zone_settings_override" "main_settings" {
-  zone_id = var.cloudflare_zone_id
+  zone_id = var.CLOUDFLARE_ZONE_ID
 
   settings {
     # SSL / Security
@@ -206,35 +214,25 @@ resource "cloudflare_zone_settings_override" "main_settings" {
   }
 }
 
-resource "cloudflare_pages_project" "hit8" {
-  account_id        = var.cloudflare_account_id
-  name              = "hit8"
-  production_branch = "main"
+# Pages project is managed via Direct Upload (Wrangler), not Terraform
+# Using data source to reference it without trying to manage it
+# Note: build_config and deployment_configs must be managed via Cloudflare dashboard or Wrangler
+data "cloudflare_pages_project" "hit8" {
+  account_id = var.CLOUDFLARE_ACCOUNT_ID
+  name       = "hit8"
 
-  source {
-    type = "github"
-    config {
-      owner                         = "hit8-io"
-      repo_name                     = "hit8"
-      production_branch             = "main"
-      pr_comments_enabled           = true
-      deployments_enabled           = true
-      production_deployment_enabled = true
-      preview_deployment_setting    = "all"
-      preview_branch_includes       = ["*"]
-      preview_branch_excludes       = []
-    }
-  }
+}
 
-  build_config {
-    build_command   = "cd frontend && npm ci && npm run build"
-    destination_dir = "frontend/dist"
-    root_dir        = "/"
-  }
+# scw.hit8.io: same frontend as www, but backend scw-prd.hit8.io
+# Requires frontend to detect host: if host === "scw.hit8.io" then API = "https://scw-prd.hit8.io"
+resource "cloudflare_pages_domain" "scw" {
+  account_id   = var.CLOUDFLARE_ACCOUNT_ID
+  project_name = data.cloudflare_pages_project.hit8.name
+  domain       = "scw.${var.DOMAIN_NAME}"
 }
 
 resource "cloudflare_account_member" "admin" {
-  account_id    = var.cloudflare_account_id
+  account_id    = var.CLOUDFLARE_ACCOUNT_ID
   email_address = "jan@hit8.io"
   role_ids      = ["33666b9c79b9a5273fc7344ff42f953d"]
   status        = "accepted"

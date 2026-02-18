@@ -15,8 +15,9 @@ import { useLocalStorage } from './hooks/useLocalStorage'
 import { useAuth } from './hooks/useAuth'
 import { useUserConfig } from './hooks/useUserConfig'
 import type { ExecutionState } from './types/execution'
+import { getApiUrl } from './utils/api'
 
-const API_URL = import.meta.env.VITE_API_URL
+const API_URL = getApiUrl()
 
 // Helper to generate ID immediately, avoiding redirect flash
 const NewChatRedirect = () => {
