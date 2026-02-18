@@ -214,20 +214,42 @@ resource "cloudflare_zone_settings_override" "main_settings" {
   }
 }
 
-# Pages project is managed via Direct Upload (Wrangler), not Terraform
-# Using data source to reference it without trying to manage it
-# Note: build_config and deployment_configs must be managed via Cloudflare dashboard or Wrangler
-data "cloudflare_pages_project" "hit8" {
-  account_id = var.CLOUDFLARE_ACCOUNT_ID
-  name       = "hit8"
+# Pages project: Direct Upload (Wrangler). API rejects source/build_config updates.
+resource "cloudflare_pages_project" "hit8" {
+  account_id        = var.CLOUDFLARE_ACCOUNT_ID
+  name              = "hit8"
+  production_branch = "main"
 
+  lifecycle {
+    ignore_changes = [source, build_config]
+  }
+
+  build_config {
+    build_command   = ""
+    destination_dir = ""
+  }
+
+  deployment_configs {
+    production {
+      environment_variables = {
+        VITE_API_URL = "https://api-prd.hit8.io"
+      }
+      compatibility_date = "2024-01-01"
+    }
+    preview {
+      environment_variables = {
+        VITE_API_URL = "https://scw-stg.hit8.io"
+      }
+      compatibility_date = "2024-01-01"
+    }
+  }
 }
 
 # scw.hit8.io: same frontend as www, but backend scw-prd.hit8.io
 # Requires frontend to detect host: if host === "scw.hit8.io" then API = "https://scw-prd.hit8.io"
 resource "cloudflare_pages_domain" "scw" {
   account_id   = var.CLOUDFLARE_ACCOUNT_ID
-  project_name = data.cloudflare_pages_project.hit8.name
+  project_name = cloudflare_pages_project.hit8.name
   domain       = "scw.${var.DOMAIN_NAME}"
 }
 

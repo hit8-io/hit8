@@ -41,9 +41,9 @@ jobs:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
       - run: gcloud auth configure-docker europe-west1-docker.pkg.dev
 
-      # Scaleway
+      # Scaleway Container Registry (namespace must match Terraform: scaleway_registry_namespace.main.name)
       - name: Login to Scaleway
-        run: echo "${{ secrets.SCW_SECRET_KEY }}" | docker login rg.fr-par.scw.cloud/hit8 -u nologin --password-stdin
+        run: echo "${{ secrets.SCW_SECRET_KEY }}" | docker login rg.fr-par.scw.cloud/hit8-registry -u nologin --password-stdin
 
       # Build & Push (both registries at once)
       - uses: docker/setup-buildx-action@v3
@@ -56,8 +56,8 @@ jobs:
           tags: |
             europe-west1-docker.pkg.dev/hit8-poc/backend/api:${{ steps.meta.outputs.tag }}
             europe-west1-docker.pkg.dev/hit8-poc/backend/api:${{ steps.meta.outputs.version }}
-            rg.fr-par.scw.cloud/hit8/api:${{ steps.meta.outputs.tag }}
-            rg.fr-par.scw.cloud/hit8/api:latest
+            rg.fr-par.scw.cloud/hit8-registry/api:${{ steps.meta.outputs.tag }}
+            rg.fr-par.scw.cloud/hit8-registry/api:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

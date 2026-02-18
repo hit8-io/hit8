@@ -104,7 +104,7 @@ runs:
         fi
 
         scw container container update "$CONTAINER_ID" \
-          registry-image="rg.fr-par.scw.cloud/hit8/api:${{ inputs.image_tag }}" \
+          registry-image="rg.fr-par.scw.cloud/hit8-registry/api:${{ inputs.image_tag }}" \
           redeploy=true
 
     - name: Health Check (Scaleway)
