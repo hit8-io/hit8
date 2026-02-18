@@ -67,21 +67,29 @@ runs:
     - name: Health Check (GCP)
       if: inputs.cloud == 'gcp'
       shell: bash
+      env:
+        GCP_SA_KEY: ${{ inputs.gcp_sa_key }}
+        GCP_PROJECT_ID: ${{ inputs.gcp_project_id }}
       run: |
         set -e
         ENV_SUFFIX=${{ inputs.environment == 'production' && '-prd' || '-stg' }}
-        URL="https://api${ENV_SUFFIX}.hit8.io/health"
-        echo "Waiting 30s for deployment..."
-        sleep 30
-        for i in 1 2 3 4 5; do
-          if curl -f -s "$URL" > /dev/null; then
+        printf '%s' "$GCP_SA_KEY" > /tmp/gcp-key.json
+        gcloud auth activate-service-account --key-file=/tmp/gcp-key.json --quiet
+        SERVICE_URL=$(gcloud run services describe "hit8-api${ENV_SUFFIX}" --region europe-west1 --project "$GCP_PROJECT_ID" --format='value(status.url)')
+        URL="${SERVICE_URL%/}/health"
+        echo "Health check URL: $URL"
+        echo "Waiting 60s for deployment..."
+        sleep 60
+        for i in 1 2 3 4 5 6 7 8; do
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 --max-time 15 "$URL" || echo "000")
+          if [ "$HTTP_CODE" = "200" ]; then
             echo "✅ Health check passed: $URL"
             exit 0
           fi
-          echo "Attempt $i/5 failed, retrying..."
+          echo "Attempt $i/8: HTTP $HTTP_CODE"
           sleep 10
         done
-        echo "❌ Health check failed after 5 attempts"
+        echo "❌ Health check failed after 8 attempts"
         exit 1
 
     # Scaleway Deployment

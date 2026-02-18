@@ -186,12 +186,25 @@ async def initialize_pool() -> None:
         has_ssl=constants.ENVIRONMENT == "prd",
     )
     
+    def on_reconnect_failed(pool_name: str) -> None:
+        """Callback when pool reconnection attempts fail after timeout."""
+        logger.error(
+            "pool_reconnection_failed",
+            pool_name=pool_name,
+            environment=constants.ENVIRONMENT,
+            message="Pool stopped attempting reconnection after timeout. "
+                    "Check database connectivity, network, and SSL configuration.",
+        )
+    
     # Create async connection pool with Supabase-compatible settings
     # Set open=False to prevent automatic opening (deprecated behavior)
     _pool = AsyncConnectionPool(
         conninfo=conninfo,
         max_size=20,
         open=False,  # Explicitly control when pool opens
+        reconnect_timeout=60.0,  # Retry reconnection for 60s (reduced from default 300s)
+        max_idle=300.0,  # Close idle connections after 5 minutes
+        reconnect_failed=on_reconnect_failed,  # Log when reconnection fails
         kwargs={
             "autocommit": True,  # Recommended for Supabase
             "prepare_threshold": None,  # CRITICAL: Disable prepared statements
