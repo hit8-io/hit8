@@ -124,6 +124,7 @@ jobs:
           scw_access_key: ${{ secrets.SCW_ACCESS_KEY }}
           scw_secret_key: ${{ secrets.SCW_SECRET_KEY }}
           scw_project_id: ${{ secrets.SCW_PROJECT_ID }}
+          scw_organization_id: ${{ secrets.SCW_ORGANIZATION_ID }}
 
   deploy-frontend-staging:
     name: Deploy Frontend (Staging)
@@ -163,6 +164,7 @@ jobs:
           scw_access_key: ${{ secrets.SCW_ACCESS_KEY }}
           scw_secret_key: ${{ secrets.SCW_SECRET_KEY }}
           scw_project_id: ${{ secrets.SCW_PROJECT_ID }}
+          scw_organization_id: ${{ secrets.SCW_ORGANIZATION_ID }}
 
   deploy-frontend-production:
     name: Deploy Frontend (Production)
