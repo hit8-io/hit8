@@ -1,6 +1,6 @@
 [project]
 name = "hit8-backend"
-version = "0.5.0"
+version = "0.6.0"
 description = "Hit8 Chat API Backend"
 requires-python = ">=3.11,<3.12"
 dependencies = [
