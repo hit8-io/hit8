@@ -88,6 +88,7 @@ runs:
         # Install script writes directly to /usr/local/bin/scw
         curl -s https://raw.githubusercontent.com/scaleway/scaleway-cli/master/scripts/get.sh | sh
 
+        mkdir -p ~/.config/scw
         scw config set access-key="$SCW_ACCESS_KEY"
         scw config set secret-key="$SCW_SECRET_KEY"
         scw config set default-project-id="$SCW_DEFAULT_PROJECT_ID"
