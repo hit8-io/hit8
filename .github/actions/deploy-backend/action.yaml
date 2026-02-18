@@ -14,6 +14,9 @@ inputs:
   gcp_sa_key:
     description: 'GCP Service Account Key'
     required: false
+  gcp_project_id:
+    description: 'GCP Project ID'
+    required: false
   scw_access_key:
     description: 'Scaleway Access Key'
     required: false
@@ -40,22 +43,25 @@ runs:
       shell: bash
       env:
         GCP_SA_KEY: ${{ inputs.gcp_sa_key }}
+        GCP_PROJECT_ID: ${{ inputs.gcp_project_id }}
       run: |
         set -e
         printf '%s' "$GCP_SA_KEY" > /tmp/gcp-key.json
         gcloud auth activate-service-account --key-file=/tmp/gcp-key.json
 
         ENV_SUFFIX=${{ inputs.environment == 'production' && '-prd' || '-stg' }}
-        IMAGE="europe-west1-docker.pkg.dev/hit8-poc/backend/api:${{ inputs.image_tag }}"
+        IMAGE="europe-west1-docker.pkg.dev/${GCP_PROJECT_ID}/backend/api:${{ inputs.image_tag }}"
 
         gcloud run services update "hit8-api${ENV_SUFFIX}" \
           --image "$IMAGE" \
           --region europe-west1 \
+          --project "$GCP_PROJECT_ID" \
           --quiet
 
         gcloud run jobs update "hit8-report-job${ENV_SUFFIX}" \
           --image "$IMAGE" \
           --region europe-west1 \
+          --project "$GCP_PROJECT_ID" \
           --quiet
 
     - name: Health Check (GCP)
