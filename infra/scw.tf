@@ -296,70 +296,62 @@ resource "scaleway_container_namespace" "api" {
   }
 }
 
-# NOTE: Containers are commented out until container images are built and pushed to registry
-# Uncomment these resources after building and pushing images to Scaleway Container Registry
-# 
-# To build and push:
-# 1. Build image: docker build -t ${local.registry_endpoint}/api:${var.CONTAINER_IMAGE} -f backend/Dockerfile backend/
-# 2. Login: docker login ${local.registry_endpoint}
-# 3. Push: docker push ${local.registry_endpoint}/api:${var.CONTAINER_IMAGE}
-
 # PRD Container — attached to prd VPC so it can reach RDB and Redis via private IPs
-# resource "scaleway_container" "api_prd" {
-#   name               = "hit8-api-prd"
-#   namespace_id       = scaleway_container_namespace.api.id
-#   registry_image     = "${local.registry_endpoint}/api:${var.CONTAINER_IMAGE}"
-#   private_network_id = scaleway_vpc_private_network.prd.id
-#
-#   cpu_limit    = 1000
-#   memory_limit = 2048
-#   min_scale    = 1
-#   max_scale    = 5
-#   port         = 8080
-#
-#   environment_variables = {
-#     "ENVIRONMENT"   = "prd"
-#     "DOPPLER_TOKEN" = var.DOPPLER_SERVICE_TOKENS["prd"]
-#     "DB_HOST"       = scaleway_rdb_instance.prd_db.private_network[0].ip
-#     "REDIS_HOST"    = local.prd_redis_private_ip
-#   }
-# }
+resource "scaleway_container" "api_prd" {
+  name               = "hit8-api-prd"
+  namespace_id       = scaleway_container_namespace.api.id
+  registry_image     = "${local.registry_endpoint}/api:${var.CONTAINER_IMAGE}"
+  private_network_id = scaleway_vpc_private_network.prd.id
+
+  cpu_limit    = 1000
+  memory_limit = 2048
+  min_scale    = 1
+  max_scale    = 5
+  port         = 8080
+
+  environment_variables = {
+    "ENVIRONMENT"   = "prd"
+    "DOPPLER_TOKEN" = var.DOPPLER_SERVICE_TOKENS["prd"]
+    "DB_HOST"       = scaleway_rdb_instance.prd_db.private_network[0].ip
+    "REDIS_HOST"    = local.prd_redis_private_ip
+  }
+}
 
 # STG Container — attached to stg VPC so it can reach Postgres/Redis on stg VM via private IP
-# resource "scaleway_container" "api_stg" {
-#   name               = "hit8-api-stg"
-#   namespace_id       = scaleway_container_namespace.api.id
-#   registry_image     = "${local.registry_endpoint}/api:${var.CONTAINER_IMAGE}"
-#   private_network_id = scaleway_vpc_private_network.stg.id
-#
-#   cpu_limit    = 500
-#   memory_limit = 1024
-#   min_scale    = 0
-#   max_scale    = 2
-#   port         = 8080
-#
-#   environment_variables = {
-#     "ENVIRONMENT"   = "stg"
-#     "DOPPLER_TOKEN" = var.DOPPLER_SERVICE_TOKENS["stg"]
-#     "DB_HOST"       = local.stg_vm_private_ip
-#     "DB_PORT"       = "6432"
-#     "REDIS_HOST"    = local.stg_vm_private_ip
-#   }
-# }
+resource "scaleway_container" "api_stg" {
+  name               = "hit8-api-stg"
+  namespace_id       = scaleway_container_namespace.api.id
+  registry_image     = "${local.registry_endpoint}/api:${var.CONTAINER_IMAGE}"
+  private_network_id = scaleway_vpc_private_network.stg.id
+
+  cpu_limit    = 500
+  memory_limit = 1024
+  min_scale    = 0
+  max_scale    = 2
+  port         = 8080
+
+  environment_variables = {
+    "ENVIRONMENT"   = "stg"
+    "DOPPLER_TOKEN" = var.DOPPLER_SERVICE_TOKENS["stg"]
+    "DB_HOST"       = local.stg_vm_private_ip
+    "DB_PORT"       = "6432"
+    "REDIS_HOST"    = local.stg_vm_private_ip
+  }
+}
 
 # ==============================================================================
 # 6. DOMAINS (Ingress)
 # ==============================================================================
 
-# resource "scaleway_container_domain" "prd" {
-#   container_id = scaleway_container.api_prd.id
-#   hostname     = "scw-prd.hit8.io"
-# }
+resource "scaleway_container_domain" "prd" {
+  container_id = scaleway_container.api_prd.id
+  hostname     = "scw-prd.hit8.io"
+}
 
-# resource "scaleway_container_domain" "stg" {
-#   container_id = scaleway_container.api_stg.id
-#   hostname     = "scw-stg.hit8.io"
-# }
+resource "scaleway_container_domain" "stg" {
+  container_id = scaleway_container.api_stg.id
+  hostname     = "scw-stg.hit8.io"
+}
 
 # ==============================================================================
 # 7. OUTPUTS
