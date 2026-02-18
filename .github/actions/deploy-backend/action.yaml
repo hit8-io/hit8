@@ -85,8 +85,8 @@ runs:
         SCW_DEFAULT_PROJECT_ID: ${{ inputs.scw_project_id }}
       run: |
         set -e
+        # Install script writes directly to /usr/local/bin/scw
         curl -s https://raw.githubusercontent.com/scaleway/scaleway-cli/master/scripts/get.sh | sh
-        sudo mv scw /usr/local/bin/
 
         scw config set access-key="$SCW_ACCESS_KEY"
         scw config set secret-key="$SCW_SECRET_KEY"
