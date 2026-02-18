@@ -123,10 +123,20 @@ runs:
     - name: Health Check (Scaleway)
       if: inputs.cloud == 'scw'
       shell: bash
+      env:
+        SCW_ACCESS_KEY: ${{ inputs.scw_access_key }}
+        SCW_SECRET_KEY: ${{ inputs.scw_secret_key }}
+        SCW_DEFAULT_PROJECT_ID: ${{ inputs.scw_project_id }}
+        SCW_DEFAULT_ORGANIZATION_ID: ${{ inputs.scw_organization_id }}
       run: |
         set -e
         ENV_SUFFIX=${{ inputs.environment == 'production' && '-prd' || '-stg' }}
-        URL="https://scw${ENV_SUFFIX}.hit8.io/health"
+        # Use container default domain (no dependency on custom DNS scw-stg.hit8.io)
+        CONTAINER_JSON=$(scw container container list name="hit8-api${ENV_SUFFIX}" -o json)
+        CONTAINER_ID=$(echo "$CONTAINER_JSON" | jq -r '.[0].id')
+        CONTAINER_DETAIL=$(scw container container get "$CONTAINER_ID" -o json)
+        DOMAIN=$(echo "$CONTAINER_DETAIL" | jq -r '.domain_name')
+        URL="https://${DOMAIN}/health"
         echo "Waiting 30s for deployment..."
         sleep 30
         for i in 1 2 3 4 5; do
