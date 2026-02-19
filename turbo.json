@@ -1,0 +1,29 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": ["**/.env.*local"],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", "build/**"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true,
+      "env": [
+        "VITE_GOOGLE_IDENTITY_PLATFORM_KEY",
+        "VITE_GOOGLE_IDENTITY_PLATFORM_DOMAIN",
+        "VITE_GCP_PROJECT",
+        "VITE_API_URL",
+        "VITE_API_TOKEN",
+        "VITE_SENTRY_DSN",
+        "GOOGLE_IDENTITY_PLATFORM_KEY",
+        "GOOGLE_IDENTITY_PLATFORM_DOMAIN",
+        "GCP_PROJECT",
+        "API_URL",
+        "API_TOKEN",
+        "SENTRY_DSN"
+      ]
+    }
+  },
+  "globalEnv": ["NODE_ENV"]
+}

@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Card, CardContent } from './ui/card'
-import { ScrollArea } from './ui/scroll-area'
+import { Card, CardContent, ScrollArea } from '@hit8/ui'
 import type { ReasoningStep } from '../utils/reasoningSteps'
 import type { ExecutionState, StreamEvent } from '../types/execution'
 import { SummaryBar } from './StatusWindow/SummaryBar'

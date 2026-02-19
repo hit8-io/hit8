@@ -6,11 +6,12 @@
   "scripts": {
     "dev": "vite --host",
     "build": "tsc && vite build",
-    "build:cloudflare": "npm ci && tsc && vite build",
+    "build:cloudflare": "pnpm install && tsc && vite build",
     "lint": "eslint . --max-warnings 0",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@hit8/ui": "workspace:*",
     "@sentry/react": "^10.32.1",
     "@types/dagre": "^0.7.53",
     "axios": "^1.7.9",

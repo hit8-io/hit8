@@ -66,7 +66,7 @@ If you prefer to run services manually without Docker:
 
 1. **Navigate to backend directory**:
    ```bash
-   cd backend
+   cd apps/api
    ```
 
 2. **Install dependencies with uv**:
@@ -83,41 +83,59 @@ If you prefer to run services manually without Docker:
    doppler run -- uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
    ```
 
-#### Frontend Setup
+#### Frontend Setup (Monorepo)
 
-1. **Navigate to frontend directory**:
+1. **Install dependencies at root**:
    ```bash
-   cd frontend
+   # From repo root
+   pnpm install
    ```
 
-2. **Install dependencies**:
+2. **Run development servers**:
    ```bash
-   npm install
+   # Run all apps
+   pnpm dev
+   
+   # Or run specific apps
+   pnpm web:dev    # SaaS app (apps/web)
+   pnpm site:dev  # Marketing site (apps/site)
+   pnpm api:dev   # API (apps/api)
    ```
 
-3. **Set up environment variables** (via Doppler):
-   ```bash
-   doppler run -- npm run dev
-   ```
-
-4. **Access the application**:
-   - Frontend: `http://localhost:5173`
+3. **Access the applications**:
+   - SaaS App: `http://localhost:5173`
+   - Marketing Site: `http://localhost:5174`
    - Backend API: `http://localhost:8000`
 
 #### Database Setup
 
-The app uses **`DATABASE_CONNECTION_STRING`** (via Doppler or env) to connect to PostgreSQL. Use Supabase (cloud) or a separate Postgres instance. **Docker Compose does not include a Supabase/Postgres service** for the app. Database schema is managed with [Atlas](https://atlasgo.io) using declarative schema in `database/schema.hcl`. See [supabase/migrate.md](../supabase/migrate.md) for schema management workflow.
+The app uses **`DATABASE_CONNECTION_STRING`** (via Doppler or env) to connect to PostgreSQL. Use Supabase (cloud) or a separate Postgres instance. **Docker Compose does not include a Supabase/Postgres service** for the app. Database schema is managed with [Atlas](https://atlasgo.io) using declarative schema in `db/schema.hcl`. See [supabase/migrate.md](../supabase/migrate.md) for schema management workflow.
 
 ## Project Structure
 
 ```
 hit8/
-├── backend/
-│   ├── app/
-│   │   ├── __init__.py
-│   │   ├── main.py          # Application entrypoint
-│   │   ├── auth.py          # Token verification (verify_google_token)
-│   │   ├── config.py        # Configuration / Pydantic settings
+├── apps/
+│   ├── web/                 # SaaS App (formerly frontend/)
+│   │   ├── src/
+│   │   ├── package.json
+│   │   └── vite.config.ts
+│   ├── api/                 # Backend API (formerly backend/)
+│   │   ├── app/
+│   │   │   ├── __init__.py
+│   │   │   ├── main.py      # Application entrypoint
+│   │   │   ├── auth.py      # Token verification (verify_google_token)
+│   │   │   ├── config.py    # Configuration / Pydantic settings
+│   │   ├── package.json
+│   │   └── pyproject.toml
+│   └── site/                # Marketing Site (new)
+│       ├── src/
+│       └── package.json
+├── db/                      # Database scripts (formerly database/)
+├── packages/                # Shared packages (optional)
+├── package.json             # Root package.json (monorepo)
+├── pnpm-workspace.yaml     # pnpm workspace config
+└── turbo.json              # Turbo build config
 │   │   ├── api/
 │   │   │   ├── database.py  # Connection pool
 │   │   │   ├── checkpointer.py

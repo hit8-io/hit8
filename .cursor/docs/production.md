@@ -25,33 +25,54 @@ The backend is deployed to **Google Cloud Run** via the [GitHub Actions workflow
 - Production: `https://api-prd.hit8.io`
 
 **Deployment Process:**
-- Driven by [deploy.yaml](.github/workflows/deploy.yaml): build → deploy staging (auto) → deploy production (manual approval in GitHub `environment: production`). Triggers on push to `main` with changes in `backend/**`, `frontend/**`, or the workflow file.
+- Driven by [deploy.yaml](.github/workflows/deploy.yaml): build → deploy staging (auto) → deploy production (manual approval in GitHub `environment: production`). Triggers on push to `main` with changes in `apps/**`, `backend/**`, `frontend/**`, or the workflow file.
 - See [CI/CD documentation](cicd.md) for the full pipeline and manual deploy steps.
 
 ### Frontend: Cloudflare Pages
 
-The frontend is deployed to **Cloudflare Pages** via the [GitHub Actions workflow](cicd.md) using Wrangler `pages deploy`.
+The SaaS app frontend is deployed to **Cloudflare Pages** via the [GitHub Actions workflow](cicd.md) using Wrangler `pages deploy`.
 
 **Deployment Configuration:**
-- **Build Command**: `npm run build` (`tsc && vite build`)
-- **Build Output**: `frontend/dist`
+- **Build Command**: `pnpm turbo build --filter=web` (`tsc && vite build`)
+- **Build Output**: `apps/web/dist`
 - **Node Version**: 20
+- **Package Manager**: pnpm (monorepo)
 
 **Deployments (from [deploy.yaml](.github/workflows/deploy.yaml)):**
-- **Staging (Preview)**: `dist-stg` (built with `VITE_API_URL=https://api-stg.hit8.io`) → `pages deploy ... --branch=main-staging`
-- **Production**: `dist-prd` (built with `VITE_API_URL=https://api-prd.hit8.io`) → `pages deploy ... --branch=main`
+- **Staging (Preview)**: `dist-stg` (built with `VITE_API_URL=https://api-stg.hit8.io`) → `pages deploy ... --project-name=hit8 --branch=main-staging`
+- **Production**: `dist-prd` (built with `VITE_API_URL=https://api-prd.hit8.io`) → `pages deploy ... --project-name=hit8 --branch=main`
+- **Scaleway Variant**: `dist-scw` (built with `VITE_API_URL=https://scw-prd.hit8.io`) → `pages deploy ... --project-name=hit8 --branch=scaleway`
+
+**Domains:**
+- SaaS App (GCP): `https://iter8.hit8.io`
+- SaaS App (Scaleway): `https://scw.hit8.io`
+- Fallback: `https://hit8.pages.dev`
+
+### Marketing Site: Cloudflare Pages
+
+The marketing site is deployed to **Cloudflare Pages** via the [GitHub Actions workflow](cicd.md) using Wrangler `pages deploy`.
+
+**Deployment Configuration:**
+- **Build Command**: `pnpm turbo build --filter=site`
+- **Build Output**: `apps/site/dist`
+- **Node Version**: 20
+- **Package Manager**: pnpm (monorepo)
+
+**Deployments:**
+- **Staging (Preview)**: `dist-site` → `pages deploy ... --project-name=hit8-site --branch=main-staging`
+- **Production**: `dist-site` → `pages deploy ... --project-name=hit8-site --branch=main`
 
 **Domains:**
 - Primary: `https://www.hit8.io`
-- Secondary: `https://hit8.io`
-- Fallback: `https://hit8.pages.dev`
+- Secondary: `https://hit8.io` (redirects to www)
+- Fallback: `https://hit8-site.pages.dev`
 
 ## Deployment Process
 
 ### Backend Deployment
 
 **Automated (via [deploy.yaml](.github/workflows/deploy.yaml)):**
-1. **Build**: `docker build` from `./backend` with `VERSION` from repo root; push to Artifact Registry `europe-west1-docker.pkg.dev/hit8-poc/backend/api:{VERSION}-{SHORT_SHA}`.
+1. **Build**: `docker build` from `./apps/api` with `VERSION` from repo root; push to Artifact Registry `europe-west1-docker.pkg.dev/hit8-poc/backend/api:{VERSION}-{SHORT_SHA}`.
 2. **Staging**: `gcloud run services update hit8-api-stg --image ... --region europe-west1` (auto after build).
 3. **Production**: `gcloud run services update hit8-api-prd --image ... --region europe-west1` (after manual approval). Service config (env, secrets, VPC, scaling) is managed by Terraform in `infra/`; the workflow only updates the container image.
 
@@ -60,7 +81,7 @@ The frontend is deployed to **Cloudflare Pages** via the [GitHub Actions workflo
 # From repo root: build and push image
 VERSION=$(cat VERSION | tr -d '[:space:]')
 TAG="${VERSION}-$(git rev-parse --short HEAD)"
-docker build --tag europe-west1-docker.pkg.dev/hit8-poc/backend/api:"$TAG" --build-arg VERSION="$VERSION" ./backend
+docker build --tag europe-west1-docker.pkg.dev/hit8-poc/backend/api:"$TAG" --build-arg VERSION="$VERSION" ./apps/api
 gcloud auth configure-docker europe-west1-docker.pkg.dev
 docker push europe-west1-docker.pkg.dev/hit8-poc/backend/api:"$TAG"
 
@@ -71,20 +92,38 @@ gcloud run services update hit8-api-prd --image europe-west1-docker.pkg.dev/hit8
 ```
 To change env, secrets, VPC, or scaling: use Terraform in `infra/`, not `gcloud run deploy`.
 
-### Frontend Deployment
+### Frontend Deployment (SaaS App)
 
 **Automatic (via [deploy.yaml](.github/workflows/deploy.yaml)):**
-- **Staging**: `npm run build` with `VITE_API_URL=https://api-stg.hit8.io` → `wrangler pages deploy dist-stg --project-name=hit8 --branch=main-staging` (Preview).
-- **Production**: `npm run build` with `VITE_API_URL=https://api-prd.hit8.io` → `wrangler pages deploy dist-prd --project-name=hit8 --branch=main` (Production). Production runs after manual approval.
+- **Staging**: `pnpm turbo build --filter=web` with `VITE_API_URL=https://api-stg.hit8.io` → `wrangler pages deploy dist-stg --project-name=hit8 --branch=main-staging` (Preview).
+- **Production**: `pnpm turbo build --filter=web` with `VITE_API_URL=https://api-prd.hit8.io` → `wrangler pages deploy dist-prd --project-name=hit8 --branch=main` (Production). Production runs after manual approval.
+- **Scaleway Variant**: `pnpm turbo build --filter=web` with `VITE_API_URL=https://scw-prd.hit8.io` → `wrangler pages deploy dist-scw --project-name=hit8 --branch=scaleway`
 
 **Manual (see [cicd.md](cicd.md) for full steps):**
 ```bash
-cd frontend
-npm ci && npm run build
-# Set VITE_API_URL and other VITE_* for the target (stg or prd), then:
-npx wrangler pages deploy dist --project-name=hit8 --branch=main-staging   # staging
+# From repo root
+pnpm install
+VITE_API_URL=https://api-stg.hit8.io pnpm turbo build --filter=web
+npx wrangler pages deploy apps/web/dist --project-name=hit8 --branch=main-staging   # staging
 # or
-npx wrangler pages deploy dist --project-name=hit8 --branch=main           # production
+VITE_API_URL=https://api-prd.hit8.io pnpm turbo build --filter=web
+npx wrangler pages deploy apps/web/dist --project-name=hit8 --branch=main           # production
+```
+
+### Marketing Site Deployment
+
+**Automatic (via [deploy.yaml](.github/workflows/deploy.yaml)):**
+- **Staging**: `pnpm turbo build --filter=site` → `wrangler pages deploy dist-site --project-name=hit8-site --branch=main-staging` (Preview).
+- **Production**: `pnpm turbo build --filter=site` → `wrangler pages deploy dist-site --project-name=hit8-site --branch=main` (Production). Production runs after manual approval.
+
+**Manual:**
+```bash
+# From repo root
+pnpm install
+pnpm turbo build --filter=site
+npx wrangler pages deploy apps/site/dist --project-name=hit8-site --branch=main-staging   # staging
+# or
+npx wrangler pages deploy apps/site/dist --project-name=hit8-site --branch=main           # production
 ```
 
 ### Frontend Build

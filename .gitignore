@@ -27,6 +27,9 @@ dist/
 dist-ssr/
 *.local
 
+# Turbo
+.turbo/
+
 # Environment variables
 .env
 .env.local

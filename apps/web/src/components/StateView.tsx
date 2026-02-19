@@ -1,11 +1,10 @@
 import { FileText, BookOpen, FileCheck, Loader2, Download, AlertCircle } from "lucide-react"
-import { Card, CardHeader, CardTitle, CardContent } from "./ui/card"
-import { ScrollArea } from "./ui/scroll-area"
+import { Card, CardHeader, CardTitle, CardContent, ScrollArea } from "@hit8/ui"
 import { Progress } from "./ui/progress"
 import type { ExecutionState, StreamEvent } from "../types/execution"
 import { ClusterInspectionModal } from "./ClusterInspectionModal"
 import { useState, useEffect, useMemo } from "react"
-import { Button } from "./ui/button"
+import { Button } from "@hit8/ui"
 import { getApiHeaders, getApiUrl } from "../utils/api"
 
 interface Procedure {

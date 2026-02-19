@@ -6,8 +6,9 @@ Hit8 is an AI-powered conversational application built with LangGraph orchestrat
 
 **Core Components:**
 
-- React TypeScript frontend (Cloudflare Pages)
-- FastAPI Python backend (GCP Cloud Run)
+- React TypeScript SaaS app (apps/web, Cloudflare Pages at iter8.hit8.io)
+- React TypeScript marketing site (apps/site, Cloudflare Pages at www.hit8.io)
+- FastAPI Python backend (apps/api, GCP Cloud Run)
 - LangGraph state machine for agent orchestration
 - PostgreSQL (Supabase) for persistence
 - Google Vertex AI for LLM inference
@@ -19,19 +20,21 @@ Hit8 is an AI-powered conversational application built with LangGraph orchestrat
 ```mermaid
 graph TB
     User[User Browser]
-    Frontend[React Frontend<br/>Cloudflare Pages]
-    Backend[FastAPI Backend<br/>GCP Cloud Run]
+    MarketingSite[Marketing Site<br/>apps/site<br/>www.hit8.io]
+    SaaSApp[SaaS App<br/>apps/web<br/>iter8.hit8.io]
+    Backend[FastAPI Backend<br/>apps/api<br/>GCP Cloud Run]
     VertexAI[Vertex AI<br/>LLM Inference]
     Supabase[Supabase<br/>PostgreSQL]
     Langfuse[Langfuse<br/>Observability]
     
-    User -->|HTTPS| Frontend
-    Frontend -->|HTTPS + Bearer Token| Backend
+    User -->|HTTPS| MarketingSite
+    User -->|HTTPS| SaaSApp
+    SaaSApp -->|HTTPS + Bearer Token| Backend
     Backend -->|API Calls| VertexAI
     Backend -->|Database Queries| Supabase
     Backend -->|Tracing| Langfuse
     
-    subgraph FrontendComponents["Frontend Components"]
+    subgraph SaaSComponents["SaaS App Components"]
         ChatInterface[ChatInterface]
         GraphView[GraphView - React Flow]
         ObservabilityWindow[ObservabilityWindow]
@@ -45,7 +48,7 @@ graph TB
         GraphAPI[Graph Structure API]
     end
     
-    Frontend -.-> FrontendComponents
+    SaaSApp -.-> SaaSComponents
     Backend -.-> BackendComponents
 ```
 

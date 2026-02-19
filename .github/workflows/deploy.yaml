@@ -3,7 +3,7 @@ name: Build & Deploy
 on:
   push:
     branches: [main]
-    paths: ['backend/**', 'frontend/**', '.github/workflows/**']
+    paths: ['apps/**', 'backend/**', 'frontend/**', '.github/workflows/**']
   workflow_dispatch:
 
 concurrency:
@@ -50,7 +50,7 @@ jobs:
       - uses: docker/build-push-action@v5
         id: build
         with:
-          context: ./backend
+          context: ./apps/api
           push: true
           platforms: linux/amd64
           tags: |
@@ -61,36 +61,43 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Frontend (build all variants, upload as artifacts)
+      # Frontend & Site (build all variants, upload as artifacts)
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
       
-      - run: cd frontend && npm ci
+      - name: Install pnpm
+        run: npm install -g pnpm
+      
+      - name: Install dependencies
+        run: pnpm install
 
       - name: Build frontends
         run: |
           set -e
           # Staging
-          cd frontend
-          VITE_API_URL=https://api-stg.hit8.io npm run build
-          mv dist ../dist-stg
+          VITE_API_URL=https://api-stg.hit8.io pnpm turbo build --filter=web
+          mv apps/web/dist dist-stg
           
           # Production (GCP)
-          VITE_API_URL=https://api-prd.hit8.io npm run build
-          mv dist ../dist-prd
+          VITE_API_URL=https://api-prd.hit8.io pnpm turbo build --filter=web
+          mv apps/web/dist dist-prd
           
           # Production (Scaleway)
-          VITE_API_URL=https://scw-prd.hit8.io npm run build
-          mv dist ../dist-scw
+          VITE_API_URL=https://scw-prd.hit8.io pnpm turbo build --filter=web
+          mv apps/web/dist dist-scw
         env:
           VITE_GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
           VITE_GOOGLE_IDENTITY_PLATFORM_KEY: ${{ secrets.GOOGLE_IDENTITY_PLATFORM_KEY }}
           VITE_GOOGLE_IDENTITY_PLATFORM_DOMAIN: ${{ secrets.GOOGLE_IDENTITY_PLATFORM_DOMAIN }}
           VITE_API_TOKEN: ${{ secrets.API_TOKEN }}
           VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+
+      - name: Build site
+        run: |
+          set -e
+          pnpm turbo build --filter=site
+          mv apps/site/dist dist-site
 
       - uses: actions/upload-artifact@v4
         with:
@@ -99,6 +106,12 @@ jobs:
             dist-stg/
             dist-prd/
             dist-scw/
+          retention-days: 1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-site
+          path: dist-site/
           retention-days: 1
 
   # --------------------------------------------------------------------------
@@ -142,6 +155,21 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy dist-stg --project-name=hit8 --branch=main-staging
 
+  deploy-site-staging:
+    name: Deploy Site (Staging)
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-site
+
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_PAGES_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist-site --project-name=hit8-site --branch=main-staging
+
   # --------------------------------------------------------------------------
   # DEPLOY PRODUCTION (Manual Approval)
   # --------------------------------------------------------------------------
@@ -177,7 +205,7 @@ jobs:
         with:
           name: frontends
 
-      - name: Deploy www.hit8.io
+      - name: Deploy iter8.hit8.io
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_PAGES_TOKEN }}
@@ -191,20 +219,41 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy dist-scw --project-name=hit8 --branch=scaleway --commit-dirty=true
 
+  deploy-site-production:
+    name: Deploy Site (Production)
+    needs: [build, deploy-site-staging]
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-site
+
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_PAGES_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy dist-site --project-name=hit8-site --branch=main --commit-dirty=true
+
   # --------------------------------------------------------------------------
   # NOTIFY
   # --------------------------------------------------------------------------
   notify:
     name: Notify Deployment
-    needs: [deploy-production, deploy-frontend-production]
+    needs: [deploy-production, deploy-frontend-production, deploy-site-production]
     runs-on: ubuntu-latest
     if: always()
     steps:
       - name: Deployment Status
         run: |
-          if [ "${{ needs.deploy-production.result }}" = "success" ] && [ "${{ needs.deploy-frontend-production.result }}" = "success" ]; then
+          if [ "${{ needs.deploy-production.result }}" = "success" ] && \
+             [ "${{ needs.deploy-frontend-production.result }}" = "success" ] && \
+             [ "${{ needs.deploy-site-production.result }}" = "success" ]; then
             echo "✅ Production deployment successful!"
           else
-            echo "❌ Deployment failed or skipped (backend=${{ needs.deploy-production.result }}, frontend=${{ needs.deploy-frontend-production.result }})"
+            echo "❌ Deployment failed or skipped"
+            echo "  Backend: ${{ needs.deploy-production.result }}"
+            echo "  Frontend: ${{ needs.deploy-frontend-production.result }}"
+            echo "  Site: ${{ needs.deploy-site-production.result }}"
             exit 1
           fi

@@ -1,0 +1,22 @@
+{
+  "name": "hit8",
+  "version": "0.6.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "doppler run -- turbo dev --filter=hit8-frontend --filter=site --filter=api",
+    "build": "turbo build",
+    "site:dev": "doppler run -- turbo dev --filter=site",
+    "web:dev": "doppler run -- turbo dev --filter=hit8-frontend",
+    "api:dev": "sh -c 'lsof -ti:8000 2>/dev/null | xargs kill -9 2>/dev/null || true; doppler run -- uv run python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000'"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0",
+    "typescript": "^5.7.3"
+  },
+  "packageManager": "pnpm@10.30.0",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}

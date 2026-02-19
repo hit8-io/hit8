@@ -1,6 +1,5 @@
 import { Component, ErrorInfo, ReactNode } from 'react'
-import { Card, CardDescription, CardHeader, CardTitle } from './ui/card'
-import { Button } from './ui/button'
+import { Card, CardDescription, CardHeader, CardTitle, Button } from '@hit8/ui'
 import { logError } from '../utils/errorHandling'
 import { captureException } from '../utils/sentry'
 

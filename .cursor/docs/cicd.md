@@ -60,7 +60,7 @@ See [supabase/migrate.md](../supabase/migrate.md) for local development workflow
 
 - **Checkout** → **Authenticate to GCP** (`google-github-actions/auth`, `GCP_SA_KEY`) → **Set up Cloud SDK** → **Configure Docker** for Artifact Registry (`gcloud auth configure-docker europe-west1-docker.pkg.dev`)
 - **Determine tag:** `VERSION` from repo root + 7-char `github.sha` → `{VERSION}-{SHORT_SHA}` (e.g. `0.4.0-a1b2c3d`)
-- **Build and push:** `docker build` (from `./backend`, `--build-arg VERSION`), `docker push` to `europe-west1-docker.pkg.dev/hit8-poc/backend/api:{tag}`
+- **Build and push:** `docker build` (from `./apps/api`, `--build-arg VERSION`), `docker push` to `europe-west1-docker.pkg.dev/hit8-poc/backend/api:{tag}`
 - **Outputs:** `image_tag`, `version` for deploy jobs
 
 **Image:** Artifact Registry (not GCR). Tag: `{VERSION}-{SHORT_SHA}`.
@@ -69,16 +69,20 @@ See [supabase/migrate.md](../supabase/migrate.md) for local development workflow
 
 ---
 
-### 2. Build Frontend
+### 2. Build Frontend & Site
 
-- **Checkout** → **Node 20** (npm cache) → **`npm ci`** in `frontend/`
-- **Build Staging:** `npm run build` with `VITE_API_URL=$API_URL_STG` and staging secrets → upload artifact `frontend-dist-stg`
-- **Build Production:** `npm run build` with `VITE_API_URL=$API_URL_PRD` and production secrets → upload artifact `frontend-dist-prd`
+- **Checkout** → **Node 20** → **Install pnpm** → **`pnpm install`** (at root for monorepo)
+- **Build SaaS App (apps/web):**
+  - **Staging:** `pnpm turbo build --filter=web` with `VITE_API_URL=https://api-stg.hit8.io` → upload artifact `dist-stg`
+  - **Production (GCP):** `pnpm turbo build --filter=web` with `VITE_API_URL=https://api-prd.hit8.io` → upload artifact `dist-prd`
+  - **Production (Scaleway):** `pnpm turbo build --filter=web` with `VITE_API_URL=https://scw-prd.hit8.io` → upload artifact `dist-scw`
+- **Build Marketing Site (apps/site):**
+  - `pnpm turbo build --filter=site` → upload artifact `dist-site`
 
-**Build command:** `npm run build` (`tsc && vite build`). Output: `frontend/dist`.
+**Build command:** `pnpm turbo build --filter=<app>` (`tsc && vite build`). Output: `apps/<app>/dist`.
 
 **Environment variables (from GitHub secrets):**
-- `VITE_API_URL` — stg: `https://api-stg.hit8.io`, prd: `https://api-prd.hit8.io`
+- `VITE_API_URL` — stg: `https://api-stg.hit8.io`, prd: `https://api-prd.hit8.io`, scw: `https://scw-prd.hit8.io`
 - `VITE_GOOGLE_IDENTITY_PLATFORM_KEY`
 - `VITE_GOOGLE_IDENTITY_PLATFORM_DOMAIN`
 - `VITE_GCP_PROJECT`
@@ -89,26 +93,33 @@ See [supabase/migrate.md](../supabase/migrate.md) for local development workflow
 
 ### 3. Deploy Staging
 
-**Needs:** `build-backend`, `build-frontend`
+**Needs:** `build` (backend + frontend + site)
 
 **Backend:**
 - `gcloud run services update hit8-api-stg --image {IMAGE_BASE}:{image_tag} --region europe-west1`
 - Service, env, secrets, and VPC are defined in Terraform; only the image is updated.
 
-**Frontend:**
-- Download `frontend-dist-stg` → **Wrangler** `pages deploy dist-stg --project-name=hit8 --branch=main-staging` (Cloudflare Pages **Preview**)
+**SaaS App Frontend:**
+- Download `dist-stg` → **Wrangler** `pages deploy dist-stg --project-name=hit8 --branch=main-staging` (Cloudflare Pages **Preview**, iter8.hit8.io)
+
+**Marketing Site:**
+- Download `dist-site` → **Wrangler** `pages deploy dist-site --project-name=hit8-site --branch=main-staging` (Cloudflare Pages **Preview**, www.hit8.io)
 
 ---
 
 ### 4. Deploy Production
 
-**Needs:** `build-backend`, `deploy-staging`, `build-frontend`. Uses `environment: production` (manual approval in GitHub).
+**Needs:** `build`, `deploy-staging`. Uses `environment: production` (manual approval in GitHub).
 
 **Backend:**
 - `gcloud run services update hit8-api-prd --image {IMAGE_BASE}:{image_tag} --region europe-west1`
 
-**Frontend:**
-- Download `frontend-dist-prd` → **Wrangler** `pages deploy dist-prd --project-name=hit8 --branch=main --commit-dirty=true` (Cloudflare Pages **Production**)
+**SaaS App Frontend:**
+- Download `dist-prd` → **Wrangler** `pages deploy dist-prd --project-name=hit8 --branch=main --commit-dirty=true` (Cloudflare Pages **Production**, iter8.hit8.io)
+- Download `dist-scw` → **Wrangler** `pages deploy dist-scw --project-name=hit8 --branch=scaleway --commit-dirty=true` (Cloudflare Pages **Production**, scw.hit8.io)
+
+**Marketing Site:**
+- Download `dist-site` → **Wrangler** `pages deploy dist-site --project-name=hit8-site --branch=main --commit-dirty=true` (Cloudflare Pages **Production**, www.hit8.io)
 
 ---
 

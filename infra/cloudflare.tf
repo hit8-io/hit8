@@ -4,8 +4,9 @@
 
 resource "cloudflare_record" "services" {
   for_each = {
-    "www" = "hit8.pages.dev"
-    "scw" = "hit8.pages.dev"
+    "www"   = "hit8-site.pages.dev" # Changed: marketing site
+    "iter8" = "hit8.pages.dev"      # New: SaaS app
+    "scw"   = "hit8.pages.dev"      # Unchanged: SaaS app Scaleway variant
   }
 
   zone_id = var.CLOUDFLARE_ZONE_ID
@@ -50,7 +51,7 @@ resource "cloudflare_record" "api_endpoints" {
 resource "cloudflare_record" "root" {
   zone_id = var.CLOUDFLARE_ZONE_ID
   name    = var.DOMAIN_NAME
-  content = "hit8.pages.dev"
+  content = "hit8-site.pages.dev" # Changed: marketing site
   type    = "CNAME"
   proxied = true
   ttl     = 1
@@ -142,7 +143,7 @@ resource "cloudflare_ruleset" "waf_custom" {
   rules {
     description = "Block Direct API Access"
     enabled     = true
-    expression  = "((http.host eq \"api-prd.hit8.io\" or http.host eq \"api-stg.hit8.io\" or http.host eq \"scw-prd.hit8.io\" or http.host eq \"scw-stg.hit8.io\") and not http.referer contains \"hit8.pages.dev\" and not http.referer contains \"www.hit8.io\" and not http.referer contains \"scw.hit8.io\")"
+    expression  = "((http.host eq \"api-prd.hit8.io\" or http.host eq \"api-stg.hit8.io\" or http.host eq \"scw-prd.hit8.io\" or http.host eq \"scw-stg.hit8.io\") and not http.referer contains \"hit8.pages.dev\" and not http.referer contains \"hit8-site.pages.dev\" and not http.referer contains \"www.hit8.io\" and not http.referer contains \"iter8.hit8.io\" and not http.referer contains \"scw.hit8.io\")"
     action      = "block"
   }
 }
@@ -245,7 +246,48 @@ resource "cloudflare_pages_project" "hit8" {
   }
 }
 
-# scw.hit8.io: same frontend as www, but backend scw-prd.hit8.io
+# Marketing site Pages project
+resource "cloudflare_pages_project" "hit8_site" {
+  account_id        = var.CLOUDFLARE_ACCOUNT_ID
+  name              = "hit8-site"
+  production_branch = "main"
+
+  lifecycle {
+    ignore_changes = [source, build_config]
+  }
+
+  build_config {
+    build_command   = ""
+    destination_dir = ""
+  }
+
+  deployment_configs {
+    production {
+      environment_variables = {}
+      compatibility_date    = "2024-01-01"
+    }
+    preview {
+      environment_variables = {}
+      compatibility_date    = "2024-01-01"
+    }
+  }
+}
+
+# Custom domain for marketing site
+resource "cloudflare_pages_domain" "www" {
+  account_id   = var.CLOUDFLARE_ACCOUNT_ID
+  project_name = cloudflare_pages_project.hit8_site.name
+  domain       = "www.${var.DOMAIN_NAME}"
+}
+
+# Update existing hit8 project domain
+resource "cloudflare_pages_domain" "iter8" {
+  account_id   = var.CLOUDFLARE_ACCOUNT_ID
+  project_name = cloudflare_pages_project.hit8.name
+  domain       = "iter8.${var.DOMAIN_NAME}"
+}
+
+# scw.hit8.io: same frontend as iter8, but backend scw-prd.hit8.io
 # Requires frontend to detect host: if host === "scw.hit8.io" then API = "https://scw-prd.hit8.io"
 resource "cloudflare_pages_domain" "scw" {
   account_id   = var.CLOUDFLARE_ACCOUNT_ID

@@ -62,12 +62,12 @@ resource "scaleway_instance_security_group" "stg_vm" {
 }
 
 resource "scaleway_instance_server" "stg_vm" {
-  name              = "hit8-stg-vm"
-  type              = "DEV1-S"
-  image             = "ubuntu_jammy"
-  project_id        = var.SCW_PROJECT_ID
-  zone              = var.SCW_ZONE
-  ip_id             = scaleway_instance_ip.stg_vm_ipv6.id
+  name       = "hit8-stg-vm"
+  type       = "DEV1-S"
+  image      = "ubuntu_jammy"
+  project_id = var.SCW_PROJECT_ID
+  zone       = var.SCW_ZONE
+  ip_id      = scaleway_instance_ip.stg_vm_ipv6.id
 
   security_group_id = scaleway_instance_security_group.stg_vm.id
 
@@ -228,12 +228,12 @@ resource "scaleway_instance_security_group" "prd_redis_sg" {
 }
 
 resource "scaleway_instance_server" "prd_redis" {
-  name              = "hit8-prd-redis"
-  type              = "DEV1-S"
-  image             = "ubuntu_jammy"
-  project_id        = var.SCW_PROJECT_ID
-  zone              = var.SCW_ZONE
-  ip_id             = scaleway_instance_ip.prd_redis_ipv6.id
+  name       = "hit8-prd-redis"
+  type       = "DEV1-S"
+  image      = "ubuntu_jammy"
+  project_id = var.SCW_PROJECT_ID
+  zone       = var.SCW_ZONE
+  ip_id      = scaleway_instance_ip.prd_redis_ipv6.id
 
   security_group_id = scaleway_instance_security_group.prd_redis_sg.id
 
@@ -334,13 +334,13 @@ resource "scaleway_container" "api_prd" {
   port         = 8080
 
   environment_variables = {
-    "ENVIRONMENT"            = "prd"
-    "DOPPLER_PROJECT"        = var.DOPPLER_PROJECT
-    "DOPPLER_CONFIG"         = "prd"
+    "ENVIRONMENT"             = "prd"
+    "DOPPLER_PROJECT"         = var.DOPPLER_PROJECT
+    "DOPPLER_CONFIG"          = "prd"
     "DOPPLER_TOKEN_SECRET_ID" = scaleway_secret.doppler_token_prd.id
     "SCALEWAY_SECRET_REGION"  = var.SCW_REGION
-    "DB_HOST"                = scaleway_rdb_instance.prd_db.private_network[0].ip
-    "REDIS_HOST"             = local.prd_redis_private_ip
+    "DB_HOST"                 = scaleway_rdb_instance.prd_db.private_network[0].ip
+    "REDIS_HOST"              = local.prd_redis_private_ip
   }
 
   secret_environment_variables = {
@@ -362,14 +362,14 @@ resource "scaleway_container" "api_stg" {
   port         = 8080
 
   environment_variables = {
-    "ENVIRONMENT"            = "stg"
-    "DOPPLER_PROJECT"        = var.DOPPLER_PROJECT
-    "DOPPLER_CONFIG"         = "stg"
+    "ENVIRONMENT"             = "stg"
+    "DOPPLER_PROJECT"         = var.DOPPLER_PROJECT
+    "DOPPLER_CONFIG"          = "stg"
     "DOPPLER_TOKEN_SECRET_ID" = scaleway_secret.doppler_token_stg.id
     "SCALEWAY_SECRET_REGION"  = var.SCW_REGION
-    "DB_HOST"                = local.stg_vm_private_ip
-    "DB_PORT"                = "6432"
-    "REDIS_HOST"             = local.stg_vm_private_ip
+    "DB_HOST"                 = local.stg_vm_private_ip
+    "DB_PORT"                 = "6432"
+    "REDIS_HOST"              = local.stg_vm_private_ip
   }
 
   secret_environment_variables = {

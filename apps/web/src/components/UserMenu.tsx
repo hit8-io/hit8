@@ -1,7 +1,7 @@
 import * as React from "react"
 import { LogOut } from "lucide-react"
 import { Popover } from "./ui/popover"
-import { Button } from "./ui/button"
+import { Button } from "@hit8/ui"
 import { cn } from "@/lib/utils"
 import type { User } from "../types"
 import { useUserConfig } from "../hooks/useUserConfig"

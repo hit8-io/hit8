@@ -1,5 +1,5 @@
 import { Brain, Wrench, CheckCircle2, Loader2 } from 'lucide-react'
-import { Badge } from '../ui/badge'
+import { Badge } from '@hit8/ui'
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '../ui/accordion'
 import type { ReasoningStep } from '../../utils/reasoningSteps'
 import { formatArgsPreview } from '../../utils/formatStatus'

@@ -11,9 +11,8 @@ import {
   sendPasswordResetEmail,
   signOut
 } from 'firebase/auth'
-import { Button } from './ui/button'
-import { Input } from './ui/input'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card'
+import { Button, Input } from '@hit8/ui'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@hit8/ui'
 import { GoogleIcon } from './icons/GoogleIcon'
 
 interface LoginScreenProps {

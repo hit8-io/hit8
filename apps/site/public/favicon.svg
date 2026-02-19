@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Infinity symbol (thick blue rounded lines) -->
+  <path d="M 20 50 
+           C 20 30, 35 30, 50 50 
+           C 65 30, 80 30, 80 50 
+           C 80 70, 65 70, 50 50 
+           C 35 70, 20 70, 20 50 Z" 
+        fill="none" 
+        stroke="#2563eb" 
+        stroke-width="8" 
+        stroke-linecap="round" 
+        stroke-linejoin="round"/>
+  
+  <!-- Person icon (dark blue outline within the infinity loops) -->
+  <!-- Head (circle in upper part) -->
+  <circle cx="50" cy="38" r="5.5" fill="none" stroke="#1e3a8a" stroke-width="2"/>
+  <!-- Shoulders/upper torso (curved line beneath head) -->
+  <path d="M 44 46 Q 50 52, 56 46" 
+        fill="none" 
+        stroke="#1e3a8a" 
+        stroke-width="2" 
+        stroke-linecap="round"/>
+</svg>
+

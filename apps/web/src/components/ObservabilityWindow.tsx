@@ -1,6 +1,5 @@
 import { useMemo } from 'react'
-import { Card, CardContent } from './ui/card'
-import { ScrollArea } from './ui/scroll-area'
+import { Card, CardContent, ScrollArea } from '@hit8/ui'
 import type { ExecutionState, StreamEvent } from '../types/execution'
 import type { ExecutionMetrics } from '../types/observability'
 

@@ -4,7 +4,7 @@
 services:
   api:
     build:
-      context: ./backend
+      context: ./apps/api
       dockerfile: Dockerfile
     command: >
       sh -c "
@@ -15,7 +15,7 @@ services:
       fi
       "
     volumes:
-      - ./backend:/app
+      - ./apps/api:/app
       - ./.cursor:/app/.cursor
     ports:
       - "8000:8000"
@@ -173,10 +173,10 @@ services:
 
   web:
     build:
-      context: ./frontend
+      context: ./apps/web
       dockerfile: Dockerfile
     volumes:
-      - ./frontend:/app
+      - ./apps/web:/app
       - /app/node_modules
     ports:
       - "5173:5173"

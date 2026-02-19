@@ -10,13 +10,13 @@ locals {
 
   envs = {
     prd = {
-      suffix         = "-prd"
-      host           = "api-prd"
+      suffix          = "-prd"
+      host            = "api-prd"
       token_secret_id = "doppler-token-prd"
     }
     stg = {
-      suffix         = "-stg"
-      host           = "api-stg"
+      suffix          = "-stg"
+      host            = "api-stg"
       token_secret_id = "doppler-token-stg"
     }
   }
@@ -28,7 +28,7 @@ locals {
 # Network resources use "production-" prefix for historical reasons (except egress_ip which was renamed)
 # They are shared across all environments (prd, stg, dev) despite the name
 resource "google_compute_address" "egress_ip" {
-  name   = "shared-static-egress-ip"  # Already renamed in GCP
+  name   = "shared-static-egress-ip" # Already renamed in GCP
   region = var.GCP_REGION
 }
 
@@ -226,9 +226,9 @@ resource "google_storage_bucket" "function_source" {
   uniform_bucket_level_access = true
 
   labels = {
-    project     = "hit8"
-    managed_by  = "terraform"
-    purpose     = "functions-source"
+    project    = "hit8"
+    managed_by = "terraform"
+    purpose    = "functions-source"
   }
 
   autoclass {
@@ -246,21 +246,21 @@ resource "google_storage_bucket" "function_source" {
 # Note: Autoclass is NOT enabled for this bucket as Terraform state files are accessed frequently
 resource "google_storage_bucket" "terraform_state" {
   name                        = "hit8-poc-prd-tfstate"
-  location                    = var.GCP_REGION      # Single Region
-  storage_class               = "STANDARD"      # Regional Class
+  location                    = var.GCP_REGION # Single Region
+  storage_class               = "STANDARD"     # Regional Class
   force_destroy               = false
   uniform_bucket_level_access = true
 
   labels = {
-    project     = "hit8"
-    managed_by  = "terraform"
-    purpose     = "terraform-state"
+    project    = "hit8"
+    managed_by = "terraform"
+    purpose    = "terraform-state"
   }
 
   versioning {
     enabled = true
   }
-  
+
   lifecycle_rule {
     condition {
       num_newer_versions = 10
@@ -342,7 +342,7 @@ resource "google_secret_manager_secret_iam_member" "api_doppler_token_access" {
 resource "google_cloud_run_v2_service" "api" {
   for_each = local.envs
 
-  name     = "hit8-api${each.value.suffix}"  # hit8-api-prd / hit8-api-stg
+  name     = "hit8-api${each.value.suffix}" # hit8-api-prd / hit8-api-stg
   location = var.GCP_REGION
 
   labels = {
@@ -470,7 +470,7 @@ resource "google_cloud_run_domain_mapping" "api" {
 # CLOUD RUN JOB (Now Deploying Prd & Stg)
 # ==============================================================================
 resource "google_cloud_run_v2_job" "report_job" {
-  for_each = local.envs  # <--- LOOP ENABLED
+  for_each = local.envs # <--- LOOP ENABLED
 
   name                = "hit8-report-job${each.value.suffix}" # hit8-report-job-prd / -stg
   location            = var.GCP_REGION
@@ -493,16 +493,16 @@ resource "google_cloud_run_v2_job" "report_job" {
   template {
     template {
       service_account = google_service_account.api_runner.email
-      
+
       containers {
         # Container name is required for ContainerOverride to work correctly
         name = "api"
-        
+
         # Initial image reference (CI/CD will update this after each build)
         image = "${var.GCP_REGION}-docker.pkg.dev/${var.GCP_PROJECT_ID}/${var.ARTIFACT_REGISTRY_REPOSITORY}/api:${local.image_version}"
-        
+
         command = ["/usr/local/bin/python", "-u", "-m", "app.batch.run_report_job"]
-        
+
         resources {
           limits = {
             cpu    = "2"
@@ -536,10 +536,10 @@ resource "google_cloud_run_v2_job" "report_job" {
           }
         }
       }
-      
+
       timeout     = "3600s"
       max_retries = 2
-      
+
       vpc_access {
         network_interfaces {
           network    = google_compute_network.vpc.name
@@ -548,11 +548,11 @@ resource "google_cloud_run_v2_job" "report_job" {
         egress = "ALL_TRAFFIC"
       }
     }
-    
+
     parallelism = 1
     task_count  = 1
   }
-  
+
   # Depend on the IAM permissions for the secrets
   depends_on = [google_secret_manager_secret_iam_member.api_doppler_token_access]
 }
@@ -567,7 +567,7 @@ resource "google_cloud_run_v2_job_iam_member" "api_jobs_runner" {
   project  = var.GCP_PROJECT_ID
   location = var.GCP_REGION
   name     = each.value.name
-  role     = "roles/run.developer"  # Required to run Cloud Run v2 jobs (includes run.jobs.run permission)
+  role     = "roles/run.developer" # Required to run Cloud Run v2 jobs (includes run.jobs.run permission)
   member   = "serviceAccount:${google_service_account.api_runner.email}"
 }
 
@@ -578,7 +578,7 @@ resource "google_cloud_run_v2_job_iam_member" "vertex_jobs_runner" {
   project  = var.GCP_PROJECT_ID
   location = var.GCP_REGION
   name     = each.value.name
-  role     = "roles/run.developer"  # Required to run Cloud Run v2 jobs (includes run.jobs.run permission)
+  role     = "roles/run.developer" # Required to run Cloud Run v2 jobs (includes run.jobs.run permission)
   member   = "serviceAccount:${google_service_account.vertex_sa.email}"
 }
 
@@ -590,7 +590,7 @@ resource "google_project_service" "identity_platform" {
   provider = google-beta
   project  = var.GCP_PROJECT_ID
   service  = "identitytoolkit.googleapis.com"
-  
+
   disable_on_destroy = false
 }
 
@@ -613,7 +613,7 @@ resource "google_project_service_identity" "identity_platform_agent" {
   provider = google-beta
   service  = "identitytoolkit.googleapis.com"
   project  = var.GCP_PROJECT_ID
-  
+
   depends_on = [google_project_service.identity_platform]
 }
 
@@ -623,17 +623,17 @@ resource "google_cloudfunctions_function" "on_before_user_created" {
   description = "Firebase Auth blocking hook"
   runtime     = "nodejs20"
   region      = var.GCP_REGION
-  
+
   available_memory_mb = 256
   entry_point         = "onBeforeUserCreated"
   trigger_http        = true
-  
+
   source_archive_bucket = google_storage_bucket.function_source.name
   source_archive_object = google_storage_bucket_object.on_before_user_created_source.name
-  
+
   # Allow all at network level, restrict via IAM below
   ingress_settings = "ALLOW_ALL"
-  
+
   depends_on = [
     google_storage_bucket_object.on_before_user_created_source
   ]
@@ -670,7 +670,7 @@ resource "google_identity_platform_config" "auth_config" {
       function_uri = google_cloudfunctions_function.on_before_user_created.https_trigger_url
     }
   }
-  
+
   depends_on = [
     google_project_service.identity_platform,
     google_cloudfunctions_function.on_before_user_created

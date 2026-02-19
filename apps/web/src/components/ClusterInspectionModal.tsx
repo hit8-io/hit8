@@ -1,6 +1,5 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogClose } from './ui/dialog'
-import { ScrollArea } from './ui/scroll-area'
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
+import { ScrollArea, Card, CardContent, CardHeader, CardTitle } from '@hit8/ui'
 import type { StreamEvent } from '../types/execution'
 
 interface TaskInfo {
