@@ -7,10 +7,14 @@ set -e
 # SCALEWAY_SECRET_KEY: Scaleway API secret key (SCW_SECRET_KEY is reserved by the platform)
 if [ -z "${DOPPLER_TOKEN}" ] && [ -n "${DOPPLER_TOKEN_SECRET_ID}" ] && [ -n "${SCALEWAY_SECRET_KEY}" ]; then
   REGION="${SCALEWAY_SECRET_REGION:-fr-par}"
-  echo "Fetching DOPPLER_TOKEN from Scaleway Secret Manager (secret_id=${DOPPLER_TOKEN_SECRET_ID}, region=${REGION})..."
+  
+  # Extract UUID from secret ID (Terraform returns format: "fr-par/uuid" or just "uuid")
+  SECRET_UUID="${DOPPLER_TOKEN_SECRET_ID##*/}"
+  
+  echo "Fetching DOPPLER_TOKEN from Scaleway Secret Manager (secret_id=${SECRET_UUID}, region=${REGION})..."
   
   API_RESPONSE=$(curl -sS -w "\n%{http_code}" -H "X-Auth-Token: ${SCALEWAY_SECRET_KEY}" \
-    "https://api.scaleway.com/secret-manager/v1beta1/regions/${REGION}/secrets/${DOPPLER_TOKEN_SECRET_ID}/versions/latest/access")
+    "https://api.scaleway.com/secret-manager/v1beta1/regions/${REGION}/secrets/${SECRET_UUID}/versions/latest/access")
   
   HTTP_CODE=$(echo "$API_RESPONSE" | tail -n1)
   API_BODY=$(echo "$API_RESPONSE" | sed '$d')
@@ -18,8 +22,10 @@ if [ -z "${DOPPLER_TOKEN}" ] && [ -n "${DOPPLER_TOKEN_SECRET_ID}" ] && [ -n "${S
   if [ "$HTTP_CODE" != "200" ]; then
     echo "ERROR: Failed to fetch DOPPLER_TOKEN from Secret Manager API (HTTP $HTTP_CODE)"
     echo "Response: $API_BODY"
-    echo "Secret ID: ${DOPPLER_TOKEN_SECRET_ID}"
+    echo "Secret ID (full): ${DOPPLER_TOKEN_SECRET_ID}"
+    echo "Secret UUID: ${SECRET_UUID}"
     echo "Region: ${REGION}"
+    echo "API URL: https://api.scaleway.com/secret-manager/v1beta1/regions/${REGION}/secrets/${SECRET_UUID}/versions/latest/access"
     echo "Hint: Ensure the secret exists and has at least one version with a value"
     exit 1
   fi
@@ -28,8 +34,8 @@ if [ -z "${DOPPLER_TOKEN}" ] && [ -n "${DOPPLER_TOKEN_SECRET_ID}" ] && [ -n "${S
   if [ -z "${DOPPLER_TOKEN}" ] || [ "${DOPPLER_TOKEN}" = "null" ]; then
     echo "ERROR: DOPPLER_TOKEN is empty after fetching from Secret Manager"
     echo "API Response: $API_BODY"
-    echo "Secret ID: ${DOPPLER_TOKEN_SECRET_ID}"
-    echo "Hint: The secret exists but has no value. Add a version with: scw secret secret add-version <secret-id> data=<token>"
+    echo "Secret UUID: ${SECRET_UUID}"
+    echo "Hint: The secret exists but has no value. Add a version with: scw secret secret add-version ${SECRET_UUID} data=<token>"
     exit 1
   fi
   
