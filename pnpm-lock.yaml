@@ -96,7 +96,7 @@ importers:
         specifier: ^5.11.0
         version: 5.11.0(@emotion/is-prop-valid@1.4.0)(@noble/hashes@2.0.1)(@types/node@24.10.13)(@types/react@19.2.14)(babel-plugin-react-compiler@1.0.0)(immer@9.0.21)(jiti@2.6.1)(lightningcss@1.31.1)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(styled-components@6.3.10(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.2)
       styled-components:
-        specifier: ^6.1.18
+        specifier: ^6.3.10
         version: 6.3.10(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
     devDependencies:
       '@sanity/eslint-config-studio':

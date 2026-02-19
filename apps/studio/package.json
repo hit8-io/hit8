@@ -7,8 +7,8 @@
   "scripts": {
     "dev": "sanity dev",
     "start": "sanity start",
-    "build": "sanity build",
-    "deploy": "sanity deploy",
+    "build": "node build-wrapper.js build",
+    "deploy": "node deploy-wrapper.js deploy",
     "deploy-graphql": "sanity graphql deploy"
   },
   "keywords": [
@@ -20,7 +20,7 @@
     "react": "^19.1",
     "react-dom": "^19.1",
     "sanity": "^5.11.0",
-    "styled-components": "^6.1.18"
+    "styled-components": "^6.3.10"
   },
   "devDependencies": {
     "@sanity/eslint-config-studio": "^6.0.0",

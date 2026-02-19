@@ -204,6 +204,7 @@ if ENVIRONMENT == "stg":
                 "https://hit8.io",
                 "https://hit8.pages.dev",
                 "https://main-staging.hit8.pages.dev",
+                "https://iter8.hit8.io",
             ],
             "LANGFUSE_ENABLED": False,
         }
@@ -220,6 +221,7 @@ if ENVIRONMENT == "prd":
                 "https://www.hit8.io",
                 "https://hit8.io",
                 "https://hit8.pages.dev",
+                "https://iter8.hit8.io",
             ],
             "LANGFUSE_ENABLED": False,
         }

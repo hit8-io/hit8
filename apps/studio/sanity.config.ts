@@ -1,3 +1,6 @@
+// Import setup first to ensure React is available globally during build
+import './setup-react'
+
 import {defineConfig} from 'sanity'
 import {structureTool} from 'sanity/structure'
 import {visionTool} from '@sanity/vision'
