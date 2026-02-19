@@ -115,6 +115,30 @@ runs:
         scw config set default-region="fr-par"
 
         ENV_SUFFIX=${{ inputs.environment == 'production' && '-prd' || '-stg' }}
+        
+        # Verify Doppler token secret exists and has a version
+        SECRET_NAME="doppler-token${ENV_SUFFIX}"
+        SECRET_JSON=$(scw secret secret list name="$SECRET_NAME" -o json || echo "[]")
+        SECRET_ID=$(echo "$SECRET_JSON" | jq -r '.[0].id // empty')
+        if [ -z "$SECRET_ID" ] || [ "$SECRET_ID" = "null" ]; then
+          echo "❌ ERROR: Secret '$SECRET_NAME' not found"
+          echo "Available secrets:"
+          scw secret secret list -o json | jq -r '.[].name' || true
+          exit 1
+        fi
+        
+        SECRET_VERSIONS=$(scw secret version list secret-id="$SECRET_ID" -o json || echo "[]")
+        VERSION_COUNT=$(echo "$SECRET_VERSIONS" | jq 'length')
+        if [ "$VERSION_COUNT" -eq 0 ]; then
+          echo "⚠️  WARNING: Secret '$SECRET_NAME' exists but has no versions"
+          echo "The container will fail to start. Add a version with:"
+          echo "  scw secret secret add-version $SECRET_ID data=<doppler-token>"
+          echo ""
+          echo "Continuing deployment anyway (will fail health check)..."
+        else
+          echo "✅ Secret '$SECRET_NAME' has $VERSION_COUNT version(s)"
+        fi
+        
         CONTAINER_JSON=$(scw container container list name="hit8-api${ENV_SUFFIX}" -o json)
         CONTAINER_ID=$(echo "$CONTAINER_JSON" | jq -r '.[0].id')
         if [ "$CONTAINER_ID" = "null" ] || [ -z "$CONTAINER_ID" ]; then
@@ -177,4 +201,12 @@ runs:
         echo "❌ Health check failed after $MAX_ATTEMPTS attempts"
         echo "Final container status:"
         scw container container get "$CONTAINER_ID" -o json | jq '{status, domain_name, registry_image, port}'
+        echo ""
+        echo "Troubleshooting:"
+        echo "1. Check if the Scaleway secret has a value:"
+        echo "   scw secret secret list | grep doppler-token"
+        echo "2. If secret exists but has no version, add one:"
+        echo "   scw secret secret add-version <secret-id> data=<doppler-token>"
+        echo "3. Check container logs (if available):"
+        echo "   scw container container logs $CONTAINER_ID"
         exit 1
