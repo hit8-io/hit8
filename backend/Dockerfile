@@ -1,22 +1,25 @@
 FROM python:3.11-slim
 
-# Install build dependencies (gnupg required for Doppler CLI signature verification)
+# Install build dependencies and Doppler CLI via apt (recommended method)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     gcc \
     libffi-dev \
     libssl-dev \
     curl \
+    apt-transport-https \
+    ca-certificates \
     gnupg \
     jq \
     pandoc \
+    && curl -sLf --retry 3 --tlsv1.2 --proto "=https" 'https://packages.doppler.com/public/cli/gpg.DE2A7741A397C129.key' | gpg --dearmor -o /usr/share/keyrings/doppler-archive-keyring.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/doppler-archive-keyring.gpg] https://packages.doppler.com/public/cli/deb/debian any-version main" | tee /etc/apt/sources.list.d/doppler-cli.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends doppler \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv (Python package manager)
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Install Doppler CLI (requires gnupg for signature verification)
-RUN curl -Ls --tlsv1.2 --proto "=https" --retry 3 https://cli.doppler.com/install.sh | sh
 
 ENV PATH="/root/.local/bin:/root/.cargo/bin:$PATH"
 
