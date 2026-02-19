@@ -144,19 +144,37 @@ runs:
         CONTAINER_ID=$(echo "$CONTAINER_JSON" | jq -r '.[0].id')
         CONTAINER_DETAIL=$(scw container container get "$CONTAINER_ID" -o json)
         DOMAIN=$(echo "$CONTAINER_DETAIL" | jq -r '.domain_name')
+        STATUS=$(echo "$CONTAINER_DETAIL" | jq -r '.status')
+        echo "Container Status: $STATUS"
+        echo "Container Domain: $DOMAIN"
         URL="https://${DOMAIN}/health"
         echo "Health check URL: $URL"
         echo "Waiting 60s for deployment (cold start can be slow when MinScale=0)..."
         sleep 60
         MAX_ATTEMPTS=10
         for i in $(seq 1 $MAX_ATTEMPTS); do
+          # Try health endpoint
           HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$URL" || echo "000")
           if [ "$HTTP_CODE" = "200" ]; then
             echo "✅ Health check passed: $URL (HTTP $HTTP_CODE)"
             exit 0
           fi
-          echo "Attempt $i/$MAX_ATTEMPTS failed (HTTP $HTTP_CODE), retrying in 15s..."
+          # If 404, try other paths to diagnose
+          if [ "$HTTP_CODE" = "404" ]; then
+            ROOT_CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://${DOMAIN}/" || echo "000")
+            DOCS_CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://${DOMAIN}/docs" || echo "000")
+            VERSION_CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://${DOMAIN}/version" || echo "000")
+            echo "Attempt $i/$MAX_ATTEMPTS: /health=$HTTP_CODE, /=${ROOT_CODE}, /docs=${DOCS_CODE}, /version=${VERSION_CODE}"
+            # If we get 200 on any path, app is running but /health route might be wrong
+            if [ "$ROOT_CODE" = "200" ] || [ "$DOCS_CODE" = "200" ] || [ "$VERSION_CODE" = "200" ]; then
+              echo "⚠️ App is responding but /health returns 404 - checking route registration"
+            fi
+          else
+            echo "Attempt $i/$MAX_ATTEMPTS failed (HTTP $HTTP_CODE), retrying in 15s..."
+          fi
           sleep 15
         done
         echo "❌ Health check failed after $MAX_ATTEMPTS attempts"
+        echo "Final container status:"
+        scw container container get "$CONTAINER_ID" -o json | jq '{status, domain_name, registry_image, port}'
         exit 1

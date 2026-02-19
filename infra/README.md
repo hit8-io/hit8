@@ -41,9 +41,29 @@ Variables are defined in Terraform with **UPPERCASE** names. Doppler should expo
 | `GCP_REGION` / `GCP_ZONE`  | Region/zone (defaults set)     | Optional       |
 | `SERVICE_NAME`, `SECRET_NAME`, `ARTIFACT_*`, `IMAGE_TAG` | GCP service/image config | Optional |
 | `SCW_PROJECT_ID`           | Scaleway project ID (UUID)     | Sensitive      |
+| `SCW_SECRET_KEY`           | Scaleway API secret key (containers use it to fetch Doppler token from Secret Manager) | Sensitive      |
 | `SCW_PRD_DB_PWD`           | Production RDB password       | Sensitive      |
+| `DOPPLER_PROJECT`         | Doppler project name (Scaleway; default: hit8) | Optional |
 | `DOPPLER_SERVICE_TOKENS`   | Map `prd`/`stg` → Doppler tokens for containers | Sensitive |
 | `CONTAINER_IMAGE`          | Container image tag (Scaleway)| Optional       |
+
+**GCP Secret Manager – Doppler tokens:** Cloud Run and the report job use `DOPPLER_TOKEN` (not the full secrets JSON). Terraform creates secrets `doppler-token-prd` and `doppler-token-stg`. Populate them with the Doppler service token string (one per environment), e.g.:
+
+```bash
+echo -n "dp.st.prd.xxxx" | gcloud secrets versions add doppler-token-prd --data-file=-
+echo -n "dp.st.stg.xxxx" | gcloud secrets versions add doppler-token-stg --data-file=-
+```
+
+**Scaleway Secret Manager – Doppler tokens:** Terraform creates secrets `doppler-token-prd` and `doppler-token-stg` in Scaleway Secret Manager (same pattern as GCP). The Doppler token is **not** in Terraform. Populate each secret via Console (Secret Manager → secret → Add version) or CLI after apply:
+
+```bash
+# Create a version with the Doppler token (opaque secret: use key "data")
+echo -n 'dp.st.prd.xxxx' | base64
+# In Console: paste the token as the secret value; or via CLI:
+scw secret secret version create <secret-id> data="$(echo -n 'dp.st.prd.xxxx' | base64)" region=fr-par
+```
+
+Containers fetch the token at startup via the [Secret Manager API](https://www.scaleway.com/en/developers/api/secret-manager/#path-secrets-allow-a-product-to-use-the-secret) using `SCW_SECRET_KEY` (passed as a secret env var so the container can authenticate). Ensure the API key has Secret Manager read permission.
 
 Set in Doppler (with `TF_VAR_` prefix), e.g.:
 

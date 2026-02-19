@@ -3,7 +3,6 @@ Unit tests for configuration management (config.py).
 """
 from __future__ import annotations
 
-import json
 import os
 from pathlib import Path
 from unittest.mock import patch, mock_open, MagicMock
@@ -14,7 +13,6 @@ from pydantic import ValidationError
 
 from app.config import (
     Settings,
-    _load_doppler_secrets,
     _load_yaml_config,
     get_settings,
 )
@@ -32,69 +30,6 @@ def minimal_env_vars():
         "VERTEX_SERVICE_ACCOUNT": '{"project_id": "test", "type": "service_account"}',
         "CORS_ALLOW_ORIGINS": '["http://localhost:5173"]',
     }
-
-
-class TestLoadDopplerSecrets:
-    """Tests for _load_doppler_secrets function."""
-    
-    def test_load_doppler_secrets_sets_env_vars(self):
-        """Test that Doppler secrets are loaded into environment."""
-        secrets = {"TEST_KEY": "test_value", "ANOTHER_KEY": "another_value"}
-        os.environ["DOPPLER_SECRETS_JSON"] = json.dumps(secrets)
-        # Ensure keys don't exist
-        os.environ.pop("TEST_KEY", None)
-        os.environ.pop("ANOTHER_KEY", None)
-        
-        _load_doppler_secrets()
-        
-        assert os.environ["TEST_KEY"] == "test_value"
-        assert os.environ["ANOTHER_KEY"] == "another_value"
-        
-        # Cleanup
-        os.environ.pop("TEST_KEY", None)
-        os.environ.pop("ANOTHER_KEY", None)
-        os.environ.pop("DOPPLER_SECRETS_JSON", None)
-    
-    def test_load_doppler_secrets_does_not_override_existing(self):
-        """Test that existing env vars are not overridden."""
-        os.environ["EXISTING_KEY"] = "existing_value"
-        secrets = {"EXISTING_KEY": "new_value", "NEW_KEY": "new_value"}
-        os.environ["DOPPLER_SECRETS_JSON"] = json.dumps(secrets)
-        
-        _load_doppler_secrets()
-        
-        assert os.environ["EXISTING_KEY"] == "existing_value"  # Not overridden
-        assert os.environ["NEW_KEY"] == "new_value"  # New key is set
-        
-        # Cleanup
-        os.environ.pop("EXISTING_KEY", None)
-        os.environ.pop("NEW_KEY", None)
-        os.environ.pop("DOPPLER_SECRETS_JSON", None)
-    
-    def test_load_doppler_secrets_skips_if_not_set(self):
-        """Test that function returns early if DOPPLER_SECRETS_JSON is not set."""
-        os.environ.pop("DOPPLER_SECRETS_JSON", None)
-        
-        # Should not raise any errors
-        _load_doppler_secrets()
-    
-    def test_load_doppler_secrets_handles_invalid_json(self):
-        """Test that invalid JSON raises an error."""
-        os.environ["DOPPLER_SECRETS_JSON"] = "invalid json"
-        
-        with pytest.raises(json.JSONDecodeError):
-            _load_doppler_secrets()
-        
-        os.environ.pop("DOPPLER_SECRETS_JSON", None)
-    
-    def test_load_doppler_secrets_handles_empty_json(self):
-        """Test that empty JSON object is handled."""
-        os.environ["DOPPLER_SECRETS_JSON"] = "{}"
-        
-        _load_doppler_secrets()
-        
-        # Should not raise any errors
-        os.environ.pop("DOPPLER_SECRETS_JSON", None)
 
 
 class TestLoadYamlConfig:

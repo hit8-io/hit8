@@ -463,9 +463,8 @@ graph TB
 
 **Secrets Management:**
 
-- Doppler secrets stored in GCP Secret Manager
-- Secrets injected as `DOPPLER_SECRETS_JSON` environment variable
-- Backend parses JSON and loads into environment at startup
+- Doppler token stored in GCP Secret Manager; container runs under `doppler run` to inject secrets at runtime
+- Scaleway: token in Secret Manager, container fetches via API at startup then runs `doppler run`
 
 **Database:**
 

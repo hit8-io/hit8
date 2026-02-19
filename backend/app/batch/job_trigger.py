@@ -27,7 +27,7 @@ def _get_environment_suffix(environment: str | None = None) -> str:
         Environment suffix: "-prd", "-stg", or "" for dev.
     """
     if environment is None:
-        # Import settings lazily to avoid loading before DOPPLER_SECRETS_JSON is available
+        # Import settings lazily to avoid loading before env is fully set
         from app.config import settings
         environment = settings.environment
     
@@ -45,7 +45,7 @@ def _get_job_location() -> str:
     Returns:
         Location string (e.g., "europe-west1").
     """
-    # Import lazily to avoid loading settings before DOPPLER_SECRETS_JSON is available
+    # Import lazily to avoid loading settings before env is fully set
     from app.flows.common import _get_first_available_llm_config
     from app.config import settings
     
@@ -71,7 +71,7 @@ def _build_job_name(environment: str | None = None) -> str:
     Returns:
         Full job name: projects/{project}/locations/{location}/jobs/hit8-report-job{suffix}
     """
-    # Import settings lazily to avoid loading before DOPPLER_SECRETS_JSON is available
+    # Import settings lazily to avoid loading before env is fully set
     from app.config import settings
     
     suffix = _get_environment_suffix(environment)

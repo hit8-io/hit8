@@ -109,33 +109,7 @@ gcloud run services describe hit8-api-prd --region=europe-west1 \
   --format="value(spec.template.spec.containers[0].env)"
 ```
 
-**Backend Secret Parsing:**
-- Check `DOPPLER_SECRETS_JSON` is set in Cloud Run
-- Verify JSON parsing in [`main.py`](backend/app/main.py)
-- Check logs for JSON parsing errors
-
-#### Issue: Invalid JSON in DOPPLER_SECRETS_JSON
-
-**Symptoms:**
-- Backend starts but secrets not available
-- Configuration errors
-- Silent failure in secret parsing
-
-**Solutions:**
-
-**Verify JSON Format:**
-```bash
-# Check secret JSON is valid
-gcloud secrets versions access latest \
-  --secret=doppler-hit8-prd \
-  --project=hit8-poc | jq .
-# For staging use --secret=doppler-hit8-stg
-```
-
-**Check Secret Parsing:**
-- Review [`main.py`](backend/app/main.py) secret parsing logic
-- Add logging to debug JSON parsing
-- Verify JSON structure matches expected format
+**Backend secrets:** Containers use `DOPPLER_TOKEN` and run under `doppler run`. Check that Cloud Run has `DOPPLER_TOKEN` from Secret Manager (doppler-token-prd / doppler-token-stg) and that the token is valid in Doppler.
 
 ### CORS Errors
 

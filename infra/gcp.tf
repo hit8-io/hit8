@@ -10,14 +10,14 @@ locals {
 
   envs = {
     prd = {
-      suffix    = "-prd"
-      host      = "api-prd"
-      secret_id = "doppler-hit8-prd"
+      suffix         = "-prd"
+      host           = "api-prd"
+      token_secret_id = "doppler-token-prd"
     }
     stg = {
-      suffix    = "-stg"
-      host      = "api-stg"
-      secret_id = "doppler-hit8-stg"
+      suffix         = "-stg"
+      host           = "api-stg"
+      token_secret_id = "doppler-token-stg"
     }
   }
 }
@@ -296,30 +296,41 @@ resource "google_service_account" "api_runner" {
   description  = "Dedicated identity for the API service"
 }
 
-# Secrets
-# Ensure var.secret_name == "doppler-hit8-prd"
-resource "google_secret_manager_secret" "doppler_secrets" {
-  secret_id = var.SECRET_NAME 
-  replication {
-    auto {} 
-  }
-}
-
-resource "google_secret_manager_secret" "doppler_stg" {
-  secret_id   = "doppler-hit8-stg"
+# Doppler token secrets: store only the Doppler service token (not full JSON).
+# Containers use `doppler run` to fetch secrets at runtime. Populate with:
+#   echo -n "<doppler-service-token>" | gcloud secrets versions add doppler-token-prd --data-file=-
+resource "google_secret_manager_secret" "doppler_token_prd" {
+  secret_id = "doppler-token-prd"
   replication {
     auto {}
   }
 }
 
-# Grant Secret Access (Corrected to refer to the specific resources created above)
-resource "google_secret_manager_secret_iam_member" "api_secret_access" {
+resource "google_secret_manager_secret" "doppler_token_stg" {
+  secret_id = "doppler-token-stg"
+  replication {
+    auto {}
+  }
+}
+
+# Initial secret version so "latest" exists; Cloud Run requires it. Replace with real token:
+#   echo -n "<doppler-service-token>" | gcloud secrets versions add doppler-token-prd --data-file=-
+#   echo -n "<doppler-service-token>" | gcloud secrets versions add doppler-token-stg --data-file=-
+resource "google_secret_manager_secret_version" "doppler_token_prd" {
+  secret      = google_secret_manager_secret.doppler_token_prd.id
+  secret_data = "replace-with-real-doppler-token"
+}
+
+resource "google_secret_manager_secret_version" "doppler_token_stg" {
+  secret      = google_secret_manager_secret.doppler_token_stg.id
+  secret_data = "replace-with-real-doppler-token"
+}
+
+# Grant Cloud Run service account access to Doppler token secrets
+resource "google_secret_manager_secret_iam_member" "api_doppler_token_access" {
   for_each = local.envs
 
-  # Logic: If key is prd, use the resource "doppler_secrets". If stg, use "doppler_stg"
-  # This prevents "unknown resource" errors if you try to reference by string ID alone
-  secret_id = each.key == "prd" ? google_secret_manager_secret.doppler_secrets.id : google_secret_manager_secret.doppler_stg.id
-  
+  secret_id = each.key == "prd" ? google_secret_manager_secret.doppler_token_prd.id : google_secret_manager_secret.doppler_token_stg.id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.api_runner.email}"
 }
@@ -373,10 +384,20 @@ resource "google_cloud_run_v2_service" "api" {
       }
 
       env {
-        name = "DOPPLER_SECRETS_JSON"
+        name  = "DOPPLER_PROJECT"
+        value = "hit8"
+      }
+
+      env {
+        name  = "DOPPLER_CONFIG"
+        value = each.key # prd / stg
+      }
+
+      env {
+        name = "DOPPLER_TOKEN"
         value_source {
           secret_key_ref {
-            secret  = each.value.secret_id
+            secret  = each.value.token_secret_id
             version = "latest"
           }
         }
@@ -415,7 +436,7 @@ resource "google_cloud_run_v2_service" "api" {
 
   depends_on = [
     google_compute_router_nat.nat,
-    google_secret_manager_secret_iam_member.api_secret_access
+    google_secret_manager_secret_iam_member.api_doppler_token_access
   ]
 }
 
@@ -495,12 +516,21 @@ resource "google_cloud_run_v2_job" "report_job" {
           value = each.key # "prd" or "stg"
         }
 
-        # DYNAMIC SECRET
         env {
-          name = "DOPPLER_SECRETS_JSON"
+          name  = "DOPPLER_PROJECT"
+          value = "hit8"
+        }
+
+        env {
+          name  = "DOPPLER_CONFIG"
+          value = each.key # prd / stg
+        }
+
+        env {
+          name = "DOPPLER_TOKEN"
           value_source {
             secret_key_ref {
-              secret  = each.value.secret_id # doppler-hit8-prd / -stg
+              secret  = each.value.token_secret_id
               version = "latest"
             }
           }
@@ -524,7 +554,7 @@ resource "google_cloud_run_v2_job" "report_job" {
   }
   
   # Depend on the IAM permissions for the secrets
-  depends_on = [google_secret_manager_secret_iam_member.api_secret_access]
+  depends_on = [google_secret_manager_secret_iam_member.api_doppler_token_access]
 }
 
 # ==============================================================================

@@ -116,7 +116,7 @@ See [supabase/migrate.md](../supabase/migrate.md) for local development workflow
 
 Cloud Run services **hit8-api-stg** and **hit8-api-prd** are created and configured in [infra/gcp.tf](infra/gcp.tf):
 
-- Image (placeholder), ENVIRONMENT (`stg` / `prd`), `DOPPLER_SECRETS_JSON`, VPC, scaling (0–10), resources (2 CPU, 2Gi), timeout 300s
+- Image (placeholder), ENVIRONMENT (`stg` / `prd`), `DOPPLER_TOKEN` (from Secret Manager), VPC, scaling (0–10), resources (2 CPU, 2Gi), timeout 300s
 
 To change env vars, secrets, VPC, or scaling: update Terraform and run `terraform apply`. The CI workflow only runs `gcloud run services update ... --image`, so it does not override Terraform-managed settings.
 

@@ -1,14 +1,16 @@
 FROM python:3.11-slim
 
-# Install build dependencies, install packages, then remove build dependencies in one layer
+# Install build dependencies, Doppler CLI, uv, then remove build dependencies in one layer
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     gcc \
     libffi-dev \
     libssl-dev \
     curl \
+    jq \
     pandoc \
     && curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && curl -Ls --tlsv1.2 --proto "=https" --retry 3 https://cli.doppler.com/install.sh | sh \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PATH="/root/.local/bin:/root/.cargo/bin:$PATH"
@@ -44,11 +46,14 @@ LABEL version=$VERSION
 RUN useradd -m appuser && \
     chown -R appuser /app
 
+# Entrypoint: when DOPPLER_TOKEN is set, run command under `doppler run` for secret injection
+RUN chmod +x /app/entrypoint.sh
+
 # Switch to non-root user
 USER appuser
 
-# Cloud Run sets PORT environment variable automatically
-# Default to 8080 if not set (for local development)
+# Cloud Run / Scaleway set PORT automatically; default 8080 for local dev
 ENV PORT=8080
 EXPOSE 8080
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["/bin/sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}"]

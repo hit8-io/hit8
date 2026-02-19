@@ -26,9 +26,9 @@ variable "SERVICE_NAME" {
 }
 
 variable "SECRET_NAME" {
-  description = "Secret Manager secret name"
+  description = "Secret Manager secret name (legacy; Doppler tokens use doppler-token-prd/stg)"
   type        = string
-  default     = "doppler-hit8-prd"
+  default     = "doppler-token-prd"
 }
 
 variable "ARTIFACT_REGISTRY_REPOSITORY" {

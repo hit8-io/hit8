@@ -64,57 +64,7 @@ doppler run -- npm run dev
 
 ### Secret Injection
 
-**Cloud Run Configuration:**
-```yaml
---set-secrets="DOPPLER_SECRETS_JSON=projects/617962194338/secrets/doppler-hit8-prd:latest"
-```
-
-**Runtime Parsing:**
-The backend parses the Doppler secrets JSON at startup in [`main.py`](backend/app/main.py):
-
-```python
-if doppler_secrets_json := os.getenv("DOPPLER_SECRETS_JSON"):
-    try:
-        secrets = json.loads(doppler_secrets_json)
-        # Set individual environment variables from Doppler secrets
-        for key, value in secrets.items():
-            if key not in os.environ:  # Don't override existing env vars
-                os.environ[key] = str(value)
-    except json.JSONDecodeError:
-        pass  # Invalid JSON, continue with existing env vars
-```
-
-**Process:**
-1. Cloud Run injects `DOPPLER_SECRETS_JSON` from Secret Manager
-2. Backend parses JSON at application startup
-3. Individual secrets set as environment variables
-4. Existing environment variables not overridden (allows local overrides)
-
-## Secret Injection
-
-### Backend Secret Injection
-
-**Location**: [`backend/app/main.py`](backend/app/main.py)
-
-**Process:**
-1. Check for `DOPPLER_SECRETS_JSON` environment variable
-2. Parse JSON string to dictionary
-3. Set each secret as environment variable
-4. Continue with normal application startup
-
-**Code:**
-```python
-# Parse Doppler secrets JSON if provided (for Cloud Run)
-if doppler_secrets_json := os.getenv("DOPPLER_SECRETS_JSON"):
-    try:
-        secrets = json.loads(doppler_secrets_json)
-        # Set individual environment variables from Doppler secrets
-        for key, value in secrets.items():
-            if key not in os.environ:  # Don't override existing env vars
-                os.environ[key] = str(value)
-    except json.JSONDecodeError:
-        pass  # Invalid JSON, continue with existing env vars
-```
+**Cloud Run / Scaleway:** Containers receive `DOPPLER_TOKEN` (from GCP Secret Manager or Scaleway Secret Manager). The image entrypoint runs the process under `doppler run`, which fetches secrets from Doppler at runtime and injects them as environment variables. No JSON parsing in the app; see [`backend/entrypoint.sh`](backend/entrypoint.sh).
 
 **Benefits:**
 - Single secret (JSON) instead of multiple individual secrets
@@ -324,11 +274,6 @@ export VITE_API_URL="http://localhost:8000"
 4. **Local Overrides**: Allowed for development (via environment variables)
 
 ### Error Handling
-
-**Invalid JSON:**
-- Backend silently continues if `DOPPLER_SECRETS_JSON` is invalid
-- Falls back to existing environment variables
-- Logs should be checked for secret-related errors
 
 **Missing Secrets:**
 - Application will fail to start if required secrets are missing

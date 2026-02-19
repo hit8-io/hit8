@@ -104,8 +104,7 @@ The `_redirects` file in `public/` ensures all routes redirect to `index.html`:
 
 **Backend Environment Variables:**
 - `ENVIRONMENT=prod`: Sets production mode
-- `DOPPLER_SECRETS_JSON`: Injected from GCP Secret Manager
-- Other secrets: Parsed from `DOPPLER_SECRETS_JSON` in [`main.py`](backend/app/main.py)
+- `DOPPLER_TOKEN`: Injected from GCP Secret Manager; process runs under `doppler run` so all secrets come from Doppler at runtime
 
 **Frontend Environment Variables:**
 Configured in Cloudflare Pages dashboard:

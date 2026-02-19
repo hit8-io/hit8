@@ -10,7 +10,6 @@ from typing import Any
 
 import structlog
 from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
-import json
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 from app import constants
@@ -37,40 +36,6 @@ class LLMProviderConfig(BaseModel):
     OLLAMA_BASE_URL: str | None = None
     OLLAMA_NUM_CTX: int | None = None
     OLLAMA_EDITOR_NODE_MAX_OUTPUT_TOKENS: int | None = None
-
-
-def _load_doppler_secrets() -> None:
-    """Load Doppler secrets into environment variables (for Cloud Run).
-    
-    Reads secrets from DOPPLER_SECRETS_JSON and sets them as individual
-    environment variables. Existing environment variables are never overridden.
-    """
-    doppler_secrets_json = os.getenv("DOPPLER_SECRETS_JSON")
-    if not doppler_secrets_json:
-        logger.warning(
-            "doppler_secrets_missing",
-            environment=os.getenv("ENVIRONMENT", "unknown"),
-        )
-        return
-    
-    try:
-        secrets = json.loads(doppler_secrets_json)
-        logger.info(
-            "doppler_secrets_loaded",
-            secret_count=len(secrets),
-            environment=os.getenv("ENVIRONMENT", "unknown"),
-        )
-        
-        for key, value in secrets.items():
-            if key not in os.environ:
-                os.environ[key] = str(value)
-    except json.JSONDecodeError as e:
-        logger.error(
-            "doppler_secrets_parse_error",
-            error=str(e),
-            environment=os.getenv("ENVIRONMENT", "unknown"),
-        )
-        raise
 
 
 def _load_constants_config(settings_fields: set[str] | None = None) -> dict[str, Any]:
@@ -300,20 +265,10 @@ class Settings(BaseSettings):
     def load(cls) -> "Settings":
         """Load settings from constants and environment variables.
         
-        Loading order:
-        1. Doppler secrets (sets env vars)
-        2. Constants config (defaults + environment-specific) via custom source
-        3. Environment variables (override constants)
-        
-        All configuration uses uppercase keys.
+        Secrets are injected at runtime via doppler run (DOPPLER_TOKEN from GCP/Scaleway
+        Secret Manager). Loading order: constants (defaults + env-specific), then env vars.
         Pydantic will raise ValidationError if required Settings fields are missing.
         """
-        # 1. Load Doppler secrets first (sets env vars)
-        _load_doppler_secrets()
-        
-        # 2. Create Settings: Pydantic will use custom sources
-        # All configuration uses uppercase keys
-        # If Settings fields are missing from CONSTANTS, Pydantic will raise ValidationError
         return cls()
 
 

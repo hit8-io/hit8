@@ -282,6 +282,30 @@ resource "scaleway_instance_server" "prd_redis" {
 }
 
 # ==============================================================================
+# 4b. SECRET MANAGER (Doppler token for containers)
+# ==============================================================================
+# Same pattern as GCP: store only the Doppler service token in Secret Manager.
+# No secret value in Terraform. Populate via Console or CLI after apply:
+#   scw secret secret version create <secret-id> data="$(echo -n 'dp.st.xxx' | base64)" region=fr-par
+# Containers fetch the token at startup via the Secret Manager API (using
+# SCW credentials); see backend/entrypoint.sh and
+# https://www.scaleway.com/en/developers/api/secret-manager/#path-secrets-allow-a-product-to-use-the-secret
+
+resource "scaleway_secret" "doppler_token_prd" {
+  name        = "doppler-token-prd"
+  description = "Doppler service token for hit8-api-prd (doppler run)"
+  project_id  = var.SCW_PROJECT_ID
+  region      = var.SCW_REGION
+}
+
+resource "scaleway_secret" "doppler_token_stg" {
+  name        = "doppler-token-stg"
+  description = "Doppler service token for hit8-api-stg (doppler run)"
+  project_id  = var.SCW_PROJECT_ID
+  region      = var.SCW_REGION
+}
+
+# ==============================================================================
 # 5. COMPUTE (Serverless Containers - API)
 # ==============================================================================
 
@@ -310,10 +334,19 @@ resource "scaleway_container" "api_prd" {
   port         = 8080
 
   environment_variables = {
-    "ENVIRONMENT"   = "prd"
-    "DOPPLER_TOKEN" = var.DOPPLER_SERVICE_TOKENS["prd"]
-    "DB_HOST"       = scaleway_rdb_instance.prd_db.private_network[0].ip
-    "REDIS_HOST"    = local.prd_redis_private_ip
+    "ENVIRONMENT"               = "prd"
+    "DOPPLER_PROJECT"           = var.DOPPLER_PROJECT
+    "DOPPLER_CONFIG"            = "prd"
+    "DOPPLER_TOKEN_SECRET_ID"   = scaleway_secret.doppler_token_prd.id
+    "SCALEWAY_SECRET_REGION"    = var.SCW_REGION
+    "DB_HOST"                   = scaleway_rdb_instance.prd_db.private_network[0].ip
+    "REDIS_HOST"                = local.prd_redis_private_ip
+  }
+
+  # Container uses these to call Secret Manager API and fetch DOPPLER_TOKEN at startup.
+  # SCW_SECRET_KEY is reserved by Scaleway; use SCALEWAY_SECRET_KEY instead.
+  secret_environment_variables = {
+    "SCALEWAY_SECRET_KEY" = var.SCW_SECRET_KEY
   }
 }
 
@@ -331,11 +364,18 @@ resource "scaleway_container" "api_stg" {
   port         = 8080
 
   environment_variables = {
-    "ENVIRONMENT"   = "stg"
-    "DOPPLER_TOKEN" = var.DOPPLER_SERVICE_TOKENS["stg"]
-    "DB_HOST"       = local.stg_vm_private_ip
-    "DB_PORT"       = "6432"
-    "REDIS_HOST"    = local.stg_vm_private_ip
+    "ENVIRONMENT"               = "stg"
+    "DOPPLER_PROJECT"           = var.DOPPLER_PROJECT
+    "DOPPLER_CONFIG"            = "stg"
+    "DOPPLER_TOKEN_SECRET_ID"   = scaleway_secret.doppler_token_stg.id
+    "SCALEWAY_SECRET_REGION"    = var.SCW_REGION
+    "DB_HOST"                   = local.stg_vm_private_ip
+    "DB_PORT"                   = "6432"
+    "REDIS_HOST"                = local.stg_vm_private_ip
+  }
+
+  secret_environment_variables = {
+    "SCALEWAY_SECRET_KEY" = var.SCW_SECRET_KEY
   }
 }
 
