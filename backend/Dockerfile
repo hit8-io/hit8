@@ -70,7 +70,12 @@ CMD /bin/sh -c 'if [ -z "${DOPPLER_TOKEN}" ] && [ -n "${DOPPLER_TOKEN_SECRET_ID}
   API_BODY=$(echo "$API_RESPONSE" | sed "$d"); \
   if [ "$HTTP_CODE" = "200" ]; then \
     ENCODED=$(echo "$API_BODY" | jq -r ".opaque_data // .data // empty" 2>/dev/null || echo "$API_BODY"); \
-    DOPPLER_TOKEN=$(echo "$ENCODED" | tr -d "\\n\\r " | base64 -d 2>/dev/null || echo "$ENCODED"); \
+    DECODED=$(echo "$ENCODED" | base64 -d 2>/dev/null); \
+    if [ $? -eq 0 ] && [ -n "$DECODED" ]; then \
+      DOPPLER_TOKEN=$(echo "$DECODED" | xargs); \
+    else \
+      DOPPLER_TOKEN="$ENCODED"; \
+    fi; \
     export DOPPLER_TOKEN; \
   fi; \
 fi; \
