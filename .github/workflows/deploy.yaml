@@ -149,6 +149,9 @@ jobs:
         with:
           name: frontends
 
+      - name: Install pnpm
+        run: npm install -g pnpm
+
       - uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_PAGES_TOKEN }}
@@ -164,6 +167,9 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: dist-site
+
+      - name: Install pnpm
+        run: npm install -g pnpm
 
       - uses: cloudflare/wrangler-action@v3
         with:
@@ -207,6 +213,9 @@ jobs:
         with:
           name: frontends
 
+      - name: Install pnpm
+        run: npm install -g pnpm
+
       - name: Deploy iter8.hit8.io
         uses: cloudflare/wrangler-action@v3
         with:
@@ -232,6 +241,9 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: dist-site
+
+      - name: Install pnpm
+        run: npm install -g pnpm
 
       - uses: cloudflare/wrangler-action@v3
         with:

@@ -1,4 +1,4 @@
-import { defineField, defineType, defineArrayMember } from 'sanity'
+import { defineField, defineType } from 'sanity'
 import { HomeIcon } from '@sanity/icons'
 
 export default defineType({
@@ -7,22 +7,11 @@ export default defineType({
   type: 'document',
   icon: HomeIcon,
   fields: [
-    defineField({
-      name: 'hero',
-      type: 'hero',
-      title: 'Hero Section',
-      validation: (rule) => rule.required(),
-    }),
+    defineField({ name: 'hero', type: 'hero' }),
     defineField({
       name: 'features',
       type: 'array',
-      title: 'Features',
-      of: [
-        defineArrayMember({
-          type: 'feature',
-        }),
-      ],
-      validation: (rule) => rule.required().min(1),
+      of: [{ type: 'feature' }],
     }),
   ],
 })
