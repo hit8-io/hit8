@@ -60,18 +60,21 @@ USER appuser
 # Cloud Run / Scaleway set PORT automatically; default 8080 for local dev
 ENV PORT=8080
 EXPOSE 8080
-# When DOPPLER_TOKEN is set (GCP/Scaleway), run under doppler.
-# Scaleway Secret Manager stores secrets base64-encoded and injects them as-is.
-# GCP Secret Manager injects decoded values.
-CMD /bin/sh -c 'if [ -n "${DOPPLER_TOKEN}" ]; then \
-  TOKEN="${DOPPLER_TOKEN}"; \
-  if ! echo "${TOKEN}" | grep -q "^dp\\."; then \
-    DECODED=$(echo "${TOKEN}" | tr -d "\\n\\r " | base64 -d 2>/dev/null); \
-    if [ $? -eq 0 ] && [ -n "${DECODED}" ] && echo "${DECODED}" | grep -q "^dp\\."; then \
-      TOKEN="${DECODED}"; \
-    fi; \
+# When DOPPLER_TOKEN is set (GCP), run under doppler.
+# For Scaleway, fetch token from Secret Manager API if DOPPLER_TOKEN_SECRET_ID is set.
+CMD /bin/sh -c 'if [ -z "${DOPPLER_TOKEN}" ] && [ -n "${DOPPLER_TOKEN_SECRET_ID}" ] && [ -n "${SCALEWAY_SECRET_KEY}" ]; then \
+  SECRET_UUID="${DOPPLER_TOKEN_SECRET_ID##*/}"; \
+  REGION="${SCALEWAY_SECRET_REGION:-fr-par}"; \
+  API_RESPONSE=$(curl -sS -w "\\n%{http_code}" -H "X-Auth-Token: ${SCALEWAY_SECRET_KEY}" "https://api.scaleway.com/secret-manager/v1beta1/regions/${REGION}/secrets/${SECRET_UUID}/versions/latest/access"); \
+  HTTP_CODE=$(echo "$API_RESPONSE" | tail -n1); \
+  API_BODY=$(echo "$API_RESPONSE" | sed "$d"); \
+  if [ "$HTTP_CODE" = "200" ]; then \
+    ENCODED=$(echo "$API_BODY" | jq -r ".opaque_data // .data // empty" 2>/dev/null || echo "$API_BODY"); \
+    DOPPLER_TOKEN=$(echo "$ENCODED" | tr -d "\\n\\r " | base64 -d 2>/dev/null || echo "$ENCODED"); \
+    export DOPPLER_TOKEN; \
   fi; \
-  export DOPPLER_TOKEN="${TOKEN}"; \
+fi; \
+if [ -n "${DOPPLER_TOKEN}" ]; then \
   exec doppler run -- uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}; \
 else \
   exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}; \

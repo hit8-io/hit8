@@ -173,9 +173,9 @@ runs:
         echo "Container Domain: $DOMAIN"
         URL="https://${DOMAIN}/health"
         echo "Health check URL: $URL"
-        echo "Waiting 60s for deployment (cold start can be slow when MinScale=0)..."
-        sleep 60
-        MAX_ATTEMPTS=10
+        echo "Waiting 30s for deployment (cold start can be slow when MinScale=0)..."
+        sleep 30
+        MAX_ATTEMPTS=3
         for i in $(seq 1 $MAX_ATTEMPTS); do
           # Try health endpoint
           HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$URL" || echo "000")
@@ -194,9 +194,11 @@ runs:
               echo "⚠️ App is responding but /health returns 404 - checking route registration"
             fi
           else
-            echo "Attempt $i/$MAX_ATTEMPTS failed (HTTP $HTTP_CODE), retrying in 15s..."
+            echo "Attempt $i/$MAX_ATTEMPTS failed (HTTP $HTTP_CODE), retrying in 10s..."
           fi
-          sleep 15
+          if [ $i -lt $MAX_ATTEMPTS ]; then
+            sleep 10
+          fi
         done
         echo "❌ Health check failed after $MAX_ATTEMPTS attempts"
         echo "Final container status:"
