@@ -72,11 +72,13 @@ CMD /bin/sh -c 'if [ -z "${DOPPLER_TOKEN}" ] && [ -n "${DOPPLER_TOKEN_SECRET_ID}
     ENCODED=$(echo "$API_BODY" | jq -r ".opaque_data // .data // empty" 2>/dev/null || echo "$API_BODY"); \
     DECODED=$(echo "$ENCODED" | base64 -d 2>/dev/null); \
     if [ $? -eq 0 ] && [ -n "$DECODED" ]; then \
-      DOPPLER_TOKEN=$(echo "$DECODED" | xargs); \
+      DOPPLER_TOKEN=$(printf "%s" "$DECODED" | tr -d '\n\r\t' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'); \
     else \
-      DOPPLER_TOKEN="$ENCODED"; \
+      DOPPLER_TOKEN=$(printf "%s" "$ENCODED" | tr -d '\n\r\t' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'); \
     fi; \
-    export DOPPLER_TOKEN; \
+    if [ -n "$DOPPLER_TOKEN" ]; then \
+      export DOPPLER_TOKEN; \
+    fi; \
   fi; \
 fi; \
 if [ -n "${DOPPLER_TOKEN}" ]; then \
