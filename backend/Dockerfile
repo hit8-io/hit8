@@ -1,17 +1,22 @@
 FROM python:3.11-slim
 
-# Install build dependencies, Doppler CLI, uv, then remove build dependencies in one layer
+# Install build dependencies (gnupg required for Doppler CLI signature verification)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     gcc \
     libffi-dev \
     libssl-dev \
     curl \
+    gnupg \
     jq \
     pandoc \
-    && curl -LsSf https://astral.sh/uv/install.sh | sh \
-    && curl -Ls --tlsv1.2 --proto "=https" --retry 3 https://cli.doppler.com/install.sh | sh \
     && rm -rf /var/lib/apt/lists/*
+
+# Install uv (Python package manager)
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install Doppler CLI (requires gnupg for signature verification)
+RUN curl -Ls --tlsv1.2 --proto "=https" --retry 3 https://cli.doppler.com/install.sh | sh
 
 ENV PATH="/root/.local/bin:/root/.cargo/bin:$PATH"
 
