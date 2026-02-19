@@ -1,10 +1,26 @@
+import { useEffect, useState } from 'react'
 import { 
   Infinity, Linkedin, ArrowRight, ChevronDown, Eye, ScanEye, 
   RefreshCw, GitBranch, Users, Fingerprint, Target, Trophy, 
   Database, BarChart3, Box, PackageCheck, Mail, Phone
-} from 'lucide-react';
+} from 'lucide-react'
+import { client } from '../lib/sanity'
 
-import { homeContent } from '../content/home';
+// Define the shape of your Sanity data
+interface HomeData {
+  hero: {
+    badge: string
+    headline: string
+    subHeadline: string
+    description: string
+  }
+  features: Array<{
+    _key?: string
+    title: string
+    description: string
+    icon: string
+  }>
+}
 
 const iconMap: Record<string, { bg: JSX.Element; fg: JSX.Element }> = {
   eye: { 
@@ -31,10 +47,86 @@ const iconMap: Record<string, { bg: JSX.Element; fg: JSX.Element }> = {
     bg: <Box className="w-24 h-24 text-white" />, 
     fg: <PackageCheck className="w-10 h-10 text-indigo-400 mb-4" /> 
   },
-};
+}
 
 export default function Home() {
-  const { hero, features } = homeContent;
+  const [data, setData] = useState<HomeData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    // Fetch the document with type 'home'
+    // Using [0] to get the first (and likely only) document
+    client.fetch(`*[_type == "home"][0]{
+      hero,
+      features
+    }`)
+    .then((result) => {
+      if (!result) {
+        setError('No home page content found in Sanity. Please create a Home document in Sanity Studio.')
+      } else {
+        setData(result)
+      }
+      setLoading(false)
+    })
+    .catch((err) => {
+      console.error('Error fetching Sanity data:', err)
+      const errorMessage = err.message || 'Unknown error'
+      if (errorMessage.includes('403') || errorMessage.includes('Forbidden')) {
+        setError('Access denied. Please check Sanity CORS settings and ensure the dataset is public.')
+      } else if (errorMessage.includes('CORS')) {
+        setError('CORS error. Please add http://localhost:* (or specific port) to your Sanity project CORS origins.')
+      } else {
+        setError(`Failed to load content: ${errorMessage}`)
+      }
+      setLoading(false)
+    })
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#020617] text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-xl mb-2">Loading Content...</div>
+          <div className="text-sm text-slate-400">Fetching from Sanity</div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-[#020617] text-white flex items-center justify-center px-4">
+        <div className="text-center max-w-2xl">
+          <div className="text-2xl font-bold mb-4 text-red-400">Error Loading Content</div>
+          <div className="text-slate-300 mb-4">{error}</div>
+          <div className="text-sm text-slate-500">
+            <p className="mb-2">To fix this:</p>
+            <ol className="list-decimal list-inside space-y-1 text-left">
+              <li>Go to <a href="https://www.sanity.io/manage" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">Sanity Manage</a></li>
+              <li>Select your project (95zjvqmu)</li>
+              <li>Go to API settings → CORS origins</li>
+              <li>Add <code className="bg-slate-800 px-1 rounded">http://localhost:*</code> (or specific port like <code className="bg-slate-800 px-1 rounded">http://localhost:5174</code>)</li>
+              <li>Ensure the dataset is set to "Public"</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!data) {
+    return (
+      <div className="min-h-screen bg-[#020617] text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-xl mb-2">No content found</div>
+          <div className="text-sm text-slate-400">Please create a Home document in Sanity Studio</div>
+        </div>
+      </div>
+    )
+  }
+
+  const { hero, features } = data
 
   return (
     <div className="bg-background text-slate-300 antialiased selection:bg-indigo-500/30 min-h-screen font-sans">
@@ -67,46 +159,52 @@ export default function Home() {
         </div>
       </nav>
 
-      {/* Hero */}
+      {/* Hero Section - Now Dynamic */}
       <header className="relative z-10 min-h-screen flex flex-col justify-center items-center text-center px-6 pt-20">
         <div className="max-w-4xl mx-auto space-y-8">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-indigo-500/30 bg-indigo-500/10 text-indigo-300 text-xs font-medium uppercase tracking-wider mb-4">
                 {hero.badge}
             </div>
+            
             <h1 className="text-5xl md:text-7xl font-bold text-white tracking-tight leading-[1.1]">
                 {hero.headline} <br />
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">{hero.subHeadline}</span>
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">
+                  {hero.subHeadline}
+                </span>
             </h1>
+            
             <p className="text-lg md:text-xl text-slate-400 max-w-2xl mx-auto leading-relaxed">
                 {hero.description}
             </p>
+
             <div className="pt-8 animate-bounce">
                 <ChevronDown className="w-8 h-8 text-slate-600" />
             </div>
         </div>
       </header>
 
-      {/* Features */}
+      {/* Features Section - Now Dynamic */}
       <section className="relative z-10 py-32 px-6">
         <div className="max-w-7xl mx-auto">
             <div className="mb-16">
                 <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">Why hit8?</h2>
                 <div className="h-1 w-20 bg-indigo-500 rounded-full"></div>
             </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {features.map((f: { title: string; description: string; icon: string }, i: number) => (
-                    <div key={i} className="group relative p-8 rounded-2xl bg-surface border border-white/5 hover:border-indigo-500/50 transition-all duration-500 hover:shadow-[0_0_30px_-5px_rgba(99,102,241,0.3)] overflow-hidden">
-                        <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
-                            {iconMap[f.icon]?.bg}
-                        </div>
-                        <div className="relative z-10 h-full flex flex-col justify-end min-h-[200px]">
-                            {iconMap[f.icon]?.fg}
-                            <h3 className="text-xl font-bold text-white mb-2">{f.title}</h3>
-                            <p className="text-slate-400 text-sm leading-relaxed max-h-0 opacity-0 group-hover:max-h-40 group-hover:opacity-100 transition-all duration-500 overflow-hidden">
-                                {f.description}
-                            </p>
-                        </div>
+                {features?.map((feature, idx) => (
+                   <div key={feature._key || idx} className="group relative p-8 rounded-2xl bg-surface border border-white/5 hover:border-indigo-500/50 transition-all duration-500 hover:shadow-[0_0_30px_-5px_rgba(99,102,241,0.3)] overflow-hidden">
+                    <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
+                        {iconMap[feature.icon]?.bg}
                     </div>
+                    <div className="relative z-10 h-full flex flex-col justify-end min-h-[200px]">
+                        {iconMap[feature.icon]?.fg}
+                        <h3 className="text-xl font-bold text-white mb-2">{feature.title}</h3>
+                        <p className="text-slate-400 text-sm leading-relaxed max-h-0 opacity-0 group-hover:max-h-40 group-hover:opacity-100 transition-all duration-500 overflow-hidden">
+                            {feature.description}
+                        </p>
+                    </div>
+                </div>
                 ))}
             </div>
         </div>
@@ -206,5 +304,5 @@ export default function Home() {
         </div>
       </footer>
     </div>
-  );
+  )
 }
