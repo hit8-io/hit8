@@ -67,7 +67,8 @@ CMD /bin/sh -c 'if [ -z "${DOPPLER_TOKEN}" ] && [ -n "${DOPPLER_TOKEN_SECRET_ID}
   REGION="${SCALEWAY_SECRET_REGION:-fr-par}"; \
   API_RESPONSE=$(curl -sS -w "\\n%{http_code}" -H "X-Auth-Token: ${SCALEWAY_SECRET_KEY}" "https://api.scaleway.com/secret-manager/v1beta1/regions/${REGION}/secrets/${SECRET_UUID}/versions/latest/access"); \
   HTTP_CODE=$(echo "$API_RESPONSE" | tail -n1); \
-  API_BODY=$(echo "$API_RESPONSE" | sed "$d"); \
+  LINES=$(echo "$API_RESPONSE" | wc -l); \
+  API_BODY=$(echo "$API_RESPONSE" | head -n $((LINES - 1))); \
   if [ "$HTTP_CODE" = "200" ]; then \
     ENCODED=$(echo "$API_BODY" | jq -r ".opaque_data // .data // empty" 2>/dev/null || echo "$API_BODY"); \
     DECODED=$(echo "$ENCODED" | base64 -d 2>/dev/null); \
