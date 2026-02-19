@@ -19,6 +19,9 @@ importers:
 
   apps/site:
     dependencies:
+      '@sanity/client':
+        specifier: ^7.15.0
+        version: 7.15.0(debug@4.4.3)
       lucide-react:
         specifier: ^0.562.0
         version: 0.562.0(react@19.2.4)
@@ -28,6 +31,9 @@ importers:
       react-dom:
         specifier: ^19.2.0
         version: 19.2.4(react@19.2.4)
+      react-router-dom:
+        specifier: ^6.30.3
+        version: 6.30.3(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
     devDependencies:
       '@eslint/js':
         specifier: ^9.39.1

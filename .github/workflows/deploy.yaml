@@ -97,7 +97,14 @@ jobs:
         run: |
           set -e
           pnpm turbo build --filter=site
+          if [ ! -d "apps/site/dist" ]; then
+            echo "Error: apps/site/dist directory not found after build"
+            ls -la apps/site/
+            exit 1
+          fi
           mv apps/site/dist dist-site
+          echo "Built site to dist-site directory"
+          ls -la dist-site/ | head -20
 
       - uses: actions/upload-artifact@v4
         with:
@@ -111,7 +118,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: dist-site
-          path: dist-site/
+          path: dist-site
           retention-days: 1
 
   # --------------------------------------------------------------------------
@@ -167,6 +174,16 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: dist-site
+          path: .
+
+      - name: Verify dist-site exists
+        run: |
+          if [ ! -d "dist-site" ]; then
+            echo "Error: dist-site directory not found"
+            ls -la
+            exit 1
+          fi
+          echo "Found dist-site directory with $(find dist-site -type f | wc -l) files"
 
       - name: Install pnpm
         run: npm install -g pnpm
@@ -241,6 +258,16 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: dist-site
+          path: .
+
+      - name: Verify dist-site exists
+        run: |
+          if [ ! -d "dist-site" ]; then
+            echo "Error: dist-site directory not found"
+            ls -la
+            exit 1
+          fi
+          echo "Found dist-site directory with $(find dist-site -type f | wc -l) files"
 
       - name: Install pnpm
         run: npm install -g pnpm
