@@ -3,7 +3,7 @@ name: Build & Deploy
 on:
   push:
     branches: [main]
-    paths: ['apps/**', 'backend/**', 'frontend/**', '.github/workflows/**']
+    paths: ['apps/**', 'packages/**', '.github/workflows/**']
   workflow_dispatch:
 
 concurrency:
