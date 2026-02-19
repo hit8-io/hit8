@@ -54,14 +54,18 @@ LABEL version=$VERSION
 RUN useradd -m appuser && \
     chown -R appuser /app
 
-# Entrypoint: when DOPPLER_TOKEN is set, run command under `doppler run` for secret injection
-RUN chmod +x /app/entrypoint.sh
-
 # Switch to non-root user
 USER appuser
 
 # Cloud Run / Scaleway set PORT automatically; default 8080 for local dev
 ENV PORT=8080
 EXPOSE 8080
-ENTRYPOINT ["/app/entrypoint.sh"]
-CMD ["/bin/sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
+# When DOPPLER_TOKEN is set (GCP/Scaleway), run under doppler. Decode base64 if Scaleway injected it encoded.
+CMD /bin/sh -c 'if [ -n "${DOPPLER_TOKEN}" ]; then \
+  if ! echo "${DOPPLER_TOKEN}" | grep -q "^dp\\."; then \
+    export DOPPLER_TOKEN=$(echo "${DOPPLER_TOKEN}" | base64 -d 2>/dev/null || echo "${DOPPLER_TOKEN}"); \
+  fi; \
+  exec doppler run -- uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}; \
+else \
+  exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}; \
+fi'
