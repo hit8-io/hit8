@@ -3,7 +3,7 @@ name: Build & Deploy
 on:
   push:
     branches: [main]
-    paths: ['apps/**', 'packages/**', '.github/workflows/**', 'VERSION']
+    paths: ['apps/web/**', 'apps/api/**', 'packages/**', '.github/workflows/deploy.yaml', 'VERSION']
   workflow_dispatch:
 
 concurrency:
@@ -20,7 +20,6 @@ jobs:
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
-      site: ${{ steps.filter.outputs.site }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -35,10 +34,7 @@ jobs:
             frontend:
               - 'apps/web/**'
               - 'packages/**'
-              - '.github/**'
-            site:
-              - 'apps/site/**'
-              - '.github/**'
+              - '.github/workflows/deploy.yaml'
 
   # --------------------------------------------------------------------------
   # BUILD (three independent jobs)
@@ -131,43 +127,6 @@ jobs:
             dist-scw/
           retention-days: 1
 
-  build-site:
-    name: Build Site
-    runs-on: ubuntu-latest
-    needs: [changes]
-    if: needs.changes.outputs.site == 'true' || github.event_name == 'workflow_dispatch'
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install pnpm
-        run: npm install -g pnpm
-
-      - name: Install dependencies
-        run: pnpm install
-
-      - name: Build site
-        run: |
-          set -e
-          pnpm turbo build --filter=site
-          if [ ! -d "apps/site/dist" ]; then
-            echo "Error: apps/site/dist directory not found after build"
-            ls -la apps/site/
-            exit 1
-          fi
-          mv apps/site/dist dist-site
-          echo "Built site to dist-site directory"
-          ls -la dist-site/ | head -20
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: dist-site
-          path: dist-site
-          retention-days: 1
-
   # --------------------------------------------------------------------------
   # DEPLOY STAGING (Parallel)
   # --------------------------------------------------------------------------
@@ -215,45 +174,26 @@ jobs:
           packageManager: pnpm
           command: pages deploy dist-stg --project-name=hit8 --branch=main-staging
 
-  deploy-site-staging:
-    name: Deploy Site (Staging)
-    needs: [build-site]
-    if: needs.build-site.result == 'success'
+  # --------------------------------------------------------------------------
+  # APPROVE PRODUCTION (single approval for backend + frontend)
+  # --------------------------------------------------------------------------
+  approve-production:
+    name: Approve Production (Backend + Frontend)
+    needs: [deploy-staging, deploy-frontend-staging]
     runs-on: ubuntu-latest
+    environment: production
     steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist-site
-          path: dist-site
-
-      - name: Verify dist-site exists
-        run: |
-          if [ ! -d "dist-site" ]; then
-            echo "Error: dist-site directory not found"
-            ls -la
-            exit 1
-          fi
-          echo "Found dist-site directory with $(find dist-site -type f | wc -l) files"
-
-      - name: Install pnpm
-        run: npm install -g pnpm
-
-      - uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_PAGES_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          packageManager: pnpm
-          command: pages deploy dist-site --project-name=hit8-site --branch=main-staging
+      - name: Approved
+        run: echo "Production deployment approved — backend and frontend will deploy"
 
   # --------------------------------------------------------------------------
-  # DEPLOY PRODUCTION (Manual Approval)
+  # DEPLOY PRODUCTION (runs in parallel after approval)
   # --------------------------------------------------------------------------
   deploy-production:
     name: Deploy Production (${{ matrix.cloud }})
-    needs: [build-backend, deploy-staging, deploy-frontend-staging]
+    needs: [build-backend, approve-production]
     if: needs.build-backend.result == 'success'
     runs-on: ubuntu-latest
-    environment: production
     strategy:
       matrix:
         cloud: [gcp, scw]
@@ -274,7 +214,7 @@ jobs:
 
   deploy-frontend-production:
     name: Deploy Frontend (Production)
-    needs: [build-frontend, deploy-production]
+    needs: [build-frontend, approve-production]
     if: needs.build-frontend.result == 'success'
     runs-on: ubuntu-latest
     steps:
@@ -301,43 +241,12 @@ jobs:
           packageManager: pnpm
           command: pages deploy dist-scw --project-name=hit8 --branch=scaleway --commit-dirty=true
 
-  deploy-site-production:
-    name: Deploy Site (Production)
-    needs: [build-site, deploy-site-staging]
-    if: needs.build-site.result == 'success'
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist-site
-          path: dist-site
-
-      - name: Verify dist-site exists
-        run: |
-          if [ ! -d "dist-site" ]; then
-            echo "Error: dist-site directory not found"
-            ls -la
-            exit 1
-          fi
-          echo "Found dist-site directory with $(find dist-site -type f | wc -l) files"
-
-      - name: Install pnpm
-        run: npm install -g pnpm
-
-      - uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_PAGES_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          packageManager: pnpm
-          command: pages deploy dist-site --project-name=hit8-site --branch=main --commit-dirty=true
-
   # --------------------------------------------------------------------------
   # NOTIFY
   # --------------------------------------------------------------------------
   notify:
     name: Notify Deployment
-    needs: [deploy-production, deploy-frontend-production, deploy-site-production]
+    needs: [deploy-production, deploy-frontend-production]
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -345,10 +254,9 @@ jobs:
         run: |
           B="${{ needs.deploy-production.result }}"
           F="${{ needs.deploy-frontend-production.result }}"
-          S="${{ needs.deploy-site-production.result }}"
-          if [ "$B" = "failure" ] || [ "$F" = "failure" ] || [ "$S" = "failure" ]; then
-            echo "❌ Deployment failed"
-            echo "  Backend: $B | Frontend: $F | Site: $S"
+          if [ "$B" = "failure" ] || [ "$F" = "failure" ]; then
+            echo "❌ Production deployment failed"
+            echo "  Backend: $B | Frontend: $F"
             exit 1
           fi
-          echo "✅ Production deployment ok (backend=$B frontend=$F site=$S)"
+          echo "✅ Production deployment ok (backend=$B frontend=$F)"

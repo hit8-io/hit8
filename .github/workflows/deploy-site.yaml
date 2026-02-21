@@ -1,0 +1,95 @@
+name: Build & Deploy Site
+
+on:
+  push:
+    branches: [main]
+    paths: ['apps/site/**', '.github/workflows/deploy-site.yaml']
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-site-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build Site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build site
+        run: |
+          set -e
+          pnpm turbo build --filter=site
+          if [ ! -d "apps/site/dist" ]; then
+            echo "Error: apps/site/dist directory not found after build"
+            ls -la apps/site/
+            exit 1
+          fi
+          mv apps/site/dist dist-site
+          echo "Built site to dist-site directory"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-site
+          path: dist-site
+          retention-days: 1
+
+  deploy-staging:
+    name: Deploy Site (Staging)
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-site
+          path: dist-site
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_PAGES_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          packageManager: pnpm
+          command: pages deploy dist-site --project-name=hit8-site --branch=main-staging
+
+  approve-production:
+    name: Approve Production (Site)
+    needs: [deploy-staging]
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Approved
+        run: echo "Production deployment approved for site"
+
+  deploy-production:
+    name: Deploy Site (Production)
+    needs: [build, approve-production]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-site
+          path: dist-site
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_PAGES_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          packageManager: pnpm
+          command: pages deploy dist-site --project-name=hit8-site --branch=main --commit-dirty=true

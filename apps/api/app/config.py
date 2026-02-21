@@ -116,6 +116,9 @@ def _provider_prefix_settings() -> dict[str, Any]:
 class ProviderPrefixSettingsSource(PydanticBaseSettingsSource):
     """Settings source that maps ONGCP_* / ONSCW_* to DB and Redis fields based on BACKEND_PROVIDER."""
 
+    def get_field_value(self, field: Any, field_name: str) -> tuple[Any, str, bool]:
+        return super().get_field_value(field, field_name)
+
     def __call__(self) -> dict[str, Any]:
         return _provider_prefix_settings()
 
