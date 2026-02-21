@@ -132,6 +132,24 @@ process.env.VITE_GOOGLE_IDENTITY_PLATFORM_KEY =
 **API Configuration:**
 - `VITE_API_URL`: Backend API URL (e.g., `https://hit8-api-xxx.run.app`)
 
+### Provider-prefixed DB and Redis (ONGCP_* / ONSCW_*)
+
+When the backend runs on **GCP** or **Scaleway**, Terraform sets `BACKEND_PROVIDER` to `gcp` or `scw`. The app then reads **provider-prefixed** env vars from Doppler so one Doppler config can hold both backends' secrets. Define these in Doppler (per config prd/stg); the app maps them to internal `DATABASE_CONNECTION_STRING`, `DATABASE_SSL_ROOT_CERT`, `UPSTASH_REDIS_HOST`, and `UPSTASH_REDIS_PWD`.
+
+**On GCP** (Cloud Run):
+- `ONGCP_DB_CONNECTION_STRING` — Supabase/Postgres connection string
+- `ONGCP_DB_ROOT_CERT` — SSL root certificate content for DB (prd)
+- `ONGCP_REDIS_HOST` — Upstash Redis hostname
+- `ONGCP_REDIS_PWD` — Upstash Redis password
+
+**On Scaleway** (Serverless Containers):
+- `ONSCW_DB_CONNECTION_STRING` — Postgres connection string (prd: RDB private IP:5432; stg: stg VM:6432)
+- `ONSCW_DB_ROOT_CERT` — RDB CA content if required; else empty
+- `ONSCW_REDIS_HOST` — Redis host (prd: Redis VM private IP; stg: stg VM private IP)
+- `ONSCW_REDIS_PWD` — Redis password (Scaleway Redis is passwordless by default; use empty or set if auth added)
+
+Other secrets (e.g. `API_TOKEN`, `BRIGHTDATA_API_KEY`, `VERTEX_SERVICE_ACCOUNT`, `GOOGLE_IDENTITY_PLATFORM_*`, `LANGFUSE_*`, `SENTRY_DSN`) stay in Doppler without prefix and are shared.
+
 ### Secret Naming Conventions
 
 **Backend:**

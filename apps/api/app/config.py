@@ -87,6 +87,39 @@ class ConstantsConfigSettingsSource(PydanticBaseSettingsSource):
         return _load_constants_config(settings_fields)
 
 
+def _provider_prefix_settings() -> dict[str, Any]:
+    """
+    Map provider-prefixed env vars (ONGCP_* / ONSCW_*) to internal Settings names.
+    BACKEND_PROVIDER is set by Terraform to 'gcp' or 'scw'. When set, we use the
+    corresponding prefixed vars so one Doppler config can hold both backends' secrets.
+    """
+    provider = os.getenv("BACKEND_PROVIDER", "").strip().lower()
+    if provider not in ("gcp", "scw"):
+        return {}
+    prefix = "ONGCP_" if provider == "gcp" else "ONSCW_"
+    out: dict[str, Any] = {}
+    conn = os.getenv(f"{prefix}DB_CONNECTION_STRING")
+    if conn is not None:
+        out["DATABASE_CONNECTION_STRING"] = conn
+    cert = os.getenv(f"{prefix}DB_ROOT_CERT")
+    if cert is not None:
+        out["DATABASE_SSL_ROOT_CERT"] = cert or None
+    redis_host = os.getenv(f"{prefix}REDIS_HOST")
+    if redis_host is not None:
+        out["UPSTASH_REDIS_HOST"] = redis_host or None
+    redis_pwd = os.getenv(f"{prefix}REDIS_PWD")
+    if redis_pwd is not None:
+        out["UPSTASH_REDIS_PWD"] = redis_pwd or None
+    return out
+
+
+class ProviderPrefixSettingsSource(PydanticBaseSettingsSource):
+    """Settings source that maps ONGCP_* / ONSCW_* to DB and Redis fields based on BACKEND_PROVIDER."""
+
+    def __call__(self) -> dict[str, Any]:
+        return _provider_prefix_settings()
+
+
 class Settings(BaseSettings):
     """Application settings with validation and metadata."""
     
@@ -252,11 +285,12 @@ class Settings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        """Customize settings sources: constants first, then env vars (which override)."""
+        """Customize settings sources: constants, then env, then provider-prefixed (ONGCP_* / ONSCW_*)."""
         return (
             init_settings,
-            ConstantsConfigSettingsSource(settings_cls),  # Constants provide defaults (auto-filters to Settings fields)
+            ConstantsConfigSettingsSource(settings_cls),  # Constants provide defaults
             env_settings,  # Env vars override constants
+            ProviderPrefixSettingsSource(settings_cls),  # BACKEND_PROVIDER gcp/scw → ONGCP_* or ONSCW_* → DB/Redis
             dotenv_settings,
             file_secret_settings,
         )

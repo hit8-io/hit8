@@ -394,6 +394,11 @@ resource "google_cloud_run_v2_service" "api" {
       }
 
       env {
+        name  = "BACKEND_PROVIDER"
+        value = "gcp"
+      }
+
+      env {
         name = "DOPPLER_TOKEN"
         value_source {
           secret_key_ref {
@@ -524,6 +529,11 @@ resource "google_cloud_run_v2_job" "report_job" {
         env {
           name  = "DOPPLER_CONFIG"
           value = each.key # prd / stg
+        }
+
+        env {
+          name  = "BACKEND_PROVIDER"
+          value = "gcp"
         }
 
         env {

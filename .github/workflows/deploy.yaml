@@ -3,7 +3,7 @@ name: Build & Deploy
 on:
   push:
     branches: [main]
-    paths: ['apps/**', 'packages/**', '.github/workflows/**']
+    paths: ['apps/**', 'packages/**', '.github/workflows/**', 'VERSION']
   workflow_dispatch:
 
 concurrency:
@@ -12,11 +12,42 @@ concurrency:
 
 jobs:
   # --------------------------------------------------------------------------
-  # BUILD
+  # PATH FILTER (for conditional builds)
   # --------------------------------------------------------------------------
-  build:
-    name: Build
+  changes:
+    name: Detect changes
     runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      site: ${{ steps.filter.outputs.site }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'apps/api/**'
+              - 'backend/**'
+              - '.github/workflows/deploy.yaml'
+              - 'VERSION'
+            frontend:
+              - 'apps/web/**'
+              - 'packages/**'
+              - '.github/**'
+            site:
+              - 'apps/site/**'
+              - '.github/**'
+
+  # --------------------------------------------------------------------------
+  # BUILD (three independent jobs)
+  # --------------------------------------------------------------------------
+  build-backend:
+    name: Build Backend
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
     permissions:
       contents: read
       id-token: write
@@ -26,7 +57,7 @@ jobs:
       version: ${{ steps.meta.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Docker meta
         id: meta
         run: |
@@ -35,20 +66,16 @@ jobs:
           echo "tag=${VERSION}-${SHORT_SHA}" >> $GITHUB_OUTPUT
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
-      # GCP
       - uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
       - run: gcloud auth configure-docker europe-west1-docker.pkg.dev
 
-      # Scaleway Container Registry (namespace must match Terraform: scaleway_registry_namespace.main.name)
       - name: Login to Scaleway
         run: echo "${{ secrets.SCW_SECRET_KEY }}" | docker login rg.fr-par.scw.cloud/hit8-registry -u nologin --password-stdin
 
-      # Build & Push (both registries at once)
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v5
-        id: build
         with:
           context: ./apps/api
           push: true
@@ -61,29 +88,31 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Frontend & Site (build all variants, upload as artifacts)
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      
+
       - name: Install pnpm
         run: npm install -g pnpm
-      
+
       - name: Install dependencies
         run: pnpm install
 
       - name: Build frontends
         run: |
           set -e
-          # Staging
           VITE_API_URL=https://api-stg.hit8.io pnpm turbo build --filter=hit8-frontend
           mv apps/web/dist dist-stg
-          
-          # Production (GCP)
           VITE_API_URL=https://api-prd.hit8.io pnpm turbo build --filter=hit8-frontend
           mv apps/web/dist dist-prd
-          
-          # Production (Scaleway)
           VITE_API_URL=https://scw-prd.hit8.io pnpm turbo build --filter=hit8-frontend
           mv apps/web/dist dist-scw
         env:
@@ -92,6 +121,33 @@ jobs:
           VITE_GOOGLE_IDENTITY_PLATFORM_DOMAIN: ${{ secrets.GOOGLE_IDENTITY_PLATFORM_DOMAIN }}
           VITE_API_TOKEN: ${{ secrets.API_TOKEN }}
           VITE_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontends
+          path: |
+            dist-stg/
+            dist-prd/
+            dist-scw/
+          retention-days: 1
+
+  build-site:
+    name: Build Site
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.site == 'true' || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Install dependencies
+        run: pnpm install
 
       - name: Build site
         run: |
@@ -108,15 +164,6 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: frontends
-          path: |
-            dist-stg/
-            dist-prd/
-            dist-scw/
-          retention-days: 1
-
-      - uses: actions/upload-artifact@v4
-        with:
           name: dist-site
           path: dist-site
           retention-days: 1
@@ -126,7 +173,8 @@ jobs:
   # --------------------------------------------------------------------------
   deploy-staging:
     name: Deploy Staging (${{ matrix.cloud }})
-    needs: build
+    needs: [build-backend]
+    if: needs.build-backend.result == 'success'
     runs-on: ubuntu-latest
     environment: staging
     strategy:
@@ -139,7 +187,7 @@ jobs:
         with:
           cloud: ${{ matrix.cloud }}
           environment: staging
-          image_tag: ${{ needs.build.outputs.image_tag }}
+          image_tag: ${{ needs.build-backend.outputs.image_tag }}
           gcp_sa_key: ${{ secrets.GCP_SA_KEY }}
           gcp_project_id: ${{ secrets.GCP_PROJECT }}
           scw_access_key: ${{ secrets.SCW_ACCESS_KEY }}
@@ -149,7 +197,8 @@ jobs:
 
   deploy-frontend-staging:
     name: Deploy Frontend (Staging)
-    needs: [build, deploy-staging]
+    needs: [build-frontend, deploy-staging]
+    if: needs.build-frontend.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -168,7 +217,8 @@ jobs:
 
   deploy-site-staging:
     name: Deploy Site (Staging)
-    needs: [build]
+    needs: [build-site]
+    if: needs.build-site.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -200,7 +250,8 @@ jobs:
   # --------------------------------------------------------------------------
   deploy-production:
     name: Deploy Production (${{ matrix.cloud }})
-    needs: [build, deploy-staging, deploy-frontend-staging]
+    needs: [build-backend, deploy-staging, deploy-frontend-staging]
+    if: needs.build-backend.result == 'success'
     runs-on: ubuntu-latest
     environment: production
     strategy:
@@ -213,7 +264,7 @@ jobs:
         with:
           cloud: ${{ matrix.cloud }}
           environment: production
-          image_tag: ${{ needs.build.outputs.image_tag }}
+          image_tag: ${{ needs.build-backend.outputs.image_tag }}
           gcp_sa_key: ${{ secrets.GCP_SA_KEY }}
           gcp_project_id: ${{ secrets.GCP_PROJECT }}
           scw_access_key: ${{ secrets.SCW_ACCESS_KEY }}
@@ -223,7 +274,8 @@ jobs:
 
   deploy-frontend-production:
     name: Deploy Frontend (Production)
-    needs: [build, deploy-production]
+    needs: [build-frontend, deploy-production]
+    if: needs.build-frontend.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -251,7 +303,8 @@ jobs:
 
   deploy-site-production:
     name: Deploy Site (Production)
-    needs: [build, deploy-site-staging]
+    needs: [build-site, deploy-site-staging]
+    if: needs.build-site.result == 'success'
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -290,14 +343,12 @@ jobs:
     steps:
       - name: Deployment Status
         run: |
-          if [ "${{ needs.deploy-production.result }}" = "success" ] && \
-             [ "${{ needs.deploy-frontend-production.result }}" = "success" ] && \
-             [ "${{ needs.deploy-site-production.result }}" = "success" ]; then
-            echo "✅ Production deployment successful!"
-          else
-            echo "❌ Deployment failed or skipped"
-            echo "  Backend: ${{ needs.deploy-production.result }}"
-            echo "  Frontend: ${{ needs.deploy-frontend-production.result }}"
-            echo "  Site: ${{ needs.deploy-site-production.result }}"
+          B="${{ needs.deploy-production.result }}"
+          F="${{ needs.deploy-frontend-production.result }}"
+          S="${{ needs.deploy-site-production.result }}"
+          if [ "$B" = "failure" ] || [ "$F" = "failure" ] || [ "$S" = "failure" ]; then
+            echo "❌ Deployment failed"
+            echo "  Backend: $B | Frontend: $F | Site: $S"
             exit 1
           fi
+          echo "✅ Production deployment ok (backend=$B frontend=$F site=$S)"

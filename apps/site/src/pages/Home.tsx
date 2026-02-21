@@ -1,28 +1,23 @@
 import { useEffect, useState } from 'react'
+import type { ReactElement } from 'react'
 import { 
-  Infinity, Linkedin, ArrowRight, ChevronDown, Eye, ScanEye, 
+  Infinity as InfinityIcon, Linkedin, ArrowRight, ChevronDown, Eye, ScanEye, 
   RefreshCw, GitBranch, Users, Fingerprint, Target, Trophy, 
   Database, BarChart3, Box, PackageCheck, Mail, Phone
 } from 'lucide-react'
 import { client } from '../lib/sanity'
+import { getCachedHomeData, setCachedHomeData, type HomeData } from '../lib/homeCache'
+import { styles } from '../lib/styles'
+import HomeSkeleton from '../components/HomeSkeleton'
 
-// Define the shape of your Sanity data
-interface HomeData {
-  hero: {
-    badge: string
-    headline: string
-    subHeadline: string
-    description: string
-  }
-  features: Array<{
-    _key?: string
-    title: string
-    description: string
-    icon: string
-  }>
+function fetchHomeFromSanity(): Promise<HomeData> {
+  return client.fetch(`*[_type == "home"][0]{
+    hero,
+    features
+  }`)
 }
 
-const iconMap: Record<string, { bg: JSX.Element; fg: JSX.Element }> = {
+const iconMap: Record<string, { bg: ReactElement; fg: ReactElement }> = {
   eye: { 
     bg: <Eye className="w-24 h-24 text-white" />, 
     fg: <ScanEye className="w-10 h-10 text-indigo-400 mb-4" /> 
@@ -50,77 +45,34 @@ const iconMap: Record<string, { bg: JSX.Element; fg: JSX.Element }> = {
 }
 
 export default function Home() {
-  const [data, setData] = useState<HomeData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [data, setData] = useState<HomeData | null>(() => getCachedHomeData())
+  const [loading, setLoading] = useState(() => getCachedHomeData() == null)
 
   useEffect(() => {
-    // Fetch the document with type 'home'
-    // Using [0] to get the first (and likely only) document
-    client.fetch(`*[_type == "home"][0]{
-      hero,
-      features
-    }`)
-    .then((result) => {
-      if (!result) {
-        setError('No home page content found in Sanity. Please create a Home document in Sanity Studio.')
-      } else {
+    // If we already have cached data, skip fetch
+    if (getCachedHomeData()) return
+
+    fetchHomeFromSanity()
+      .then((result) => {
+        if (!result) {
+          throw new Error('No home page content found in Sanity')
+        }
+        setCachedHomeData(result)
         setData(result)
-      }
-      setLoading(false)
-    })
-    .catch((err) => {
-      console.error('Error fetching Sanity data:', err)
-      const errorMessage = err.message || 'Unknown error'
-      if (errorMessage.includes('403') || errorMessage.includes('Forbidden')) {
-        setError('Access denied. Please check Sanity CORS settings and ensure the dataset is public.')
-      } else if (errorMessage.includes('CORS')) {
-        setError('CORS error. Please add http://localhost:* (or specific port) to your Sanity project CORS origins.')
-      } else {
-        setError(`Failed to load content: ${errorMessage}`)
-      }
-      setLoading(false)
-    })
+      })
+      .catch((err) => {
+        console.error('Error fetching Sanity data:', err)
+      })
+      .finally(() => setLoading(false))
   }, [])
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#020617] text-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-xl mb-2">Loading Content...</div>
-          <div className="text-sm text-slate-400">Fetching from Sanity</div>
-        </div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-[#020617] text-white flex items-center justify-center px-4">
-        <div className="text-center max-w-2xl">
-          <div className="text-2xl font-bold mb-4 text-red-400">Error Loading Content</div>
-          <div className="text-slate-300 mb-4">{error}</div>
-          <div className="text-sm text-slate-500">
-            <p className="mb-2">To fix this:</p>
-            <ol className="list-decimal list-inside space-y-1 text-left">
-              <li>Go to <a href="https://www.sanity.io/manage" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">Sanity Manage</a></li>
-              <li>Select your project (95zjvqmu)</li>
-              <li>Go to API settings → CORS origins</li>
-              <li>Add <code className="bg-slate-800 px-1 rounded">http://localhost:*</code> (or specific port like <code className="bg-slate-800 px-1 rounded">http://localhost:5174</code>)</li>
-              <li>Ensure the dataset is set to "Public"</li>
-            </ol>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
+  if (loading) return <HomeSkeleton />
   if (!data) {
     return (
-      <div className="min-h-screen bg-[#020617] text-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-xl mb-2">No content found</div>
-          <div className="text-sm text-slate-400">Please create a Home document in Sanity Studio</div>
+      <div className={styles.fullScreenCentered}>
+        <div className={styles.textCenter}>
+          <div className={styles.textLarge}>No content found</div>
+          <div className={styles.textSmall}>Please create a Home document in Sanity Studio</div>
         </div>
       </div>
     )
@@ -129,7 +81,7 @@ export default function Home() {
   const { hero, features } = data
 
   return (
-    <div className="bg-background text-slate-300 antialiased selection:bg-indigo-500/30 min-h-screen font-sans">
+    <div className={styles.pageContainer}>
       
       {/* Mystic Background */}
       <div className="fixed inset-0 pointer-events-none z-0">
@@ -141,7 +93,7 @@ export default function Home() {
       <nav className="fixed w-full z-50 top-0 border-b border-white/5 bg-background/80 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Infinity className="text-white w-8 h-8" />
+            <InfinityIcon className="text-white w-8 h-8" />
             <span className="text-2xl font-bold text-white tracking-tight">hit<span className="text-indigo-400">8</span></span>
           </div>
           <div className="flex items-center gap-4">
@@ -281,7 +233,7 @@ export default function Home() {
       <footer className="relative z-10 py-24 px-6 border-t border-white/5 bg-background">
         <div className="max-w-3xl mx-auto text-center space-y-8">
             <div className="flex items-center justify-center gap-2 mb-8">
-                <Infinity className="text-white w-6 h-6" />
+                <InfinityIcon className="text-white w-6 h-6" />
                 <span className="text-xl font-bold text-white">hit8</span>
             </div>
             

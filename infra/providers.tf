@@ -10,15 +10,15 @@ terraform {
     }
     archive = {
       source  = "hashicorp/archive"
-      version = "~> 2.4"
+      version = "~> 2.7"
     }
     cloudflare = {
       source  = "cloudflare/cloudflare"
-      version = "~> 4.0"
+      version = "~> 5.0"
     }
     scaleway = {
       source  = "scaleway/scaleway"
-      version = "~> 2.39"
+      version = "~> 2.69"
     }
   }
 }

@@ -123,18 +123,42 @@ resource "scaleway_instance_server" "stg_vm" {
                   DATABASE_URL: "postgres://hit8:hit8@postgres:5432/hit8"
                   POOL_MODE: transaction
                   MAX_CLIENT_CONN: 100
-                  AUTH_TYPE: trust
+                  AUTH_TYPE: scram-sha-256
                 ports:
-                  - "6432:6432"
+                  - "6432:5432"
+                volumes:
+                  - /root/pgbouncer-userlist.txt:/etc/pgbouncer/userlist.txt:ro
                 depends_on:
                   - postgres
             volumes:
               pgdata:
+        - path: /root/pgbouncer-userlist.txt
+          content: "hit8 placeholder\n"
+          permissions: '0644'
+        - path: /root/init-pgbouncer-userlist.sh
+          content: |
+            #!/bin/bash
+            set -e
+            cd /root
+            docker-compose up -d postgres redis
+            for i in $(seq 1 30); do
+              docker-compose exec -T postgres pg_isready -U hit8 && break
+              sleep 2
+            done
+            PG_CID=$(docker-compose ps -q postgres)
+            HASH=$(docker exec "$PG_CID" psql -U hit8 -d hit8 -t -A -c "SELECT rolpassword FROM pg_authid WHERE rolname='hit8'")
+            printf '"hit8" "%s"\n' "$HASH" > /root/pgbouncer-userlist.txt
+            for i in $(seq 1 12); do
+              if docker-compose up -d pgbouncer; then break; fi
+              echo "pgbouncer start attempt $i failed (e.g. DNS/pull), retrying in 10s..."
+              sleep 10
+            done
+          permissions: '0755'
       runcmd:
         - systemctl restart sshd
         - systemctl enable fail2ban
         - systemctl start fail2ban
-        - cd /root && docker-compose up -d
+        - /root/init-pgbouncer-userlist.sh
     EOF
   }
 }
@@ -335,6 +359,7 @@ resource "scaleway_container" "api_prd" {
 
   environment_variables = {
     "ENVIRONMENT"             = "prd"
+    "BACKEND_PROVIDER"        = "scw"
     "DOPPLER_PROJECT"         = var.DOPPLER_PROJECT
     "DOPPLER_CONFIG"          = "prd"
     "DOPPLER_TOKEN_SECRET_ID" = scaleway_secret.doppler_token_prd.id
@@ -363,6 +388,7 @@ resource "scaleway_container" "api_stg" {
 
   environment_variables = {
     "ENVIRONMENT"             = "stg"
+    "BACKEND_PROVIDER"        = "scw"
     "DOPPLER_PROJECT"         = var.DOPPLER_PROJECT
     "DOPPLER_CONFIG"          = "stg"
     "DOPPLER_TOKEN_SECRET_ID" = scaleway_secret.doppler_token_stg.id
@@ -392,25 +418,16 @@ resource "scaleway_container_domain" "stg" {
 }
 
 # ==============================================================================
-# 7. OUTPUTS
+# 7. OUTPUTS (see outputs.tf for SSH commands and API URLs)
 # ==============================================================================
 
 output "registry_login" {
   value = "docker login ${local.registry_endpoint}"
 }
 
-output "stg_vm_ipv6" {
-  value       = scaleway_instance_ip.stg_vm_ipv6.address
-  description = "Staging VM public IPv6 address"
-}
-
 output "prd_redis_ipv6" {
   value       = scaleway_instance_ip.prd_redis_ipv6.address
   description = "Production Redis VM public IPv6 address"
-}
-
-output "stg_ssh_command" {
-  value = "ssh root@${scaleway_instance_ip.stg_vm_ipv6.address}"
 }
 
 # Public IPv4 endpoint (Scaleway creates the load balancer by default on RDB instances).

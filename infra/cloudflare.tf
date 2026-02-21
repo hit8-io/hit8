@@ -2,7 +2,12 @@
 #                                  DNS RECORDS                                 #
 ################################################################################
 
-resource "cloudflare_record" "services" {
+locals {
+  api_url_prd = var.backend_provider == "gcp" ? "https://api-prd.${var.DOMAIN_NAME}" : "https://scw-prd.${var.DOMAIN_NAME}"
+  api_url_stg = var.backend_provider == "gcp" ? "https://api-stg.${var.DOMAIN_NAME}" : "https://scw-stg.${var.DOMAIN_NAME}"
+}
+
+resource "cloudflare_dns_record" "services" {
   for_each = {
     "www"   = "hit8-site.pages.dev" # Changed: marketing site
     "iter8" = "hit8.pages.dev"      # New: SaaS app
@@ -10,7 +15,7 @@ resource "cloudflare_record" "services" {
   }
 
   zone_id = var.CLOUDFLARE_ZONE_ID
-  name    = each.key
+  name    = "${each.key}.${var.DOMAIN_NAME}"
   content = each.value
   type    = "CNAME"
   proxied = true
@@ -19,7 +24,7 @@ resource "cloudflare_record" "services" {
 
 # Scaleway containers (scw-prd, scw-stg) - CNAME targets from Scaleway container domain setup
 # Commented out until containers are created (after images are built and pushed)
-# resource "cloudflare_record" "scw_api" {
+# resource "cloudflare_dns_record" "scw_api" {
 #   for_each = {
 #     "scw-prd" = scaleway_container_domain.prd.url
 #     "scw-stg" = scaleway_container_domain.stg.url
@@ -33,11 +38,11 @@ resource "cloudflare_record" "services" {
 #   ttl     = 1
 # }
 
-resource "cloudflare_record" "api_endpoints" {
+resource "cloudflare_dns_record" "api_endpoints" {
   for_each = local.envs
 
   zone_id = var.CLOUDFLARE_ZONE_ID
-  name    = each.value.host # api-prd / api-stg
+  name    = "${each.value.host}.${var.DOMAIN_NAME}"
   content = "ghs.googlehosted.com"
   type    = "CNAME"
   proxied = true
@@ -48,7 +53,7 @@ resource "cloudflare_record" "api_endpoints" {
 # Dummy A record for root domain - actual routing handled by redirect ruleset
 # Root domain CNAME record pointing to Cloudflare Pages
 # This record was imported from existing Cloudflare configuration
-resource "cloudflare_record" "root" {
+resource "cloudflare_dns_record" "root" {
   zone_id = var.CLOUDFLARE_ZONE_ID
   name    = var.DOMAIN_NAME
   content = "hit8-site.pages.dev" # Changed: marketing site
@@ -57,7 +62,7 @@ resource "cloudflare_record" "root" {
   ttl     = 1
 }
 
-resource "cloudflare_record" "mx_records" {
+resource "cloudflare_dns_record" "mx_records" {
   for_each = {
     "aspmx.l.google.com"      = 1
     "alt1.aspmx.l.google.com" = 5
@@ -75,7 +80,7 @@ resource "cloudflare_record" "mx_records" {
   ttl      = 1
 }
 
-resource "cloudflare_record" "txt_records" {
+resource "cloudflare_dns_record" "txt_records" {
   for_each = {
     "spf"      = "v=spf1 include:_spf.firebasemail.com ~all"
     "firebase" = "firebase=hit8-poc"
@@ -89,14 +94,14 @@ resource "cloudflare_record" "txt_records" {
   ttl     = 1
 }
 
-resource "cloudflare_record" "firebase_dkim" {
+resource "cloudflare_dns_record" "firebase_dkim" {
   for_each = {
     "firebase1._domainkey" = "mail-hit8-io.dkim1._domainkey.firebasemail.com."
     "firebase2._domainkey" = "mail-hit8-io.dkim2._domainkey.firebasemail.com."
   }
 
   zone_id = var.CLOUDFLARE_ZONE_ID
-  name    = each.key
+  name    = "${each.key}.${var.DOMAIN_NAME}"
   content = each.value
   type    = "CNAME"
   proxied = false
@@ -113,21 +118,23 @@ resource "cloudflare_ruleset" "redirects" {
   phase   = "http_request_dynamic_redirect"
   zone_id = var.CLOUDFLARE_ZONE_ID
 
-  rules {
-    description = "Root to WWW"
-    enabled     = true
-    expression  = "(http.host eq \"hit8.io\")"
-    action      = "redirect"
-    action_parameters {
-      from_value {
-        status_code           = 301
-        preserve_query_string = true
-        target_url {
-          expression = "concat(\"https://www.hit8.io\", http.request.uri.path)"
+  rules = [
+    {
+      description = "Root to WWW"
+      enabled     = true
+      expression  = "(http.host eq \"hit8.io\")"
+      action      = "redirect"
+      action_parameters = {
+        from_value = {
+          status_code           = 301
+          preserve_query_string = true
+          target_url = {
+            expression = "concat(\"https://www.hit8.io\", http.request.uri.path)"
+          }
         }
       }
     }
-  }
+  ]
 }
 
 ################################################################################
@@ -140,12 +147,14 @@ resource "cloudflare_ruleset" "waf_custom" {
   phase   = "http_request_firewall_custom"
   zone_id = var.CLOUDFLARE_ZONE_ID
 
-  rules {
-    description = "Block Direct API Access"
-    enabled     = true
-    expression  = "((http.host eq \"api-prd.hit8.io\" or http.host eq \"api-stg.hit8.io\" or http.host eq \"scw-prd.hit8.io\" or http.host eq \"scw-stg.hit8.io\") and not http.referer contains \"hit8.pages.dev\" and not http.referer contains \"hit8-site.pages.dev\" and not http.referer contains \"www.hit8.io\" and not http.referer contains \"iter8.hit8.io\" and not http.referer contains \"scw.hit8.io\")"
-    action      = "block"
-  }
+  rules = [
+    {
+      description = "Block Direct API Access"
+      enabled     = true
+      expression  = "((http.host eq \"api-prd.hit8.io\" or http.host eq \"api-stg.hit8.io\" or http.host eq \"scw-prd.hit8.io\" or http.host eq \"scw-stg.hit8.io\") and not http.referer contains \"hit8.pages.dev\" and not http.referer contains \"hit8-site.pages.dev\" and not http.referer contains \"www.hit8.io\" and not http.referer contains \"iter8.hit8.io\" and not http.referer contains \"scw.hit8.io\")"
+      action      = "block"
+    }
+  ]
 }
 
 ################################################################################
@@ -161,58 +170,63 @@ resource "cloudflare_ruleset" "rate_limit" {
   # Cloudflare only allows 1 rule in http_ratelimit phase
   # Using a single rule with 20 req/10s limit (120 req/min) for all API endpoints
   # Note: Cloudflare free plan only supports period=10 (10 seconds)
-  rules {
-    description = "Rate Limit API Endpoints"
-    enabled     = true
-    expression  = "(http.host in {\"api-prd.hit8.io\" \"api-stg.hit8.io\" \"scw-prd.hit8.io\" \"scw-stg.hit8.io\"})"
-    action      = "block"
+  rules = [
+    {
+      description = "Rate Limit API Endpoints"
+      enabled     = true
+      expression  = "(http.host in {\"api-prd.hit8.io\" \"api-stg.hit8.io\" \"scw-prd.hit8.io\" \"scw-stg.hit8.io\"})"
+      action      = "block"
 
-    action_parameters {
-      response {
-        status_code  = 429
-        content      = "{\"error\": \"Rate limit exceeded. Maximum 20 requests per 10 seconds.\"}"
-        content_type = "application/json"
+      action_parameters = {
+        response = {
+          status_code  = 429
+          content      = "{\"error\": \"Rate limit exceeded. Maximum 20 requests per 10 seconds.\"}"
+          content_type = "application/json"
+        }
+      }
+
+      ratelimit = {
+        characteristics     = ["ip.src", "cf.colo.id"]
+        period              = 10
+        requests_per_period = 20
+        mitigation_timeout  = 10
       }
     }
-
-    ratelimit {
-      characteristics     = ["ip.src", "cf.colo.id"]
-      period              = 10
-      requests_per_period = 20
-      mitigation_timeout  = 10
-    }
-  }
+  ]
 }
 
 ################################################################################
 #                            SETTINGS & ACCOUNT                                #
 ################################################################################
 
-resource "cloudflare_zone_settings_override" "main_settings" {
-  zone_id = var.CLOUDFLARE_ZONE_ID
-
-  settings {
+# Zone settings (v5: one resource per setting)
+locals {
+  zone_settings = {
     # SSL / Security
     ssl                      = "strict"
     min_tls_version          = "1.2"
     always_use_https         = "on"
     automatic_https_rewrites = "on"
-
     # Performance
-    brotli           = "on"
-    http3            = "on"
-    always_online    = "off"
-    development_mode = "off"
-
+    brotli            = "on"
+    http3             = "on"
+    always_online     = "off"
+    development_mode  = "off"
     # Network
-    ipv6                     = "on"
-    websockets               = "on"
-    opportunistic_encryption = "on"
-
+    ipv6                      = "on"
+    websockets                = "on"
+    opportunistic_encryption  = "on"
     # Privacy / Other
     email_obfuscation = "on"
     security_level    = "medium"
   }
+}
+
+resource "cloudflare_zone_setting" "main" {
+  for_each   = local.zone_settings
+  zone_id    = var.CLOUDFLARE_ZONE_ID
+  setting_id = each.key
+  value      = each.value
 }
 
 # Pages project: Direct Upload (Wrangler). API rejects source/build_config updates.
@@ -225,21 +239,21 @@ resource "cloudflare_pages_project" "hit8" {
     ignore_changes = [source, build_config]
   }
 
-  build_config {
+  build_config = {
     build_command   = ""
     destination_dir = ""
   }
 
-  deployment_configs {
-    production {
+  deployment_configs = {
+    production = {
       environment_variables = {
-        VITE_API_URL = "https://api-prd.hit8.io"
+        VITE_API_URL = local.api_url_prd
       }
       compatibility_date = "2024-01-01"
     }
-    preview {
+    preview = {
       environment_variables = {
-        VITE_API_URL = "https://scw-stg.hit8.io"
+        VITE_API_URL = local.api_url_stg
       }
       compatibility_date = "2024-01-01"
     }
@@ -256,35 +270,45 @@ resource "cloudflare_pages_project" "hit8_site" {
     ignore_changes = [source, build_config]
   }
 
-  build_config {
+  build_config = {
     build_command   = ""
     destination_dir = ""
   }
 
-  deployment_configs {
-    production {
+  deployment_configs = {
+    production = {
       environment_variables = {}
       compatibility_date    = "2024-01-01"
     }
-    preview {
+    preview = {
       environment_variables = {}
       compatibility_date    = "2024-01-01"
     }
   }
 }
 
-# Custom domain for marketing site
+# Custom domain for marketing site.
+# Note: Provider schema only has "name"; API may report "missing required domain_name parameter"
+# on refresh—known provider/API mismatch. Run plan with -refresh=false if needed.
 resource "cloudflare_pages_domain" "www" {
   account_id   = var.CLOUDFLARE_ACCOUNT_ID
   project_name = cloudflare_pages_project.hit8_site.name
-  domain       = "www.${var.DOMAIN_NAME}"
+  name         = "www.${var.DOMAIN_NAME}"
+
+  lifecycle {
+    ignore_changes = [name]
+  }
 }
 
 # Update existing hit8 project domain
 resource "cloudflare_pages_domain" "iter8" {
   account_id   = var.CLOUDFLARE_ACCOUNT_ID
   project_name = cloudflare_pages_project.hit8.name
-  domain       = "iter8.${var.DOMAIN_NAME}"
+  name         = "iter8.${var.DOMAIN_NAME}"
+
+  lifecycle {
+    ignore_changes = [name]
+  }
 }
 
 # scw.hit8.io: same frontend as iter8, but backend scw-prd.hit8.io
@@ -292,12 +316,18 @@ resource "cloudflare_pages_domain" "iter8" {
 resource "cloudflare_pages_domain" "scw" {
   account_id   = var.CLOUDFLARE_ACCOUNT_ID
   project_name = cloudflare_pages_project.hit8.name
-  domain       = "scw.${var.DOMAIN_NAME}"
+  name         = "scw.${var.DOMAIN_NAME}"
+
+  lifecycle {
+    ignore_changes = [name]
+  }
 }
 
-resource "cloudflare_account_member" "admin" {
-  account_id    = var.CLOUDFLARE_ACCOUNT_ID
-  email_address = "jan@hit8.io"
-  role_ids      = ["33666b9c79b9a5273fc7344ff42f953d"]
-  status        = "accepted"
-}
+# Account member managed in Cloudflare UI to avoid API "Empty policy assignments" / 403 on update.
+# After commenting out: terraform state rm cloudflare_account_member.admin
+# resource "cloudflare_account_member" "admin" {
+#   account_id = var.CLOUDFLARE_ACCOUNT_ID
+#   email      = "jan@hit8.io"
+#   roles      = ["33666b9c79b9a5273fc7344ff42f953d"]
+#   status     = "accepted"
+# }
