@@ -122,6 +122,10 @@ process.env.VITE_GOOGLE_IDENTITY_PLATFORM_KEY =
 **Optional:**
 - `ENVIRONMENT`: Set to `prod` or `dev` (defaults to `dev` if not set)
 
+### Terraform / CI (Cloudflare)
+
+For **Terraform apply** (CI or local) to manage DNS, WAF, and rate limiting, **CLOUDFLARE_API_TOKEN** must be a Zone-scoped API token with at least: **Zone DNS Edit**, **Zone Firewall Services Edit**, and **Zone WAF Edit** (or **Account Rulesets Edit**). A Pages-only token returns `401 Unauthorized` on ruleset updates. Create in Cloudflare Dashboard → My Profile → API Tokens → Create Token (custom, add the permissions above for the hit8.io zone).
+
 ### Frontend Secrets
 
 **Firebase Configuration:**

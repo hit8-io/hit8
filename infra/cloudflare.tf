@@ -3,15 +3,16 @@
 ################################################################################
 
 locals {
-  api_url_prd = var.backend_provider == "gcp" ? "https://api-prd.${var.DOMAIN_NAME}" : "https://scw-prd.${var.DOMAIN_NAME}"
-  api_url_stg = var.backend_provider == "gcp" ? "https://api-stg.${var.DOMAIN_NAME}" : "https://scw-stg.${var.DOMAIN_NAME}"
+  api_url_prd  = var.backend_provider == "gcp" ? "https://api-prd.${var.DOMAIN_NAME}" : "https://scw-prd.${var.DOMAIN_NAME}"
+  api_url_stg  = var.backend_provider == "gcp" ? "https://api-stg.${var.DOMAIN_NAME}" : "https://scw-stg.${var.DOMAIN_NAME}"
+  api_hosts    = var.backend_provider == "gcp" ? ["api-prd.${var.DOMAIN_NAME}", "api-stg.${var.DOMAIN_NAME}"] : ["scw-prd.${var.DOMAIN_NAME}", "scw-stg.${var.DOMAIN_NAME}"]
+  api_hosts_in = "(http.host in {\"${join("\" \"", local.api_hosts)}\"})"
 }
 
 resource "cloudflare_dns_record" "services" {
   for_each = {
-    "www"   = "hit8-site.pages.dev" # Changed: marketing site
-    "iter8" = "hit8.pages.dev"      # New: SaaS app
-    "scw"   = "hit8.pages.dev"      # Unchanged: SaaS app Scaleway variant
+    "www"   = "hit8-site.pages.dev"
+    "iter8" = "hit8.pages.dev"
   }
 
   zone_id = var.CLOUDFLARE_ZONE_ID
@@ -151,7 +152,7 @@ resource "cloudflare_ruleset" "waf_custom" {
     {
       description = "Block Direct API Access"
       enabled     = true
-      expression  = "((http.host eq \"api-prd.hit8.io\" or http.host eq \"api-stg.hit8.io\" or http.host eq \"scw-prd.hit8.io\" or http.host eq \"scw-stg.hit8.io\") and not http.referer contains \"hit8.pages.dev\" and not http.referer contains \"hit8-site.pages.dev\" and not http.referer contains \"www.hit8.io\" and not http.referer contains \"iter8.hit8.io\" and not http.referer contains \"scw.hit8.io\")"
+      expression  = "(${local.api_hosts_in} and not http.referer contains \"hit8.pages.dev\" and not http.referer contains \"hit8-site.pages.dev\" and not http.referer contains \"www.${var.DOMAIN_NAME}\" and not http.referer contains \"iter8.${var.DOMAIN_NAME}\")"
       action      = "block"
     }
   ]
@@ -174,7 +175,7 @@ resource "cloudflare_ruleset" "rate_limit" {
     {
       description = "Rate Limit API Endpoints"
       enabled     = true
-      expression  = "(http.host in {\"api-prd.hit8.io\" \"api-stg.hit8.io\" \"scw-prd.hit8.io\" \"scw-stg.hit8.io\"})"
+      expression  = local.api_hosts_in
       action      = "block"
 
       action_parameters = {
@@ -289,7 +290,10 @@ resource "cloudflare_pages_project" "hit8_site" {
 
 # Custom domain for marketing site.
 # Note: Provider schema only has "name"; API may report "missing required domain_name parameter"
-# on refresh—known provider/API mismatch. Run plan with -refresh=false if needed.
+# on refresh/destroy—known provider/API mismatch. Run plan/apply with -refresh=false if needed.
+# If state still contains cloudflare_pages_domain.scw (removed from config), run:
+#   terraform state rm cloudflare_pages_domain.scw
+# to avoid the domain_name error on destroy.
 resource "cloudflare_pages_domain" "www" {
   account_id   = var.CLOUDFLARE_ACCOUNT_ID
   project_name = cloudflare_pages_project.hit8_site.name
@@ -300,23 +304,10 @@ resource "cloudflare_pages_domain" "www" {
   }
 }
 
-# Update existing hit8 project domain
 resource "cloudflare_pages_domain" "iter8" {
   account_id   = var.CLOUDFLARE_ACCOUNT_ID
   project_name = cloudflare_pages_project.hit8.name
   name         = "iter8.${var.DOMAIN_NAME}"
-
-  lifecycle {
-    ignore_changes = [name]
-  }
-}
-
-# scw.hit8.io: same frontend as iter8, but backend scw-prd.hit8.io
-# Requires frontend to detect host: if host === "scw.hit8.io" then API = "https://scw-prd.hit8.io"
-resource "cloudflare_pages_domain" "scw" {
-  account_id   = var.CLOUDFLARE_ACCOUNT_ID
-  project_name = cloudflare_pages_project.hit8.name
-  name         = "scw.${var.DOMAIN_NAME}"
 
   lifecycle {
     ignore_changes = [name]

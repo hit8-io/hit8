@@ -3,7 +3,7 @@ name: Build & Deploy
 on:
   push:
     branches: [main]
-    paths: ['apps/web/**', 'apps/api/**', 'packages/**', '.github/workflows/deploy.yaml', 'VERSION']
+    paths: ['apps/web/**', 'apps/api/**', 'packages/**', 'infra/**', '.github/workflows/deploy.yaml', 'VERSION']
   workflow_dispatch:
 
 concurrency:
@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   # --------------------------------------------------------------------------
-  # PATH FILTER (for conditional builds)
+  # PATH FILTER + BACKEND PROVIDER (single provider: gcp or scw)
   # --------------------------------------------------------------------------
   changes:
     name: Detect changes
@@ -29,21 +29,89 @@ jobs:
             backend:
               - 'apps/api/**'
               - 'backend/**'
+              - 'infra/backend-provider.txt'
               - '.github/workflows/deploy.yaml'
               - 'VERSION'
             frontend:
               - 'apps/web/**'
               - 'packages/**'
+              - 'infra/backend-provider.txt'
               - '.github/workflows/deploy.yaml'
 
+  provider:
+    name: Backend provider
+    runs-on: ubuntu-latest
+    outputs:
+      backend_provider: ${{ steps.read.outputs.backend_provider }}
+      backend_provider_matrix: ${{ steps.read.outputs.backend_provider_matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: read
+        run: |
+          # Read default from variable "backend_provider" in variables.tf
+          P=$(sed -n '/variable "backend_provider"/,/^}/p' infra/variables.tf | grep -oE '"(gcp|scw)"' | head -1 | tr -d '"')
+          if [ "$P" != "gcp" ] && [ "$P" != "scw" ]; then
+            echo "Could not parse backend_provider default from infra/variables.tf (got: $P)"
+            exit 1
+          fi
+          echo "backend_provider=$P" >> $GITHUB_OUTPUT
+          echo "backend_provider_matrix=[\"$P\"]" >> $GITHUB_OUTPUT
+          echo "Using backend provider: $P (from variables.tf)"
+
   # --------------------------------------------------------------------------
-  # BUILD (three independent jobs)
+  # TERRAFORM APPLY (infra changes → apply DNS and other infra automatically)
+  # Required secrets: GCP_SA_KEY, GCP_PROJECT, CLOUDFLARE_API_TOKEN, CLOUDFLARE_ZONE_ID,
+  #   CLOUDFLARE_ACCOUNT_ID, SCW_ACCESS_KEY, SCW_SECRET_KEY, SCW_PROJECT_ID.
+  # CLOUDFLARE_API_TOKEN must include: Zone DNS Edit, Zone Firewall Services Edit, Zone WAF Edit
+  #   (or Rulesets Edit) so WAF and rate-limit rulesets can be updated. Pages-only tokens will 401.
+  # For full apply (e.g. Scaleway RDB): add TF_VAR_SCW_PRD_DB_PWD (or set in repo/env).
+  # --------------------------------------------------------------------------
+  terraform-apply:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    needs: [changes, provider]
+    if: needs.changes.outputs.infra == 'true' || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TF_VAR_backend_provider: ${{ needs.provider.outputs.backend_provider }}
+      TF_VAR_GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT }}
+      TF_VAR_CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+      TF_VAR_CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      TF_VAR_SCW_PROJECT_ID: ${{ secrets.SCW_PROJECT_ID }}
+      TF_VAR_SCW_SECRET_KEY: ${{ secrets.SCW_SECRET_KEY }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      SCW_ACCESS_KEY: ${{ secrets.SCW_ACCESS_KEY }}
+      SCW_SECRET_KEY: ${{ secrets.SCW_SECRET_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9"
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        working-directory: infra
+        run: terraform init
+
+      - name: Terraform Apply
+        working-directory: infra
+        run: terraform apply -auto-approve -input=false -refresh=false
+
+  # --------------------------------------------------------------------------
+  # BUILD (only for selected provider)
   # --------------------------------------------------------------------------
   build-backend:
-    name: Build Backend
+    name: Build Backend (${{ needs.provider.outputs.backend_provider }})
     runs-on: ubuntu-latest
-    needs: [changes]
-    if: needs.changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+    needs: [changes, provider]
+    if: (needs.changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch')
     permissions:
       contents: read
       id-token: write
@@ -62,12 +130,33 @@ jobs:
           echo "tag=${VERSION}-${SHORT_SHA}" >> $GITHUB_OUTPUT
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
+      - name: Auth and tags for selected provider
+        id: provider
+        run: |
+          P="${{ needs.provider.outputs.backend_provider }}"
+          TAG="${{ steps.meta.outputs.tag }}"
+          VER="${{ steps.meta.outputs.version }}"
+          if [ "$P" = "gcp" ]; then
+            echo "tags<<EOF" >> $GITHUB_OUTPUT
+            echo "europe-west1-docker.pkg.dev/hit8-poc/backend/api:${TAG}" >> $GITHUB_OUTPUT
+            echo "europe-west1-docker.pkg.dev/hit8-poc/backend/api:${VER}" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "tags<<EOF" >> $GITHUB_OUTPUT
+            echo "rg.fr-par.scw.cloud/hit8-registry/api:${TAG}" >> $GITHUB_OUTPUT
+            echo "rg.fr-par.scw.cloud/hit8-registry/api:latest" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
+
       - uses: google-github-actions/auth@v2
+        if: needs.provider.outputs.backend_provider == 'gcp'
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
       - run: gcloud auth configure-docker europe-west1-docker.pkg.dev
+        if: needs.provider.outputs.backend_provider == 'gcp'
 
       - name: Login to Scaleway
+        if: needs.provider.outputs.backend_provider == 'scw'
         run: echo "${{ secrets.SCW_SECRET_KEY }}" | docker login rg.fr-par.scw.cloud/hit8-registry -u nologin --password-stdin
 
       - uses: docker/setup-buildx-action@v3
@@ -76,19 +165,15 @@ jobs:
           context: ./apps/api
           push: true
           platforms: linux/amd64
-          tags: |
-            europe-west1-docker.pkg.dev/hit8-poc/backend/api:${{ steps.meta.outputs.tag }}
-            europe-west1-docker.pkg.dev/hit8-poc/backend/api:${{ steps.meta.outputs.version }}
-            rg.fr-par.scw.cloud/hit8-registry/api:${{ steps.meta.outputs.tag }}
-            rg.fr-par.scw.cloud/hit8-registry/api:latest
+          tags: ${{ steps.provider.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
   build-frontend:
-    name: Build Frontend
+    name: Build Frontend (${{ needs.provider.outputs.backend_provider }})
     runs-on: ubuntu-latest
-    needs: [changes]
-    if: needs.changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch'
+    needs: [changes, provider]
+    if: (needs.changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch')
     steps:
       - uses: actions/checkout@v4
 
@@ -102,15 +187,21 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Build frontends
+      - name: Build frontends (stg + prd for selected provider)
         run: |
           set -e
-          VITE_API_URL=https://api-stg.hit8.io pnpm turbo build --filter=hit8-frontend
+          P="${{ needs.provider.outputs.backend_provider }}"
+          if [ "$P" = "gcp" ]; then
+            STG_URL="https://api-stg.hit8.io"
+            PRD_URL="https://api-prd.hit8.io"
+          else
+            STG_URL="https://scw-stg.hit8.io"
+            PRD_URL="https://scw-prd.hit8.io"
+          fi
+          VITE_API_URL="$STG_URL" pnpm turbo build --filter=hit8-frontend
           mv apps/web/dist dist-stg
-          VITE_API_URL=https://api-prd.hit8.io pnpm turbo build --filter=hit8-frontend
+          VITE_API_URL="$PRD_URL" pnpm turbo build --filter=hit8-frontend
           mv apps/web/dist dist-prd
-          VITE_API_URL=https://scw-prd.hit8.io pnpm turbo build --filter=hit8-frontend
-          mv apps/web/dist dist-scw
         env:
           VITE_GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
           VITE_GOOGLE_IDENTITY_PLATFORM_KEY: ${{ secrets.GOOGLE_IDENTITY_PLATFORM_KEY }}
@@ -124,7 +215,6 @@ jobs:
           path: |
             dist-stg/
             dist-prd/
-            dist-scw/
           retention-days: 1
 
   # --------------------------------------------------------------------------
@@ -132,13 +222,13 @@ jobs:
   # --------------------------------------------------------------------------
   deploy-staging:
     name: Deploy Staging (${{ matrix.cloud }})
-    needs: [build-backend]
+    needs: [build-backend, provider]
     if: needs.build-backend.result == 'success'
     runs-on: ubuntu-latest
     environment: staging
     strategy:
       matrix:
-        cloud: [gcp, scw]
+        cloud: ${{ fromJson(needs.provider.outputs.backend_provider_matrix) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -191,12 +281,12 @@ jobs:
   # --------------------------------------------------------------------------
   deploy-production:
     name: Deploy Production (${{ matrix.cloud }})
-    needs: [build-backend, approve-production]
+    needs: [build-backend, approve-production, provider]
     if: needs.build-backend.result == 'success'
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        cloud: [gcp, scw]
+        cloud: ${{ fromJson(needs.provider.outputs.backend_provider_matrix) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -225,21 +315,13 @@ jobs:
       - name: Install pnpm
         run: npm install -g pnpm
 
-      - name: Deploy iter8.hit8.io
+      - name: Deploy iter8.hit8.io (production)
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_PAGES_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           packageManager: pnpm
           command: pages deploy dist-prd --project-name=hit8 --branch=main --commit-dirty=true
-
-      - name: Deploy scw.hit8.io
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_PAGES_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          packageManager: pnpm
-          command: pages deploy dist-scw --project-name=hit8 --branch=scaleway --commit-dirty=true
 
   # --------------------------------------------------------------------------
   # NOTIFY

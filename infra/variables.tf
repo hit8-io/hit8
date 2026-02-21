@@ -6,7 +6,7 @@
 variable "backend_provider" {
   description = "Backend for hit8 frontend: gcp or scw (Scaleway). Prd and stg use the same provider."
   type        = string
-  default     = "gcp"
+  default     = "scw"
 
   validation {
     condition     = contains(["gcp", "scw"], var.backend_provider)
