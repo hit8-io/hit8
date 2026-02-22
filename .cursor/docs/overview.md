@@ -12,6 +12,7 @@ Hit8 is an AI-powered conversational application built with LangGraph orchestrat
 | [api-reference.md](api-reference.md) | API endpoints and contracts | Integrate with the API, check request/response formats |
 | [authentication.md](authentication.md) | Firebase/Google Identity, token flow | Set up or debug auth, token verification |
 | [cicd.md](cicd.md) | GitHub Actions, staging/production, Terraform | Deploy, understand the pipeline, manual deploy steps |
+| [debugging-redis-vpc.md](debugging-redis-vpc.md) | Redis connectivity and behaviour when Redis is in a VPC | Debug Redis from outside (API), run checks in VPC, optional deploy assert |
 | [dependencies.md](dependencies.md) | Backend (uv) and frontend (npm) deps | Add or update packages, resolve version issues |
 | [development.md](development.md) | Local setup, Docker Compose, config | Get started, run locally, configure dev environment |
 | [infrastructure.md](infrastructure.md) | Cloud Run, Cloudflare, VPC, Supabase | Understand hosting, networking, and resource config |

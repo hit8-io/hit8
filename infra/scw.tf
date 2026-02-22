@@ -245,6 +245,11 @@ resource "scaleway_instance_ip" "prd_redis_ipv6" {
 # 4b. Redis on DEV1-S
 # Allow 6379 from prd VPC (172.16.0.0/22). Per Scaleway docs, container egress to same PN uses private interface.
 # Optional: scw_redis_extra_inbound_cidrs (e.g. ["0.0.0.0/0"]) to test if container source IP is outside the PN CIDR.
+variable "scw_redis_extra_inbound_cidrs" {
+  description = "Extra IPv4 CIDRs allowed to connect to prd Redis port 6379 (debug: try [\"0.0.0.0/0\"] to test connectivity, then remove)."
+  type        = list(string)
+  default     = []
+}
 resource "scaleway_instance_security_group" "prd_redis_sg" {
   name       = "hit8-prd-redis-sg"
   project_id = var.SCW_PROJECT_ID

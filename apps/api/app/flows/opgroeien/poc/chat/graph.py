@@ -59,7 +59,7 @@ class AgentState(TypedDict):
 
 
 
-async def agent_node(state: AgentState, config: RunnableConfig | None = None) -> AgentState:
+async def agent_node(state: AgentState, config: RunnableConfig) -> AgentState:
     """Agent node that processes messages and may call tools."""
     # Extract model_name from config if provided
     # Convert config to dict first (RunnableConfig can be converted to dict)

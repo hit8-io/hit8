@@ -22,7 +22,7 @@ __all__ = ["create_tool_node"]
 
 def create_tool_node(tool_name: str, tool_func: Callable[..., Any]):
     """Factory to create individual tool nodes."""
-    def tool_node(state: "AgentState", config: RunnableConfig | None = None) -> "AgentState":
+    def tool_node(state: "AgentState", config: RunnableConfig) -> "AgentState":
         """Execute a specific tool and return ToolMessage."""
         try:
             # Extract thread_id from config

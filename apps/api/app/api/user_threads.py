@@ -75,7 +75,7 @@ async def thread_exists(thread_id: str) -> bool:
                 await cur.execute(
                     """
                     SELECT EXISTS(
-                        SELECT 1 FROM public.user_threads
+                        SELECT 1 FROM hit8.user_threads
                         WHERE thread_id = %s::uuid
                     )
                     """,
@@ -111,7 +111,7 @@ async def update_last_accessed(thread_id: str) -> None:
             async with conn.cursor() as cur:
                 await cur.execute(
                     """
-                    UPDATE public.user_threads
+                    UPDATE hit8.user_threads
                     SET last_accessed_at = NOW()
                     WHERE thread_id = %s::uuid
                     """,
@@ -159,7 +159,7 @@ async def upsert_thread(thread_id: str, user_id: str, title: str | None = None, 
                 if title is not None:
                     await cur.execute(
                         """
-                        INSERT INTO public.user_threads (thread_id, user_id, title, flow, created_at, last_accessed_at)
+                        INSERT INTO hit8.user_threads (thread_id, user_id, title, flow, created_at, last_accessed_at)
                         VALUES (%s::uuid, %s, %s, %s, NOW(), NOW())
                         ON CONFLICT (thread_id) 
                         DO UPDATE SET 
@@ -172,7 +172,7 @@ async def upsert_thread(thread_id: str, user_id: str, title: str | None = None, 
                 else:
                     await cur.execute(
                         """
-                        INSERT INTO public.user_threads (thread_id, user_id, title, flow, created_at, last_accessed_at)
+                        INSERT INTO hit8.user_threads (thread_id, user_id, title, flow, created_at, last_accessed_at)
                         VALUES (%s::uuid, %s, %s, %s, NOW(), NOW())
                         ON CONFLICT (thread_id) 
                         DO UPDATE SET 
@@ -231,7 +231,7 @@ async def get_user_threads(user_id: str, flow: str | None = None) -> list[dict[s
                     await cur.execute(
                         """
                         SELECT thread_id, user_id, title, flow, created_at, last_accessed_at
-                        FROM public.user_threads
+                        FROM hit8.user_threads
                         WHERE user_id = %s AND flow = %s
                         ORDER BY last_accessed_at DESC
                         """,
@@ -241,7 +241,7 @@ async def get_user_threads(user_id: str, flow: str | None = None) -> list[dict[s
                     await cur.execute(
                         """
                         SELECT thread_id, user_id, title, flow, created_at, last_accessed_at
-                        FROM public.user_threads
+                        FROM hit8.user_threads
                         WHERE user_id = %s
                         ORDER BY last_accessed_at DESC
                         """,
