@@ -1,7 +1,11 @@
 /**
  * OPTIONS: 200 + CORS. Other methods: forward to origin and add CORS to every response
  * so 5xx/530 from origin or edge still have CORS and the browser shows the real status.
+ * When ORIGIN_BY_HOST is set, fetches the Scaleway (or other) origin URL directly to avoid
+ * same-zone fetch returning 404.
  */
+const ORIGIN_BY_HOST = ${origin_map_json};
+
 const ALLOWED_ORIGINS = [
   "https://iter8.hit8.io",
   "https://www.hit8.io",
@@ -36,8 +40,21 @@ addEventListener("fetch", (event) => {
       new Response(null, { status: 200, headers: corsHeaders(origin) })
     );
   }
+  const url = new URL(event.request.url);
+  const originBase = ORIGIN_BY_HOST[url.hostname];
+  const fetchUrl = originBase
+    ? originBase + url.pathname + url.search
+    : event.request.url;
+  const fetchOpts = {
+    method: event.request.method,
+    headers: event.request.headers,
+    redirect: "follow",
+  };
+  if (event.request.method !== "GET" && event.request.method !== "HEAD") {
+    fetchOpts.body = event.request.body;
+  }
   event.respondWith(
-    fetch(event.request)
+    fetch(fetchUrl, fetchOpts)
       .then((res) => mergeCorsIntoResponse(res, origin))
       .catch(() =>
         new Response(

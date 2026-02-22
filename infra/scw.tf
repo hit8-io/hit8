@@ -52,11 +52,17 @@ resource "scaleway_instance_security_group" "stg_vm" {
     ip_range = "::/0"
   }
 
-  # Allow internal traffic (Postgres/Redis) from VPC only
+  # Allow internal traffic (Postgres/PgBouncer/Redis) from VPC only
   inbound_rule {
     action     = "accept"
     protocol   = "TCP"
     port_range = "5432-6432" # 5432=Postgres, 6432=PgBouncer
+    ip_range   = "10.0.0.0/8"
+  }
+  inbound_rule {
+    action     = "accept"
+    protocol   = "TCP"
+    port       = 6379
     ip_range   = "10.0.0.0/8"
   }
 }
@@ -116,6 +122,8 @@ resource "scaleway_instance_server" "stg_vm" {
                 image: redis:7-alpine
                 restart: always
                 command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+                ports:
+                  - "6379:6379"
               pgbouncer:
                 image: edoburu/pgbouncer:latest
                 restart: always

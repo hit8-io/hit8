@@ -17,6 +17,8 @@ locals {
     "scw-prd" = "hit8apinsxxndrexr-hit8-api-prd.functions.fnc.fr-par.scw.cloud"
     "scw-stg" = "hit8apinsxxndrexr-hit8-api-stg.functions.fnc.fr-par.scw.cloud"
   }
+  # Worker forwards to this origin URL when request host is in the map (avoids same-zone fetch 404)
+  worker_origin_map_json = jsonencode(var.backend_provider == "scw" ? { for k, v in local.scw_api_cname_targets : "${k}.${var.DOMAIN_NAME}" => "https://${v}" } : {})
 }
 
 resource "cloudflare_dns_record" "services" {

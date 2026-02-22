@@ -184,12 +184,12 @@ if OLLAMA_BASE_URL:
     })
 
 
-# 4. ROUTER INITIALIZATION: Optimized Load Balancing
-# latency-based-routing: Prioritizes the fastest response (Europe) 
-# and automatically shifts traffic to Global if Europe slows down or errors.
+# 4. ROUTER INITIALIZATION: Load Balancing
+# simple-shuffle: Even distribution, no latency-tracking (avoids LiteLLM bug where
+# async_log_success_event gets kwargs["litellm_params"] is None -> 'NoneType' has no attribute 'get').
 router_kwargs = {
     "model_list": model_list,
-    "routing_strategy": "latency-based-routing",
+    "routing_strategy": "simple-shuffle",
     "num_retries": 2,       # Retry on 5xx/429
     "allowed_fails": 1,     # Allow 1 failure before cooldown
     "cooldown_time": 30,    # Short cooldown to quickly retry failed region
@@ -209,6 +209,10 @@ if settings.CACHE_ENABLED and settings.REDIS_HOST:
         "cache_responses": True,
         "cache_kwargs": {
             "ssl": _redis_use_tls,  # True for Upstash (GCP), False for Scaleway internal Redis
+            # Prd: LiteLLM async set() often logs "Timeout connecting to server" with defaults (same VPC).
+            # Higher timeouts allow the first connection / pool init to complete; response still returned.
+            "socket_connect_timeout": 15,
+            "socket_timeout": 15,
             # Note: TTL is handled by LiteLLM's caching layer, not passed to Redis client
         },
         # TTL is configured via default_in_redis_ttl if LiteLLM supports it
@@ -232,6 +236,6 @@ logger.info(
     vertex_location=VERTEX_LOCATION,
     deployment_locations=deployment_locations,
     use_alternative=USE_ALTERNATIVE,
-    routing_strategy="latency-based-routing",
+    routing_strategy="simple-shuffle",
     redis_enabled=settings.CACHE_ENABLED and settings.REDIS_HOST is not None,
 )
