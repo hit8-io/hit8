@@ -41,23 +41,15 @@ def _get_ssl_cert_file_path() -> str:
     for SSL certificate verification.
     
     Returns:
-        str: Path to the certificate file
-        
-    Raises:
-        ValueError: If DATABASE_SSL_ROOT_CERT is required but not provided
+        str: Path to the certificate file. Only called in prd when DATABASE_SSL_ROOT_CERT is set.
     """
     global _ssl_cert_file_path
     
     if _ssl_cert_file_path is not None and os.path.exists(_ssl_cert_file_path):
         return _ssl_cert_file_path
     
-    # Production requires SSL with certificate verification
-    if constants.ENVIRONMENT == "prd":
-        if not settings.DATABASE_SSL_ROOT_CERT:
-            raise ValueError(
-                "DATABASE_SSL_ROOT_CERT is required in production but not provided"
-            )
-        
+    # Production: only used when DATABASE_SSL_ROOT_CERT is set (GCP). Scaleway prd uses sslmode=require without cert.
+    if constants.ENVIRONMENT == "prd" and settings.DATABASE_SSL_ROOT_CERT:
         # Create certs directory if it doesn't exist (for Docker: /app/certs)
         cert_dir = Path("/app/certs") if os.path.exists("/app/certs") else Path(tempfile.gettempdir()) / "hit8_certs"
         cert_dir.mkdir(parents=True, exist_ok=True)
@@ -114,8 +106,8 @@ def _build_connection_string() -> str:
     - If running in Docker and connection string uses localhost, converts to host.docker.internal
     - If running on host and connection string uses host.docker.internal, converts to localhost
     
-    For production, removes any existing SSL parameters from the connection string
-    and adds correct ones using the certificate from DATABASE_SSL_ROOT_CERT.
+    For production, adds SSL: verify-full with DATABASE_SSL_ROOT_CERT when set (GCP),
+    otherwise sslmode=require (Scaleway RDB; cert optional).
     
     Returns:
         str: Connection string with SSL parameters if in production
@@ -143,22 +135,18 @@ def _build_connection_string() -> str:
                 new_host="localhost",
             )
     
-    # Production requires SSL with certificate verification
+    # Production: use cert when set (GCP); otherwise sslmode=require (Scaleway RDB, no cert needed)
     if constants.ENVIRONMENT == "prd":
-        # Remove any existing SSL parameters (they might point to non-existent files)
         conninfo = re.sub(r'[&?]sslmode=[^&]*', '', conninfo)
         conninfo = re.sub(r'[&?]sslrootcert=[^&]*', '', conninfo)
-        # Clean up any double separators
         conninfo = re.sub(r'[?&]+', '&', conninfo)
         conninfo = conninfo.rstrip('&?')
-        
-        # Get certificate file path (reads from DATABASE_SSL_ROOT_CERT and writes to temp file)
-        cert_file_path = _get_ssl_cert_file_path()
-        
-        # Append SSL parameters using the certificate from DATABASE_SSL_ROOT_CERT
         separator = "&" if "?" in conninfo else "?"
-        conninfo = f"{conninfo}{separator}sslmode=verify-full&sslrootcert={cert_file_path}"
-    
+        if settings.DATABASE_SSL_ROOT_CERT:
+            cert_file_path = _get_ssl_cert_file_path()
+            conninfo = f"{conninfo}{separator}sslmode=verify-full&sslrootcert={cert_file_path}"
+        else:
+            conninfo = f"{conninfo}{separator}sslmode=require"
     return conninfo
 
 
@@ -289,36 +277,7 @@ def get_sync_connection() -> psycopg.Connection:
     
     Returns:
         psycopg.Connection: Database connection
-        
-    Raises:
-        ValueError: If DATABASE_SSL_ROOT_CERT is required but not provided
     """
-    # Use the same connection string building logic as async pool
-    # This ensures consistent hostname handling
+    # Use the same connection string building logic as async pool (SSL params already in conninfo for prd)
     conninfo = _build_connection_string()
-    
-    # Production requires SSL with certificate verification
-    if constants.ENVIRONMENT == "prd":
-        if not settings.DATABASE_SSL_ROOT_CERT:
-            raise ValueError(
-                "DATABASE_SSL_ROOT_CERT is required in production but not provided"
-            )
-        
-        # Extract SSL parameters from connection string if present
-        # Otherwise use certificate file path
-        if "sslmode=" in conninfo and "sslrootcert=" in conninfo:
-            # SSL params already in connection string, use as-is
-            return psycopg.connect(conninfo)
-        else:
-            # Write certificate content to file and get path
-            cert_file_path = _get_ssl_cert_file_path()
-            
-            # Connect with SSL verification
-            return psycopg.connect(
-                conninfo,
-                sslmode="verify-full",
-                sslrootcert=cert_file_path,
-            )
-    
-    # Dev: No SSL (local database)
     return psycopg.connect(conninfo)

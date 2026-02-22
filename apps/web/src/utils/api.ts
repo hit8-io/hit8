@@ -150,7 +150,8 @@ export async function getUserConfig(token: string | null): Promise<UserConfig> {
       throw error
     }
 
-    return response.json()
+    const data = (await response.json()) as UserConfig
+    return data
   } catch (error) {
     // If it's a network error, add request context
     if (error instanceof Error && !(error as Error & { requestContext?: Record<string, unknown> }).requestContext) {
@@ -197,7 +198,8 @@ export async function getAggregatedMetrics(
       throw error
     }
 
-    return response.json()
+    const data = (await response.json()) as import('../types/observability').AggregatedMetrics
+    return data
   } catch (error) {
     // If it's a network error, add request context
     if (error instanceof Error && !(error as Error & { requestContext?: Record<string, unknown> }).requestContext) {
@@ -244,7 +246,8 @@ export async function getChatHistory(
       throw error
     }
 
-    return response.json()
+    const data = (await response.json()) as import('../types').ChatThread[]
+    return data
   } catch (error) {
     // If it's a network error, add request context
     if (error instanceof Error && !(error as Error & { requestContext?: Record<string, unknown> }).requestContext) {
@@ -291,8 +294,8 @@ export async function getAvailableModels(
       throw error
     }
 
-    const data = await response.json()
-    return data.models || []
+    const data = (await response.json()) as { models?: string[] }
+    return data.models ?? []
   } catch (error) {
     // If it's a network error, add request context
     if (error instanceof Error && !(error as Error & { requestContext?: Record<string, unknown> }).requestContext) {

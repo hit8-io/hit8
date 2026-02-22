@@ -180,34 +180,34 @@ runs:
         STATUS=$(echo "$CONTAINER_DETAIL" | jq -r '.status')
         echo "Container Status: $STATUS"
         echo "Container Domain: $DOMAIN"
+        # Wait for container to be ready (poll every 5s, max 60s)
+        echo "Waiting for container status ready (max 60s)..."
+        for wait in $(seq 1 12); do
+          STATUS=$(scw container container get "$CONTAINER_ID" -o json | jq -r '.status')
+          if [ "$STATUS" = "ready" ]; then
+            echo "Container ready after $((wait * 5))s"
+            break
+          fi
+          echo "  status=$STATUS, 5s..."
+          sleep 5
+          [ $wait -eq 12 ] && echo "⚠️ Still not ready after 60s, trying health check anyway"
+        done
         URL="https://${DOMAIN}/health"
-        echo "Health check URL: $URL"
-        echo "Waiting 30s for deployment (cold start can be slow when MinScale=0)..."
-        sleep 30
-        MAX_ATTEMPTS=3
+        echo "Health check: $URL (4 attempts, 5s apart)"
+        sleep 5
+        MAX_ATTEMPTS=4
         for i in $(seq 1 $MAX_ATTEMPTS); do
-          # Try health endpoint
           HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$URL" || echo "000")
           if [ "$HTTP_CODE" = "200" ]; then
-            echo "✅ Health check passed: $URL (HTTP $HTTP_CODE)"
+            echo "✅ Health check passed: $URL"
             exit 0
           fi
-          # If 404, try other paths to diagnose
           if [ "$HTTP_CODE" = "404" ]; then
-            ROOT_CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://${DOMAIN}/" || echo "000")
-            DOCS_CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://${DOMAIN}/docs" || echo "000")
-            VERSION_CODE=$(curl -s -o /dev/null -w "%{http_code}" "https://${DOMAIN}/version" || echo "000")
-            echo "Attempt $i/$MAX_ATTEMPTS: /health=$HTTP_CODE, /=${ROOT_CODE}, /docs=${DOCS_CODE}, /version=${VERSION_CODE}"
-            # If we get 200 on any path, app is running but /health route might be wrong
-            if [ "$ROOT_CODE" = "200" ] || [ "$DOCS_CODE" = "200" ] || [ "$VERSION_CODE" = "200" ]; then
-              echo "⚠️ App is responding but /health returns 404 - checking route registration"
-            fi
+            echo "Attempt $i/$MAX_ATTEMPTS: /health=404"
           else
-            echo "Attempt $i/$MAX_ATTEMPTS failed (HTTP $HTTP_CODE), retrying in 10s..."
+            echo "Attempt $i/$MAX_ATTEMPTS: HTTP $HTTP_CODE, retrying in 5s..."
           fi
-          if [ $i -lt $MAX_ATTEMPTS ]; then
-            sleep 10
-          fi
+          [ $i -lt $MAX_ATTEMPTS ] && sleep 5
         done
         echo "❌ Health check failed after $MAX_ATTEMPTS attempts"
         echo "Final container status:"

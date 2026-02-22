@@ -12,10 +12,10 @@ locals {
   api_hosts    = var.backend_provider == "gcp" ? ["gcp-prd.${var.DOMAIN_NAME}", "gcp-stg.${var.DOMAIN_NAME}"] : ["scw-prd.${var.DOMAIN_NAME}", "scw-stg.${var.DOMAIN_NAME}"]
   api_hosts_in = "(http.host in {\"${join("\" \"", local.api_hosts)}\"})"
 
-  # Scaleway serverless container CNAME target format: {container_id}.cnc.{region}.scw.cloud (.url is null in provider)
+  # Scaleway serverless container CNAME target: default endpoint is {container_id}.functions.fnc.{region}.scw.cloud
   scw_api_cname_targets = {
-    "scw-prd" = "${scaleway_container_domain.prd.container_id}.cnc.${scaleway_container_domain.prd.region}.scw.cloud"
-    "scw-stg" = "${scaleway_container_domain.stg.container_id}.cnc.${scaleway_container_domain.stg.region}.scw.cloud"
+    "scw-prd" = "${scaleway_container_domain.prd.container_id}.functions.fnc.${scaleway_container_domain.prd.region}.scw.cloud"
+    "scw-stg" = "${scaleway_container_domain.stg.container_id}.functions.fnc.${scaleway_container_domain.stg.region}.scw.cloud"
   }
 }
 
@@ -33,7 +33,7 @@ resource "cloudflare_dns_record" "services" {
   ttl     = 1
 }
 
-# Scaleway containers (scw-prd, scw-stg) - CNAME target format: {container_id}.cnc.{region}.scw.cloud
+# Scaleway containers (scw-prd, scw-stg) - CNAME target: {container_id}.functions.fnc.{region}.scw.cloud
 resource "cloudflare_dns_record" "scw_api" {
   for_each = local.scw_api_cname_targets
 
@@ -158,8 +158,8 @@ resource "cloudflare_ruleset" "waf_custom" {
     {
       description = "Block Direct API Access"
       enabled     = true
-      # Do not block OPTIONS (CORS preflight); preflight often has no Referer, so it would be blocked and fail CORS
-      expression  = "(${local.api_hosts_in} and http.request.method ne \"OPTIONS\" and not http.referer contains \"hit8.pages.dev\" and not http.referer contains \"hit8-site.pages.dev\" and not http.referer contains \"www.${var.DOMAIN_NAME}\" and not http.referer contains \"iter8.${var.DOMAIN_NAME}\")"
+      # Allow OPTIONS (CORS preflight) and /health, /version (no Referer). Block other requests without allowed Referer.
+      expression  = "(${local.api_hosts_in} and http.request.method ne \"OPTIONS\" and not (http.request.uri.path eq \"/health\" or http.request.uri.path eq \"/version\") and not http.referer contains \"hit8.pages.dev\" and not http.referer contains \"hit8-site.pages.dev\" and not http.referer contains \"www.${var.DOMAIN_NAME}\" and not http.referer contains \"iter8.${var.DOMAIN_NAME}\")"
       action      = "block"
     }
   ]
@@ -176,8 +176,8 @@ resource "cloudflare_ruleset" "rate_limit" {
   zone_id = var.CLOUDFLARE_ZONE_ID
 
   # Cloudflare only allows 1 rule in http_ratelimit phase
-  # Using a single rule with 20 req/10s limit (120 req/min) for all API endpoints
-  # Exclude OPTIONS so CORS preflight is not rate-limited (429 responses have no CORS headers).
+  # 100 req/10s allows app load (many parallel GETs) + health polling without false 429s.
+  # Exclude OPTIONS so CORS preflight is not rate-limited.
   # Note: Cloudflare free plan only supports period=10 (10 seconds)
   rules = [
     {
@@ -189,7 +189,7 @@ resource "cloudflare_ruleset" "rate_limit" {
       action_parameters = {
         response = {
           status_code  = 429
-          content      = "{\"error\": \"Rate limit exceeded. Maximum 20 requests per 10 seconds.\"}"
+          content      = "{\"error\": \"Rate limit exceeded. Maximum 100 requests per 10 seconds.\"}"
           content_type = "application/json"
         }
       }
@@ -197,7 +197,7 @@ resource "cloudflare_ruleset" "rate_limit" {
       ratelimit = {
         characteristics     = ["ip.src", "cf.colo.id"]
         period              = 10
-        requests_per_period = 20
+        requests_per_period  = 100
         mitigation_timeout  = 10
       }
     }

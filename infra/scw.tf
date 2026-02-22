@@ -235,6 +235,7 @@ resource "scaleway_instance_ip" "prd_redis_ipv6" {
 }
 
 # 4b. Redis on DEV1-S
+# Allow 6379 from prd VPC only (172.16.0.0/22). SSH from anywhere.
 resource "scaleway_instance_security_group" "prd_redis_sg" {
   name       = "hit8-prd-redis-sg"
   project_id = var.SCW_PROJECT_ID
@@ -242,7 +243,7 @@ resource "scaleway_instance_security_group" "prd_redis_sg" {
   inbound_rule {
     action   = "accept"
     port     = 6379
-    ip_range = "10.0.0.0/8"
+    ip_range = "172.16.0.0/22"
   }
   inbound_rule {
     action   = "accept"

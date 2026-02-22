@@ -38,9 +38,9 @@ def _is_running_in_docker() -> bool:
 
 
 def _get_ssl_cert_file_path() -> str:
-    """Write SSL certificate content to a temp file and return the path. Prd only."""
+    """Write SSL certificate content to a temp file and return the path. Only used in prd when cert is set."""
     if not settings.DATABASE_SSL_ROOT_CERT:
-        raise ValueError("DATABASE_SSL_ROOT_CERT is required in production but not provided")
+        raise ValueError("DATABASE_SSL_ROOT_CERT must be set when using verify-full (cert path requested)")
     cert_dir = Path("/app/certs") if os.path.exists("/app/certs") else Path(tempfile.gettempdir()) / "hit8_certs"
     cert_dir.mkdir(parents=True, exist_ok=True)
     cert_file = cert_dir / "prod-ca-2021.crt"
@@ -67,15 +67,17 @@ def _build_connection_string() -> str:
             conninfo = conninfo.replace("host.docker.internal", "localhost")
         return conninfo
 
-    # Prd: cert when DATABASE_SSL_ROOT_CERT is set (e.g. doppler --config prd may not set ENVIRONMENT)
-    if constants.ENVIRONMENT == "prd" or settings.DATABASE_SSL_ROOT_CERT:
+    # Prd: cert when DATABASE_SSL_ROOT_CERT is set (GCP); else sslmode=require (Scaleway, no cert)
+    if constants.ENVIRONMENT == "prd":
         conninfo = re.sub(r'[&?]sslmode=[^&]*', '', conninfo)
         conninfo = re.sub(r'[&?]sslrootcert=[^&]*', '', conninfo)
         conninfo = re.sub(r'[?&]+', '&', conninfo)
         conninfo = conninfo.rstrip('&?')
-        cert_file_path = _get_ssl_cert_file_path()
         separator = "&" if "?" in conninfo else "?"
-        return f"{conninfo}{separator}sslmode=verify-full&sslrootcert={cert_file_path}"
+        if settings.DATABASE_SSL_ROOT_CERT:
+            cert_file_path = _get_ssl_cert_file_path()
+            return f"{conninfo}{separator}sslmode=verify-full&sslrootcert={cert_file_path}"
+        return f"{conninfo}{separator}sslmode=require"
 
     # Stg: SSL, no custom cert — use system CA
     if constants.ENVIRONMENT == "stg":
@@ -98,23 +100,8 @@ def get_db_connection(autocommit: bool = False, register_vector_type: bool = Fal
     """
     conninfo = _build_connection_string()
 
-    # Prd: SSL with cert when DATABASE_SSL_ROOT_CERT is set (works even if ENVIRONMENT not set by Doppler)
-    if constants.ENVIRONMENT == "prd" or settings.DATABASE_SSL_ROOT_CERT:
-        if not settings.DATABASE_SSL_ROOT_CERT:
-            raise ValueError("DATABASE_SSL_ROOT_CERT is required in production but not provided")
-        if "sslmode=" in conninfo and "sslrootcert=" in conninfo:
-            conn = psycopg.connect(conninfo, autocommit=autocommit)
-        else:
-            cert_file_path = _get_ssl_cert_file_path()
-            conn = psycopg.connect(
-                conninfo,
-                sslmode="verify-full",
-                sslrootcert=cert_file_path,
-                autocommit=autocommit,
-            )
-    else:
-        # Dev / Stg: use conninfo as-is
-        conn = psycopg.connect(conninfo, autocommit=autocommit)
+    # Dev / Stg / Prd: conninfo from _build_connection_string already has correct SSL params
+    conn = psycopg.connect(conninfo, autocommit=autocommit)
 
     if register_vector_type:
         try:
