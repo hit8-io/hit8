@@ -10,7 +10,8 @@ import os
 import re
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
+from fastapi.responses import RedirectResponse
 
 from app import constants
 from app.config import settings
@@ -38,6 +39,13 @@ def _redis_use_tls() -> bool:
     host = (settings.REDIS_HOST or "").strip().lower()
     provider = os.getenv("BACKEND_PROVIDER", "").strip().lower()
     return "upstash" in host or provider != "scw"
+
+
+@router.get("/debug")
+async def debug_index(request: Request):
+    """Redirect /debug to /debug/connectivity (absolute URL so it works behind proxy)."""
+    base = str(request.base_url).rstrip("/")
+    return RedirectResponse(url=f"{base}/debug/connectivity", status_code=302)
 
 
 @router.get("/debug/connectivity")

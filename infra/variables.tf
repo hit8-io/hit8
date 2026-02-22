@@ -101,6 +101,19 @@ variable "SCW_REGION" {
   default     = "fr-par"
 }
 
+# Scaleway serverless container default domains (from Console or: scw container container list -o json | jq -r '.[].domain_name')
+variable "SCW_CONTAINER_DOMAIN_PRD" {
+  description = "Default domain for hit8-api-prd container (CNAME target for scw-prd.hit8.io)"
+  type        = string
+  default     = "hit8apinsxxndrexr-hit8-api-prd.functions.fnc.fr-par.scw.cloud"
+}
+
+variable "SCW_CONTAINER_DOMAIN_STG" {
+  description = "Default domain for hit8-api-stg container (CNAME target for scw-stg.hit8.io)"
+  type        = string
+  default     = "hit8apinsxxndrexr-hit8-api-stg.functions.fnc.fr-par.scw.cloud"
+}
+
 variable "SCW_ZONE" {
   description = "Scaleway Zone default"
   type        = string

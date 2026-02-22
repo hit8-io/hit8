@@ -12,10 +12,10 @@ locals {
   api_hosts    = var.backend_provider == "gcp" ? ["gcp-prd.${var.DOMAIN_NAME}", "gcp-stg.${var.DOMAIN_NAME}"] : ["scw-prd.${var.DOMAIN_NAME}", "scw-stg.${var.DOMAIN_NAME}"]
   api_hosts_in = "(http.host in {\"${join("\" \"", local.api_hosts)}\"})"
 
-  # Scaleway serverless container CNAME target: default endpoint is {container_id}.functions.fnc.{region}.scw.cloud
+  # Scaleway serverless container CNAME targets (exact default domains from Scaleway)
   scw_api_cname_targets = {
-    "scw-prd" = "${scaleway_container_domain.prd.container_id}.functions.fnc.${scaleway_container_domain.prd.region}.scw.cloud"
-    "scw-stg" = "${scaleway_container_domain.stg.container_id}.functions.fnc.${scaleway_container_domain.stg.region}.scw.cloud"
+    "scw-prd" = var.SCW_CONTAINER_DOMAIN_PRD
+    "scw-stg" = var.SCW_CONTAINER_DOMAIN_STG
   }
 }
 
@@ -33,7 +33,7 @@ resource "cloudflare_dns_record" "services" {
   ttl     = 1
 }
 
-# Scaleway containers (scw-prd, scw-stg) - CNAME target: {container_id}.functions.fnc.{region}.scw.cloud
+# Scaleway containers (scw-prd, scw-stg) - CNAME to container default domains
 resource "cloudflare_dns_record" "scw_api" {
   for_each = local.scw_api_cname_targets
 
@@ -158,8 +158,9 @@ resource "cloudflare_ruleset" "waf_custom" {
     {
       description = "Block Direct API Access"
       enabled     = true
-      # Allow OPTIONS, /health, /version, /debug/* (no Referer). Block other requests without allowed Referer.
-      expression  = "(${local.api_hosts_in} and http.request.method ne \"OPTIONS\" and not (http.request.uri.path eq \"/health\" or http.request.uri.path eq \"/version\" or starts_with(http.request.uri.path, \"/debug\")) and not http.referer contains \"hit8.pages.dev\" and not http.referer contains \"hit8-site.pages.dev\" and not http.referer contains \"www.${var.DOMAIN_NAME}\" and not http.referer contains \"iter8.${var.DOMAIN_NAME}\")"
+      # Block direct API access: API hosts, non-OPTIONS, path not in allowlist, and no allowed Referer.
+      # Allowlist (no Referer needed): /health, /version, /debug, /debug/connectivity.
+      expression  = "(${local.api_hosts_in} and http.request.method ne \"OPTIONS\" and http.request.uri.path ne \"/health\" and http.request.uri.path ne \"/version\" and http.request.uri.path ne \"/debug\" and http.request.uri.path ne \"/debug/connectivity\" and not http.referer contains \"hit8.pages.dev\" and not http.referer contains \"hit8-site.pages.dev\" and not http.referer contains \"www.${var.DOMAIN_NAME}\" and not http.referer contains \"iter8.${var.DOMAIN_NAME}\")"
       action      = "block"
     }
   ]
