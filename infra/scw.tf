@@ -383,14 +383,16 @@ resource "scaleway_container" "api_prd" {
   port         = 8080
 
   environment_variables = {
-    "ENVIRONMENT"             = "prd"
-    "BACKEND_PROVIDER"        = "scw"
-    "DOPPLER_PROJECT"         = var.DOPPLER_PROJECT
-    "DOPPLER_CONFIG"          = "prd"
-    "DOPPLER_TOKEN_SECRET_ID" = scaleway_secret.doppler_token_prd.id
-    "SCALEWAY_SECRET_REGION"  = var.SCW_REGION
-    "DB_HOST"                 = scaleway_rdb_instance.prd_db.private_network[0].ip
-    "REDIS_HOST"              = local.prd_redis_private_ip
+    "ENVIRONMENT"                    = "prd"
+    "BACKEND_PROVIDER"               = "scw"
+    "DOPPLER_PROJECT"                = var.DOPPLER_PROJECT
+    "DOPPLER_CONFIG"                 = "prd"
+    "DOPPLER_TOKEN_SECRET_ID"        = scaleway_secret.doppler_token_prd.id
+    "SCALEWAY_SECRET_REGION"         = var.SCW_REGION
+    "DB_HOST"                        = scaleway_rdb_instance.prd_db.private_network[0].ip
+    "REDIS_HOST"                     = local.prd_redis_private_ip
+    "REDIS_SOCKET_TIMEOUT"           = "30"
+    "REDIS_SOCKET_CONNECT_TIMEOUT"   = "30"
   }
 
   secret_environment_variables = {
@@ -412,15 +414,17 @@ resource "scaleway_container" "api_stg" {
   port         = 8080
 
   environment_variables = {
-    "ENVIRONMENT"             = "stg"
-    "BACKEND_PROVIDER"        = "scw"
-    "DOPPLER_PROJECT"         = var.DOPPLER_PROJECT
-    "DOPPLER_CONFIG"          = "stg"
-    "DOPPLER_TOKEN_SECRET_ID" = scaleway_secret.doppler_token_stg.id
-    "SCALEWAY_SECRET_REGION"  = var.SCW_REGION
-    "DB_HOST"                 = local.stg_vm_private_ip
-    "DB_PORT"                 = "6432"
-    "REDIS_HOST"              = local.stg_vm_private_ip
+    "ENVIRONMENT"                    = "stg"
+    "BACKEND_PROVIDER"               = "scw"
+    "DOPPLER_PROJECT"                = var.DOPPLER_PROJECT
+    "DOPPLER_CONFIG"                 = "stg"
+    "DOPPLER_TOKEN_SECRET_ID"        = scaleway_secret.doppler_token_stg.id
+    "SCALEWAY_SECRET_REGION"         = var.SCW_REGION
+    "DB_HOST"                        = local.stg_vm_private_ip
+    "DB_PORT"                        = "6432"
+    "REDIS_HOST"                     = local.stg_vm_private_ip
+    "REDIS_SOCKET_TIMEOUT"           = "30"
+    "REDIS_SOCKET_CONNECT_TIMEOUT"   = "30"
   }
 
   secret_environment_variables = {
