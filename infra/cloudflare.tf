@@ -158,8 +158,8 @@ resource "cloudflare_ruleset" "waf_custom" {
     {
       description = "Block Direct API Access"
       enabled     = true
-      # Allow OPTIONS (CORS preflight) and /health, /version (no Referer). Block other requests without allowed Referer.
-      expression  = "(${local.api_hosts_in} and http.request.method ne \"OPTIONS\" and not (http.request.uri.path eq \"/health\" or http.request.uri.path eq \"/version\") and not http.referer contains \"hit8.pages.dev\" and not http.referer contains \"hit8-site.pages.dev\" and not http.referer contains \"www.${var.DOMAIN_NAME}\" and not http.referer contains \"iter8.${var.DOMAIN_NAME}\")"
+      # Allow OPTIONS, /health, /version, /debug/* (no Referer). Block other requests without allowed Referer.
+      expression  = "(${local.api_hosts_in} and http.request.method ne \"OPTIONS\" and not (http.request.uri.path eq \"/health\" or http.request.uri.path eq \"/version\" or starts_with(http.request.uri.path, \"/debug\")) and not http.referer contains \"hit8.pages.dev\" and not http.referer contains \"hit8-site.pages.dev\" and not http.referer contains \"www.${var.DOMAIN_NAME}\" and not http.referer contains \"iter8.${var.DOMAIN_NAME}\")"
       action      = "block"
     }
   ]

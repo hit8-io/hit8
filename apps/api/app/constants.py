@@ -25,8 +25,8 @@ Doppler Secrets Reference
 - BRIGHTDATA_API_KEY: BrightData API key for web scraping
 - N8N_GOOGLE_CLIENT_ID: Google OAuth client ID for n8n integration
 - N8N_GOOGLE_CLIENT_SECRET: Google OAuth client secret for n8n integration
-- UPSTASH_REDIS_HOST: Upstash Redis endpoint (stg/prd only)
-- UPSTASH_REDIS_PWD: Upstash Redis password (stg/prd only)
+- REDIS_HOST: Redis host for cache/rate-limiting (stg/prd: Upstash or private Redis)
+- REDIS_PWD: Redis password (optional for private Redis)
 """
 
 from __future__ import annotations

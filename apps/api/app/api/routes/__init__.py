@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.routes import chat, config, graph, health, history, metadata, version, report
+from app.api.routes import chat, config, debug, graph, health, history, metadata, version, report
 from app.api import observability
 
 # Create main API router
@@ -14,6 +14,7 @@ api_router = APIRouter()
 # Health and version (no auth)
 api_router.include_router(health.router, tags=["health"])
 api_router.include_router(version.router, tags=["version"])
+api_router.include_router(debug.router, tags=["debug"])
 
 # Authenticated routes
 api_router.include_router(config.router, prefix="/config", tags=["config"])

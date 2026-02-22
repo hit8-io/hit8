@@ -197,14 +197,15 @@ router_kwargs = {
 }
 
 # Add Redis for distributed rate limiting and caching (stg/prd)
-# Password is optional: Upstash requires one; Scaleway internal Redis is often passwordless.
-# TLS: Upstash requires SSL; Scaleway private Redis does not use TLS.
-_redis_use_tls = os.getenv("BACKEND_PROVIDER", "").strip().lower() != "scw"
-if settings.CACHE_ENABLED and settings.UPSTASH_REDIS_HOST:
+# Password: Upstash requires one; private Redis (e.g. Scaleway) often passwordless.
+# TLS: Use TLS for Upstash (by hostname) or when not Scaleway; no TLS for Scaleway private Redis.
+_redis_host_lower = (settings.REDIS_HOST or "").strip().lower()
+_redis_use_tls = "upstash" in _redis_host_lower or os.getenv("BACKEND_PROVIDER", "").strip().lower() != "scw"
+if settings.CACHE_ENABLED and settings.REDIS_HOST:
     router_kwargs.update({
-        "redis_host": settings.UPSTASH_REDIS_HOST,
+        "redis_host": settings.REDIS_HOST,
         "redis_port": 6379,
-        "redis_password": settings.UPSTASH_REDIS_PWD or None,
+        "redis_password": settings.REDIS_PWD or None,
         "cache_responses": True,
         "cache_kwargs": {
             "ssl": _redis_use_tls,  # True for Upstash (GCP), False for Scaleway internal Redis
@@ -216,7 +217,7 @@ if settings.CACHE_ENABLED and settings.UPSTASH_REDIS_HOST:
     
     logger.info(
         "litellm_router_redis_enabled",
-        redis_host=settings.UPSTASH_REDIS_HOST,
+        redis_host=settings.REDIS_HOST,
         cache_ttl=settings.CACHE_TTL,
         features=["response_caching", "distributed_rate_limiting", "cooldown_sync"],
     )
@@ -232,5 +233,5 @@ logger.info(
     deployment_locations=deployment_locations,
     use_alternative=USE_ALTERNATIVE,
     routing_strategy="latency-based-routing",
-    redis_enabled=settings.CACHE_ENABLED and settings.UPSTASH_REDIS_HOST is not None,
+    redis_enabled=settings.CACHE_ENABLED and settings.REDIS_HOST is not None,
 )

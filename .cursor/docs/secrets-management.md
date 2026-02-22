@@ -138,7 +138,7 @@ For **Terraform apply** (CI or local) to manage DNS, WAF, and rate limiting, **C
 
 ### Provider-prefixed DB and Redis (ONGCP_* / ONSCW_*)
 
-When the backend runs on **GCP** or **Scaleway**, Terraform sets `BACKEND_PROVIDER` to `gcp` or `scw`. The app then reads **provider-prefixed** env vars from Doppler so one Doppler config can hold both backends' secrets. Define these in Doppler (per config prd/stg); the app maps them to internal `DATABASE_CONNECTION_STRING`, `DATABASE_SSL_ROOT_CERT`, `UPSTASH_REDIS_HOST`, and `UPSTASH_REDIS_PWD`.
+When the backend runs on **GCP** or **Scaleway**, Terraform sets `BACKEND_PROVIDER` to `gcp` or `scw`. The app then reads **provider-prefixed** env vars from Doppler so one Doppler config can hold both backends' secrets. Define these in Doppler (per config prd/stg); the app maps them to internal `DATABASE_CONNECTION_STRING`, `DATABASE_SSL_ROOT_CERT`, `REDIS_HOST`, and `REDIS_PWD`.
 
 **On GCP** (Cloud Run):
 - `ONGCP_DB_CONNECTION_STRING` — Supabase/Postgres connection string

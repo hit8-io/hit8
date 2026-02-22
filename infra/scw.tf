@@ -235,7 +235,8 @@ resource "scaleway_instance_ip" "prd_redis_ipv6" {
 }
 
 # 4b. Redis on DEV1-S
-# Allow 6379 from prd VPC only (172.16.0.0/22). SSH from anywhere.
+# Allow 6379 from prd VPC (172.16.0.0/22). Per Scaleway docs, container egress to same PN uses private interface.
+# Optional: scw_redis_extra_inbound_cidrs (e.g. ["0.0.0.0/0"]) to test if container source IP is outside the PN CIDR.
 resource "scaleway_instance_security_group" "prd_redis_sg" {
   name       = "hit8-prd-redis-sg"
   project_id = var.SCW_PROJECT_ID
@@ -244,6 +245,14 @@ resource "scaleway_instance_security_group" "prd_redis_sg" {
     action   = "accept"
     port     = 6379
     ip_range = "172.16.0.0/22"
+  }
+  dynamic "inbound_rule" {
+    for_each = var.scw_redis_extra_inbound_cidrs
+    content {
+      action   = "accept"
+      port     = 6379
+      ip_range = inbound_rule.value
+    }
   }
   inbound_rule {
     action   = "accept"
@@ -292,6 +301,8 @@ resource "scaleway_instance_server" "prd_redis" {
             bantime = 3600
       runcmd:
         - sed -i 's/^bind 127.0.0.1 ::1/bind 0.0.0.0 ::1/' /etc/redis/redis.conf
+        - sed -i 's/^#* *protected-mode .*/protected-mode no/' /etc/redis/redis.conf
+        - grep -q '^protected-mode ' /etc/redis/redis.conf || echo "protected-mode no" >> /etc/redis/redis.conf
         - echo "maxmemory 512mb" >> /etc/redis/redis.conf
         - echo "maxmemory-policy allkeys-lru" >> /etc/redis/redis.conf
         - systemctl restart sshd

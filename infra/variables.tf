@@ -125,6 +125,13 @@ variable "SCW_PRD_DB_PWD" {
   sensitive   = true
 }
 
+# Optional: extra CIDRs allowed to reach prd Redis 6379 (e.g. ["10.0.0.0/8"] or ["0.0.0.0/0"] for debug). Default [].
+variable "scw_redis_extra_inbound_cidrs" {
+  description = "Extra IPv4 CIDRs allowed to connect to prd Redis port 6379 (debug: try [\"0.0.0.0/0\"] to test connectivity, then remove)."
+  type        = list(string)
+  default     = []
+}
+
 variable "DOPPLER_PROJECT" {
   description = "Doppler project name (e.g. hit8). Used with DOPPLER_TOKEN for doppler run in containers."
   type        = string

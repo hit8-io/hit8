@@ -13,6 +13,8 @@ from firebase_admin.exceptions import FirebaseError
 HEALTH_CHECK_PATH = "/health"
 # OpenAPI documentation paths (excluded from token validation)
 OPENAPI_PATHS = ["/docs", "/redoc", "/openapi.json", "/favicon.ico"]
+# Debug endpoints (config/connectivity checks; no secrets returned)
+DEBUG_PATH_PREFIX = "/debug"
 from app.api.utils import get_cors_headers
 from app.config import settings
 
@@ -89,6 +91,9 @@ def setup_api_token_middleware(app: FastAPI) -> None:
         
         # Skip validation for OpenAPI documentation endpoints
         if request.url.path in OPENAPI_PATHS or request.url.path.startswith("/docs/"):
+            return await call_next(request)
+        # Skip validation for debug endpoints (connectivity check; no secrets)
+        if request.url.path.startswith(DEBUG_PATH_PREFIX):
             return await call_next(request)
         
         # Validate token for all other requests

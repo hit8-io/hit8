@@ -106,10 +106,10 @@ def _provider_prefix_settings() -> dict[str, Any]:
         out["DATABASE_SSL_ROOT_CERT"] = cert or None
     redis_host = os.getenv(f"{prefix}REDIS_HOST")
     if redis_host is not None:
-        out["UPSTASH_REDIS_HOST"] = redis_host or None
+        out["REDIS_HOST"] = redis_host or None
     redis_pwd = os.getenv(f"{prefix}REDIS_PWD")
     if redis_pwd is not None:
-        out["UPSTASH_REDIS_PWD"] = redis_pwd or None
+        out["REDIS_PWD"] = redis_pwd or None
     return out
 
 
@@ -245,9 +245,9 @@ class Settings(BaseSettings):
     CACHE_ENABLED: bool
     CACHE_TTL: int
     
-    # Upstash Redis (optional - only for stg/prd)
-    UPSTASH_REDIS_HOST: str | None = None
-    UPSTASH_REDIS_PWD: str | None = Field(default=None, exclude=True)
+    # Redis for cache/rate-limiting (optional; stg/prd: Upstash or private Redis)
+    REDIS_HOST: str | None = None
+    REDIS_PWD: str | None = Field(default=None, exclude=True)
     
     # API
     API_TOKEN: str = Field(exclude=True)
