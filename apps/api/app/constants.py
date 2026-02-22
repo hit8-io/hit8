@@ -227,6 +227,14 @@ if ENVIRONMENT == "prd":
         }
     )
 
+# Origins that must always be in CORS_ALLOW_ORIGINS when ENVIRONMENT is prd or stg.
+# config.py merges these into CORS_ALLOW_ORIGINS so env/Doppler overrides cannot drop the frontend.
+CORS_REQUIRED_ORIGINS_PRD_STG: list[str] = [
+    "https://iter8.hit8.io",
+    "https://www.hit8.io",
+    "https://hit8.io",
+]
+
 # ============================================================================
 # Flow Control Constants (Module Level)
 # ============================================================================

@@ -202,7 +202,21 @@ class Settings(BaseSettings):
                 return []
         # Fallback
         return []
-    
+
+    @model_validator(mode="after")
+    def ensure_frontend_origins_in_cors(self) -> "Settings":
+        """Ensure known frontend origins are always allowed in prd/stg (e.g. if env overrides CORS)."""
+        if constants.ENVIRONMENT not in ("prd", "stg"):
+            return self
+        required_origins = constants.CORS_REQUIRED_ORIGINS_PRD_STG
+        current = list(self.CORS_ALLOW_ORIGINS)
+        for origin in required_origins:
+            if origin not in current:
+                current.append(origin)
+        if len(current) != len(self.CORS_ALLOW_ORIGINS):
+            return self.model_copy(update={"CORS_ALLOW_ORIGINS": current})
+        return self
+
     # Legacy fields for backward compatibility (deprecated)
     OLLAMA_BASE_URL: str | None = None  # Deprecated, use LLM_PROVIDER[].ollama_base_url
     OLLAMA_NUM_CTX: int | None = None  # Deprecated, use LLM_PROVIDER[].ollama_num_ctx
