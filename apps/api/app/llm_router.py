@@ -1,5 +1,16 @@
 """
 LiteLLM Router configuration for centralized rate limiting and model routing.
+
+Setup (this module):
+- Router is created with model_list (Vertex + optional Ollama), routing_strategy="simple-shuffle",
+  and when CACHE_ENABLED + REDIS_HOST: redis_host/port/password, cache_responses=True,
+  cache_kwargs (ssl, socket_connect_timeout, socket_timeout). Router handles retries and cooldown.
+
+Usage:
+- All LLM calls go through this Router via flows/common.py: get_llm() -> _create_model() -> ChatLiteLLM(router=router, model=...).
+- Caching: Router caches completion responses in Redis (async set after each completion). Cache reads
+  happen inside LiteLLM before calling the provider. TTL comes from LiteLLM defaults / config.
+- Rate limiting: Router uses Redis for distributed rate limiting (TPM/RPM per model).
 """
 import json
 import os
@@ -201,6 +212,8 @@ router_kwargs = {
 # TLS: Use TLS for Upstash (by hostname) or when not Scaleway; no TLS for Scaleway private Redis.
 _redis_host_lower = (settings.REDIS_HOST or "").strip().lower()
 _redis_use_tls = "upstash" in _redis_host_lower or os.getenv("BACKEND_PROVIDER", "").strip().lower() != "scw"
+# Redis cache: response caching + rate limiting. Use generous timeouts so async set() completes
+# (LiteLLM creates the Redis client lazily on first cache write; first connection can be slow).
 if settings.CACHE_ENABLED and settings.REDIS_HOST:
     router_kwargs.update({
         "redis_host": settings.REDIS_HOST,
@@ -209,14 +222,10 @@ if settings.CACHE_ENABLED and settings.REDIS_HOST:
         "cache_responses": True,
         "cache_kwargs": {
             "ssl": _redis_use_tls,  # True for Upstash (GCP), False for Scaleway internal Redis
-            # Prd: LiteLLM async set() often logs "Timeout connecting to server" with defaults (same VPC).
-            # Higher timeouts allow the first connection / pool init to complete; response still returned.
-            "socket_connect_timeout": 15,
-            "socket_timeout": 15,
-            # Note: TTL is handled by LiteLLM's caching layer, not passed to Redis client
+            "socket_connect_timeout": 30,  # First connection / pool init can be slow (e.g. Scaleway VPC)
+            "socket_timeout": 30,
+            # Note: TTL is handled by LiteLLM's caching layer
         },
-        # TTL is configured via default_in_redis_ttl if LiteLLM supports it
-        # Otherwise, LiteLLM will use its default TTL behavior
     })
     
     logger.info(
