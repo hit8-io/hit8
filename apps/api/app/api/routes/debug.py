@@ -147,14 +147,30 @@ async def _redis_set_get_test(client: Any) -> tuple[bool, int | None, str | None
 
 _DEBUG_REDIS_KEY = "hit8:debug:set_get_test"
 _DEBUG_REDIS_TTL_SEC = 10
+_DEBUG_CACHE_KEY = "hit8:debug:cache_test"
+
+
+async def _redis_cache_test(client: Any) -> tuple[bool, int | None, str | None]:
+    """Set/get with app CACHE_TTL to validate same Redis + TTL as LLM response cache. Returns (ok, ms, error)."""
+    try:
+        ttl = max(1, getattr(settings, "CACHE_TTL", 60))
+        t0 = time.perf_counter()
+        value = str(time.perf_counter())
+        await client.set(_DEBUG_CACHE_KEY, value, ex=ttl)
+        got = await client.get(_DEBUG_CACHE_KEY)
+        await client.delete(_DEBUG_CACHE_KEY)
+        ms = round((time.perf_counter() - t0) * 1000)
+        return (got == value, ms, None if got == value else f"value mismatch: set {value!r} got {got!r}")
+    except Exception as e:
+        return (False, None, f"{type(e).__name__}: {str(e)[:150]}")
 
 
 @router.get("/debug/redis")
 async def debug_redis() -> dict[str, Any]:
     """
-    Redis ping, set/get round-trip (like LiteLLM health check), and basic INFO.
+    Redis ping, set/get round-trip, cache test (same TTL as LLM cache), and basic INFO.
 
-    Use when you need more than connectivity: e.g. latency trends, memory, read/write check.
+    set_get_ok: basic read/write. cache_test_ok: same Redis + CACHE_TTL as response cache.
     """
     if not settings.REDIS_HOST:
         return {"status": "skipped", "reason": "REDIS_HOST not set"}
@@ -176,6 +192,8 @@ async def debug_redis() -> dict[str, Any]:
         await client.ping()
         ping_ms = round((time.perf_counter() - t0) * 1000)
         set_get_ok, set_get_ms, set_get_error = await _redis_set_get_test(client)
+        cache_ttl = max(1, getattr(settings, "CACHE_TTL", 60))
+        cache_test_ok, cache_test_ms, cache_test_error = await _redis_cache_test(client)
         info = await client.info()
         await client.aclose()
         # INFO can be flat or sectioned (Redis 6+); read from either
@@ -193,6 +211,9 @@ async def debug_redis() -> dict[str, Any]:
             "ping_ms": ping_ms,
             "set_get_ok": set_get_ok,
             "set_get_ms": set_get_ms,
+            "cache_ttl_seconds": cache_ttl,
+            "cache_test_ok": cache_test_ok,
+            "cache_test_ms": cache_test_ms,
             "ssl": use_tls,
             "redis_version": _get("redis_version"),
             "connected_clients": _get("connected_clients"),
@@ -201,6 +222,8 @@ async def debug_redis() -> dict[str, Any]:
         }
         if set_get_error is not None:
             out["set_get_error"] = set_get_error
+        if cache_test_error is not None:
+            out["cache_test_error"] = cache_test_error
         return out
     except Exception as e:
         return {

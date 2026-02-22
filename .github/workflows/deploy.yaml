@@ -220,12 +220,13 @@ jobs:
 
   # --------------------------------------------------------------------------
   # APPROVE PRODUCTION (single approval for backend + frontend)
-  # If GitHub environment "production" has protection rules, this job waits for
-  # manual approval. After approval, deploy-production and deploy-frontend-production run.
+  # Depends only on deploy-staging so backend-only pushes can still get approval
+  # and deploy backend to production. deploy-frontend-production skips when no
+  # frontend build ran (if: needs.build-frontend.result == 'success').
   # --------------------------------------------------------------------------
   approve-production:
     name: Approve Production (Backend + Frontend)
-    needs: [deploy-staging, deploy-frontend-staging]
+    needs: [deploy-staging]
     runs-on: ubuntu-latest
     environment: production
     steps:
@@ -299,4 +300,8 @@ jobs:
             echo "  Backend: $B | Frontend: $F"
             exit 1
           fi
-          echo "✅ Production deployment ok (backend=$B frontend=$F)"
+          if [ "$B" = "skipped" ] && [ "$F" = "skipped" ]; then
+            echo "⊘ Production deploy skipped (approval or pre-conditions did not run)"
+          else
+            echo "✅ Production deployment ok (backend=$B frontend=$F)"
+          fi

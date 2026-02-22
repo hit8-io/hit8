@@ -214,9 +214,7 @@ _redis_host_lower = (settings.REDIS_HOST or "").strip().lower()
 _redis_use_tls = "upstash" in _redis_host_lower or os.getenv("BACKEND_PROVIDER", "").strip().lower() != "scw"
 # Redis cache: response caching + rate limiting. Use generous timeouts so async set() completes
 # (LiteLLM creates the Redis client lazily on first cache write; first connection can be slow).
-# Disable response cache on Scaleway to avoid PING/set timeouts and log noise; rate limiting still uses Redis.
-_backend_provider = os.getenv("BACKEND_PROVIDER", "").strip().lower()
-_cache_responses = _backend_provider != "scw"
+_cache_responses = True
 if settings.CACHE_ENABLED and settings.REDIS_HOST:
     router_kwargs.update({
         "redis_host": settings.REDIS_HOST,

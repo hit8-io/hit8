@@ -161,8 +161,8 @@ resource "cloudflare_ruleset" "waf_custom" {
       description = "Block Direct API Access"
       enabled     = true
       # Block direct API access: API hosts, non-OPTIONS, path not in allowlist, and no allowed Referer.
-      # Allowlist (no Referer needed): /, /health, /version, /debug, /debug/connectivity.
-      expression  = "(${local.api_hosts_in} and http.request.method ne \"OPTIONS\" and http.request.uri.path ne \"/\" and http.request.uri.path ne \"/health\" and http.request.uri.path ne \"/version\" and http.request.uri.path ne \"/debug\" and http.request.uri.path ne \"/debug/connectivity\" and not http.referer contains \"hit8.pages.dev\" and not http.referer contains \"hit8-site.pages.dev\" and not http.referer contains \"www.${var.DOMAIN_NAME}\" and not http.referer contains \"iter8.${var.DOMAIN_NAME}\")"
+      # Allowlist (no Referer needed): /, /health, /version, and any path starting with /debug.
+      expression  = "(${local.api_hosts_in} and http.request.method ne \"OPTIONS\" and http.request.uri.path ne \"/\" and http.request.uri.path ne \"/health\" and http.request.uri.path ne \"/version\" and not starts_with(http.request.uri.path, \"/debug\") and not http.referer contains \"hit8.pages.dev\" and not http.referer contains \"hit8-site.pages.dev\" and not http.referer contains \"www.${var.DOMAIN_NAME}\" and not http.referer contains \"iter8.${var.DOMAIN_NAME}\")"
       action      = "block"
     }
   ]
