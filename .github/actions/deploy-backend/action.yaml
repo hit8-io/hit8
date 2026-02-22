@@ -93,6 +93,13 @@ runs:
         exit 1
 
     # Scaleway Deployment
+    - name: Cache Scaleway CLI
+      if: inputs.cloud == 'scw'
+      uses: actions/cache@v4
+      with:
+        path: .scw-cache
+        key: scw-cli-linux-amd64-v1
+
     - name: Deploy to Scaleway
       if: inputs.cloud == 'scw'
       shell: bash
@@ -103,17 +110,22 @@ runs:
         SCW_DEFAULT_ORGANIZATION_ID: ${{ inputs.scw_organization_id }}
       run: |
         set -e
-        # Install latest Scaleway CLI (authenticated API request to avoid rate limit)
-        RELEASE_JSON=$(curl -sS -H "Authorization: Bearer ${{ github.token }}" https://api.github.com/repos/scaleway/scaleway-cli/releases/latest)
-        DOWNLOAD_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("linux_amd64$")) | .browser_download_url')
-        if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
-          echo "Could not find linux_amd64 asset in latest release"
-          echo "$RELEASE_JSON" | jq -r '.assets[].name' || true
-          exit 1
+        # Use cached CLI if present, otherwise download (cache populated at end of job)
+        SCW_BIN=".scw-cache/scw"
+        if [ ! -f "$SCW_BIN" ] || ! "$SCW_BIN" version &>/dev/null; then
+          mkdir -p .scw-cache
+          RELEASE_JSON=$(curl -sS -H "Authorization: Bearer ${{ github.token }}" https://api.github.com/repos/scaleway/scaleway-cli/releases/latest)
+          DOWNLOAD_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("linux_amd64$")) | .browser_download_url')
+          if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
+            echo "Could not find linux_amd64 asset in latest release"
+            echo "$RELEASE_JSON" | jq -r '.assets[].name' || true
+            exit 1
+          fi
+          curl -sSL "$DOWNLOAD_URL" -o "$SCW_BIN"
+          chmod +x "$SCW_BIN"
         fi
-        curl -sSL "$DOWNLOAD_URL" -o /tmp/scw
-        chmod +x /tmp/scw
-        sudo mv /tmp/scw /usr/local/bin/scw
+        "$SCW_BIN" version
+        export PATH="$PWD/.scw-cache:$PATH"
 
         mkdir -p ~/.config/scw
         touch ~/.config/scw/config.yaml
@@ -157,9 +169,10 @@ runs:
           exit 1
         fi
 
+        # Update image then deploy (redeploy=true is deprecated)
         scw container container update "$CONTAINER_ID" \
-          registry-image="rg.fr-par.scw.cloud/hit8-registry/api:${{ inputs.image_tag }}" \
-          redeploy=true
+          registry-image="rg.fr-par.scw.cloud/hit8-registry/api:${{ inputs.image_tag }}"
+        scw container container deploy "$CONTAINER_ID"
 
     - name: Health Check (Scaleway)
       if: inputs.cloud == 'scw'
@@ -171,6 +184,13 @@ runs:
         SCW_DEFAULT_ORGANIZATION_ID: ${{ inputs.scw_organization_id }}
       run: |
         set -e
+        export PATH="${GITHUB_WORKSPACE:-.}/.scw-cache:$PATH"
+        mkdir -p ~/.config/scw && touch ~/.config/scw/config.yaml
+        scw config set access-key="$SCW_ACCESS_KEY"
+        scw config set secret-key="$SCW_SECRET_KEY"
+        scw config set default-project-id="$SCW_DEFAULT_PROJECT_ID"
+        scw config set default-organization-id="$SCW_DEFAULT_ORGANIZATION_ID"
+        scw config set default-region="fr-par"
         ENV_SUFFIX=${{ inputs.environment == 'production' && '-prd' || '-stg' }}
         # Use container default domain (no dependency on custom DNS scw-stg.hit8.io)
         CONTAINER_JSON=$(scw container container list name="hit8-api${ENV_SUFFIX}" -o json)
@@ -180,9 +200,9 @@ runs:
         STATUS=$(echo "$CONTAINER_DETAIL" | jq -r '.status')
         echo "Container Status: $STATUS"
         echo "Container Domain: $DOMAIN"
-        # Wait for container to be ready (poll every 5s, max 60s)
-        echo "Waiting for container status ready (max 60s)..."
-        for wait in $(seq 1 12); do
+        # Wait for container to be ready (poll every 5s, max 120s) — serverless containers can take 1–2 min
+        echo "Waiting for container status ready (max 120s)..."
+        for wait in $(seq 1 24); do
           STATUS=$(scw container container get "$CONTAINER_ID" -o json | jq -r '.status')
           if [ "$STATUS" = "ready" ]; then
             echo "Container ready after $((wait * 5))s"
@@ -190,14 +210,14 @@ runs:
           fi
           echo "  status=$STATUS, 5s..."
           sleep 5
-          [ $wait -eq 12 ] && echo "⚠️ Still not ready after 60s, trying health check anyway"
+          [ $wait -eq 24 ] && echo "⚠️ Still not ready after 120s, trying health check anyway"
         done
         URL="https://${DOMAIN}/health"
-        echo "Health check: $URL (4 attempts, 5s apart)"
-        sleep 5
-        MAX_ATTEMPTS=4
+        echo "Health check: $URL (6 attempts, 10s apart)"
+        sleep 10
+        MAX_ATTEMPTS=6
         for i in $(seq 1 $MAX_ATTEMPTS); do
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$URL" || echo "000")
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 --max-time 15 "$URL" || echo "000")
           if [ "$HTTP_CODE" = "200" ]; then
             echo "✅ Health check passed: $URL"
             exit 0
@@ -205,9 +225,9 @@ runs:
           if [ "$HTTP_CODE" = "404" ]; then
             echo "Attempt $i/$MAX_ATTEMPTS: /health=404"
           else
-            echo "Attempt $i/$MAX_ATTEMPTS: HTTP $HTTP_CODE, retrying in 5s..."
+            echo "Attempt $i/$MAX_ATTEMPTS: HTTP $HTTP_CODE, retrying in 10s..."
           fi
-          [ $i -lt $MAX_ATTEMPTS ] && sleep 5
+          [ $i -lt $MAX_ATTEMPTS ] && sleep 10
         done
         echo "❌ Health check failed after $MAX_ATTEMPTS attempts"
         echo "Final container status:"

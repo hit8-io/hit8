@@ -220,6 +220,8 @@ jobs:
 
   # --------------------------------------------------------------------------
   # APPROVE PRODUCTION (single approval for backend + frontend)
+  # If GitHub environment "production" has protection rules, this job waits for
+  # manual approval. After approval, deploy-production and deploy-frontend-production run.
   # --------------------------------------------------------------------------
   approve-production:
     name: Approve Production (Backend + Frontend)
@@ -228,7 +230,9 @@ jobs:
     environment: production
     steps:
       - name: Approved
-        run: echo "Production deployment approved — backend and frontend will deploy"
+        run: |
+          echo "✅ Production deployment approved"
+          echo "Next: Deploy Production (backend) and Deploy Frontend (Production) will run."
 
   # --------------------------------------------------------------------------
   # DEPLOY PRODUCTION (runs in parallel after approval)
