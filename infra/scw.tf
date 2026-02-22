@@ -391,8 +391,8 @@ resource "scaleway_container" "api_prd" {
     "SCALEWAY_SECRET_REGION"         = var.SCW_REGION
     "DB_HOST"                        = scaleway_rdb_instance.prd_db.private_network[0].ip
     "REDIS_HOST"                     = local.prd_redis_private_ip
-    "REDIS_SOCKET_TIMEOUT"           = "30"
-    "REDIS_SOCKET_CONNECT_TIMEOUT"   = "30"
+    "REDIS_SOCKET_TIMEOUT"           = "60"
+    "REDIS_SOCKET_CONNECT_TIMEOUT"   = "60"
   }
 
   secret_environment_variables = {
@@ -423,8 +423,8 @@ resource "scaleway_container" "api_stg" {
     "DB_HOST"                        = local.stg_vm_private_ip
     "DB_PORT"                        = "6432"
     "REDIS_HOST"                     = local.stg_vm_private_ip
-    "REDIS_SOCKET_TIMEOUT"           = "30"
-    "REDIS_SOCKET_CONNECT_TIMEOUT"   = "30"
+    "REDIS_SOCKET_TIMEOUT"           = "60"
+    "REDIS_SOCKET_CONNECT_TIMEOUT"   = "60"
   }
 
   secret_environment_variables = {

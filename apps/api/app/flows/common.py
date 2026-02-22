@@ -646,7 +646,10 @@ def _create_model(
     
     # Build model_kwargs
     model_kwargs: dict[str, Any] = {
-        "user": "hit8-analyst"  # Tag for logging
+        "user": "hit8-analyst",  # Tag for logging
+        # Opt-in caching: do not cache by default (avoids writing huge tool-call payloads
+        # e.g. thought_signatures from gemini-2.5-pro to Redis, which can timeout).
+        "cache": {"no-store": True},
     }
     
     # Add max_output_tokens if provided

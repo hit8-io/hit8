@@ -212,12 +212,12 @@ router_kwargs = {
 # TLS: Use TLS for Upstash (by hostname) or when not Scaleway; no TLS for Scaleway private Redis.
 _redis_host_lower = (settings.REDIS_HOST or "").strip().lower()
 _redis_use_tls = "upstash" in _redis_host_lower or os.getenv("BACKEND_PROVIDER", "").strip().lower() != "scw"
-# Redis cache: response caching + rate limiting. Use generous timeouts so async set() completes
-# (LiteLLM creates the Redis client lazily on first cache write; first connection can be slow).
-# Disable response cache on Scaleway: LiteLLM's Redis client times out on connect/set in VPC
-# despite cache_kwargs and REDIS_SOCKET_* env; rate limiting still uses Redis.
+# Redis cache: response caching + rate limiting. Use generous timeouts so async set() can
+# complete for large payloads (e.g. gemini-2.5-pro thought_signatures). Caching is opt-in:
+# flows/common.py passes cache={"no-store": True} by default so we don't write huge tool-call
+# responses to Redis; enable cache only where needed.
 _backend_provider = os.getenv("BACKEND_PROVIDER", "").strip().lower()
-_cache_responses = _backend_provider != "scw"
+_cache_responses = _backend_provider != "scw"  # Off on Scaleway due to VPC timeouts
 if settings.CACHE_ENABLED and settings.REDIS_HOST:
     router_kwargs.update({
         "redis_host": settings.REDIS_HOST,
@@ -226,8 +226,8 @@ if settings.CACHE_ENABLED and settings.REDIS_HOST:
         "cache_responses": _cache_responses,
         "cache_kwargs": {
             "ssl": _redis_use_tls,  # True for Upstash (GCP), False for Scaleway internal Redis
-            "socket_connect_timeout": 30,  # First connection / pool init can be slow (e.g. Scaleway VPC)
-            "socket_timeout": 30,
+            "socket_connect_timeout": 60,  # Large payloads (e.g. thought_signatures) need time
+            "socket_timeout": 60,
             # Note: TTL is handled by LiteLLM's caching layer
         },
     })
