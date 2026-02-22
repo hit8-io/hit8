@@ -25,8 +25,8 @@ env:
   REGION: europe-west1
   IMAGE_BASE: europe-west1-docker.pkg.dev/hit8-poc/backend/api
   CLOUDFLARE_PROJECT: hit8
-  API_URL_PRD: https://api-prd.hit8.io
-  API_URL_STG: https://api-stg.hit8.io
+  API_URL_PRD: https://gcp-prd.hit8.io
+  API_URL_STG: https://gcp-stg.hit8.io
 ```
 
 ---
@@ -73,8 +73,8 @@ See [supabase/migrate.md](../supabase/migrate.md) for local development workflow
 
 - **Checkout** → **Node 20** → **Install pnpm** → **`pnpm install`** (at root for monorepo)
 - **Build SaaS App (apps/web):**
-  - **Staging:** `pnpm turbo build --filter=web` with `VITE_API_URL=https://api-stg.hit8.io` → upload artifact `dist-stg`
-  - **Production (GCP):** `pnpm turbo build --filter=web` with `VITE_API_URL=https://api-prd.hit8.io` → upload artifact `dist-prd`
+  - **Staging:** `pnpm turbo build --filter=web` with `VITE_API_URL=https://gcp-stg.hit8.io` → upload artifact `dist-stg`
+  - **Production (GCP):** `pnpm turbo build --filter=web` with `VITE_API_URL=https://gcp-prd.hit8.io` → upload artifact `dist-prd`
   - **Production (Scaleway):** `pnpm turbo build --filter=web` with `VITE_API_URL=https://scw-prd.hit8.io` → upload artifact `dist-scw`
 - **Build Marketing Site (apps/site):**
   - `pnpm turbo build --filter=site` → upload artifact `dist-site`
@@ -82,7 +82,7 @@ See [supabase/migrate.md](../supabase/migrate.md) for local development workflow
 **Build command:** `pnpm turbo build --filter=<app>` (`tsc && vite build`). Output: `apps/<app>/dist`.
 
 **Environment variables (from GitHub secrets):**
-- `VITE_API_URL` — stg: `https://api-stg.hit8.io`, prd: `https://api-prd.hit8.io`, scw: `https://scw-prd.hit8.io`
+- `VITE_API_URL` — stg: `https://gcp-stg.hit8.io`, prd: `https://gcp-prd.hit8.io`, scw: `https://scw-prd.hit8.io`
 - `VITE_GOOGLE_IDENTITY_PLATFORM_KEY`
 - `VITE_GOOGLE_IDENTITY_PLATFORM_DOMAIN`
 - `VITE_GCP_PROJECT`
@@ -208,7 +208,7 @@ npx wrangler pages deploy dist --project-name=hit8 --branch=main-staging
 ```bash
 cd frontend
 npm ci && npm run build
-# Set VITE_API_URL=https://api-prd.hit8.io and other VITE_* for production, then:
+# Set VITE_API_URL=https://gcp-prd.hit8.io and other VITE_* for production, then:
 npx wrangler pages deploy dist --project-name=hit8 --branch=main
 ```
 

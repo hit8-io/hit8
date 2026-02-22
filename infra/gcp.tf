@@ -11,12 +11,12 @@ locals {
   envs = {
     prd = {
       suffix          = "-prd"
-      host            = "api-prd"
+      host            = "gcp-prd"
       token_secret_id = "doppler-token-prd"
     }
     stg = {
       suffix          = "-stg"
-      host            = "api-stg"
+      host            = "gcp-stg"
       token_secret_id = "doppler-token-stg"
     }
   }
@@ -456,11 +456,11 @@ resource "google_cloud_run_v2_service_iam_member" "public_access" {
   member   = "allUsers"
 }
 
-# Domain Mapping
+# Domain Mapping (requires hit8.io verified in Google Search Console first)
 resource "google_cloud_run_domain_mapping" "api" {
   for_each = local.envs
 
-  name     = "${each.value.host}.hit8.io" # api-prd.hit8.io / api-stg.hit8.io
+  name     = "${each.value.host}.hit8.io" # gcp-prd.hit8.io / gcp-stg.hit8.io
   location = var.GCP_REGION
   metadata { namespace = var.GCP_PROJECT_ID }
 

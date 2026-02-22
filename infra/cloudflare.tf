@@ -3,9 +3,9 @@
 ################################################################################
 
 locals {
-  api_url_prd  = var.backend_provider == "gcp" ? "https://api-prd.${var.DOMAIN_NAME}" : "https://scw-prd.${var.DOMAIN_NAME}"
-  api_url_stg  = var.backend_provider == "gcp" ? "https://api-stg.${var.DOMAIN_NAME}" : "https://scw-stg.${var.DOMAIN_NAME}"
-  api_hosts    = var.backend_provider == "gcp" ? ["api-prd.${var.DOMAIN_NAME}", "api-stg.${var.DOMAIN_NAME}"] : ["scw-prd.${var.DOMAIN_NAME}", "scw-stg.${var.DOMAIN_NAME}"]
+  api_url_prd  = var.backend_provider == "gcp" ? "https://gcp-prd.${var.DOMAIN_NAME}" : "https://scw-prd.${var.DOMAIN_NAME}"
+  api_url_stg  = var.backend_provider == "gcp" ? "https://gcp-stg.${var.DOMAIN_NAME}" : "https://scw-stg.${var.DOMAIN_NAME}"
+  api_hosts    = var.backend_provider == "gcp" ? ["gcp-prd.${var.DOMAIN_NAME}", "gcp-stg.${var.DOMAIN_NAME}"] : ["scw-prd.${var.DOMAIN_NAME}", "scw-stg.${var.DOMAIN_NAME}"]
   api_hosts_in = "(http.host in {\"${join("\" \"", local.api_hosts)}\"})"
 
   # Scaleway serverless container CNAME target format: {container_id}.cnc.{region}.scw.cloud (.url is null in provider)

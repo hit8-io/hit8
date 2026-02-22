@@ -146,8 +146,8 @@ jobs:
           set -e
           P="${{ needs.provider.outputs.backend_provider }}"
           if [ "$P" = "gcp" ]; then
-            STG_URL="https://api-stg.hit8.io"
-            PRD_URL="https://api-prd.hit8.io"
+            STG_URL="https://gcp-stg.hit8.io"
+            PRD_URL="https://gcp-prd.hit8.io"
           else
             STG_URL="https://scw-stg.hit8.io"
             PRD_URL="https://scw-prd.hit8.io"

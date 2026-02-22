@@ -66,8 +66,8 @@ The frontend is deployed on **Cloudflare Pages** as a static site via the [GitHu
 - **Headers**: All (`*`)
 
 **API URLs:**
-- **Staging**: `https://api-stg.hit8.io`
-- **Production**: `https://api-prd.hit8.io`
+- **Staging**: `https://gcp-stg.hit8.io`
+- **Production**: `https://gcp-prd.hit8.io`
 - Health: `GET /health`; Chat: `POST /chat` (see [api-reference](api-reference.md))
 
 ## Development Infrastructure
@@ -132,8 +132,8 @@ There is **no `supabase` or Postgres container** in `docker-compose.yml` for the
 ### Production
 
 - **Frontend**: `https://www.hit8.io` / `https://hit8.io`
-- **Backend API (staging)**: `https://api-stg.hit8.io`
-- **Backend API (production)**: `https://api-prd.hit8.io`
+- **Backend API (staging)**: `https://gcp-stg.hit8.io`
+- **Backend API (production)**: `https://gcp-prd.hit8.io`
 - **Database**: `https://dxwwmmhfhsljkhftnzke.supabase.co` (or as in `DATABASE_CONNECTION_STRING`)
 
 ### Development

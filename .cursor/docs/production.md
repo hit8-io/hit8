@@ -21,8 +21,8 @@ The backend is deployed to **Google Cloud Run** via the [GitHub Actions workflow
 - Max Instances: 10
 
 **API URLs:**
-- Staging: `https://api-stg.hit8.io`
-- Production: `https://api-prd.hit8.io`
+- Staging: `https://gcp-stg.hit8.io`
+- Production: `https://gcp-prd.hit8.io`
 
 **Deployment Process:**
 - Driven by [deploy.yaml](.github/workflows/deploy.yaml): build → deploy staging (auto) → deploy production (manual approval in GitHub `environment: production`). Triggers on push to `main` with changes in `apps/**`, `backend/**`, `frontend/**`, or the workflow file.
@@ -39,8 +39,8 @@ The SaaS app frontend is deployed to **Cloudflare Pages** via the [GitHub Action
 - **Package Manager**: pnpm (monorepo)
 
 **Deployments (from [deploy.yaml](.github/workflows/deploy.yaml)):**
-- **Staging (Preview)**: `dist-stg` (built with `VITE_API_URL=https://api-stg.hit8.io`) → `pages deploy ... --project-name=hit8 --branch=main-staging`
-- **Production**: `dist-prd` (built with `VITE_API_URL=https://api-prd.hit8.io`) → `pages deploy ... --project-name=hit8 --branch=main`
+- **Staging (Preview)**: `dist-stg` (built with `VITE_API_URL=https://gcp-stg.hit8.io`) → `pages deploy ... --project-name=hit8 --branch=main-staging`
+- **Production**: `dist-prd` (built with `VITE_API_URL=https://gcp-prd.hit8.io`) → `pages deploy ... --project-name=hit8 --branch=main`
 - **Scaleway Variant**: `dist-scw` (built with `VITE_API_URL=https://scw-prd.hit8.io`) → `pages deploy ... --project-name=hit8 --branch=scaleway`
 
 **Domains:**
@@ -95,18 +95,18 @@ To change env, secrets, VPC, or scaling: use Terraform in `infra/`, not `gcloud 
 ### Frontend Deployment (SaaS App)
 
 **Automatic (via [deploy.yaml](.github/workflows/deploy.yaml)):**
-- **Staging**: `pnpm turbo build --filter=web` with `VITE_API_URL=https://api-stg.hit8.io` → `wrangler pages deploy dist-stg --project-name=hit8 --branch=main-staging` (Preview).
-- **Production**: `pnpm turbo build --filter=web` with `VITE_API_URL=https://api-prd.hit8.io` → `wrangler pages deploy dist-prd --project-name=hit8 --branch=main` (Production). Production runs after manual approval.
+- **Staging**: `pnpm turbo build --filter=web` with `VITE_API_URL=https://gcp-stg.hit8.io` → `wrangler pages deploy dist-stg --project-name=hit8 --branch=main-staging` (Preview).
+- **Production**: `pnpm turbo build --filter=web` with `VITE_API_URL=https://gcp-prd.hit8.io` → `wrangler pages deploy dist-prd --project-name=hit8 --branch=main` (Production). Production runs after manual approval.
 - **Scaleway Variant**: `pnpm turbo build --filter=web` with `VITE_API_URL=https://scw-prd.hit8.io` → `wrangler pages deploy dist-scw --project-name=hit8 --branch=scaleway`
 
 **Manual (see [cicd.md](cicd.md) for full steps):**
 ```bash
 # From repo root
 pnpm install
-VITE_API_URL=https://api-stg.hit8.io pnpm turbo build --filter=web
+VITE_API_URL=https://gcp-stg.hit8.io pnpm turbo build --filter=web
 npx wrangler pages deploy apps/web/dist --project-name=hit8 --branch=main-staging   # staging
 # or
-VITE_API_URL=https://api-prd.hit8.io pnpm turbo build --filter=web
+VITE_API_URL=https://gcp-prd.hit8.io pnpm turbo build --filter=web
 npx wrangler pages deploy apps/web/dist --project-name=hit8 --branch=main           # production
 ```
 
@@ -273,7 +273,7 @@ gcloud run services describe hit8-api-prd --region=europe-west1 --format="value(
 curl http://localhost:8000/health
 
 # Production
-curl https://api-prd.hit8.io/health
+curl https://gcp-prd.hit8.io/health
 ```
 
 ### Monitoring Health
