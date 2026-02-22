@@ -10,6 +10,12 @@ from app.config import settings
 router = APIRouter()
 
 
+@router.get("/")
+async def root():
+    """Root endpoint for smoke tests and WAF allowlist (no auth)."""
+    return {"status": "ok", "service": "hit8-api"}
+
+
 @router.get("/health")
 async def health_check():
     """Health check endpoint that doesn't require database or Firebase."""

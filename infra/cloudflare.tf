@@ -12,10 +12,10 @@ locals {
   api_hosts    = var.backend_provider == "gcp" ? ["gcp-prd.${var.DOMAIN_NAME}", "gcp-stg.${var.DOMAIN_NAME}"] : ["scw-prd.${var.DOMAIN_NAME}", "scw-stg.${var.DOMAIN_NAME}"]
   api_hosts_in = "(http.host in {\"${join("\" \"", local.api_hosts)}\"})"
 
-  # Scaleway serverless container CNAME targets (exact default domains from Scaleway)
+  # Scaleway serverless container CNAME targets (exact default domains from Scaleway; update if container domain changes)
   scw_api_cname_targets = {
-    "scw-prd" = var.SCW_CONTAINER_DOMAIN_PRD
-    "scw-stg" = var.SCW_CONTAINER_DOMAIN_STG
+    "scw-prd" = "hit8apinsxxndrexr-hit8-api-prd.functions.fnc.fr-par.scw.cloud"
+    "scw-stg" = "hit8apinsxxndrexr-hit8-api-stg.functions.fnc.fr-par.scw.cloud"
   }
 }
 
@@ -159,8 +159,8 @@ resource "cloudflare_ruleset" "waf_custom" {
       description = "Block Direct API Access"
       enabled     = true
       # Block direct API access: API hosts, non-OPTIONS, path not in allowlist, and no allowed Referer.
-      # Allowlist (no Referer needed): /health, /version, /debug, /debug/connectivity.
-      expression  = "(${local.api_hosts_in} and http.request.method ne \"OPTIONS\" and http.request.uri.path ne \"/health\" and http.request.uri.path ne \"/version\" and http.request.uri.path ne \"/debug\" and http.request.uri.path ne \"/debug/connectivity\" and not http.referer contains \"hit8.pages.dev\" and not http.referer contains \"hit8-site.pages.dev\" and not http.referer contains \"www.${var.DOMAIN_NAME}\" and not http.referer contains \"iter8.${var.DOMAIN_NAME}\")"
+      # Allowlist (no Referer needed): /, /health, /version, /debug, /debug/connectivity.
+      expression  = "(${local.api_hosts_in} and http.request.method ne \"OPTIONS\" and http.request.uri.path ne \"/\" and http.request.uri.path ne \"/health\" and http.request.uri.path ne \"/version\" and http.request.uri.path ne \"/debug\" and http.request.uri.path ne \"/debug/connectivity\" and not http.referer contains \"hit8.pages.dev\" and not http.referer contains \"hit8-site.pages.dev\" and not http.referer contains \"www.${var.DOMAIN_NAME}\" and not http.referer contains \"iter8.${var.DOMAIN_NAME}\")"
       action      = "block"
     }
   ]
