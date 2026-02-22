@@ -103,8 +103,17 @@ runs:
         SCW_DEFAULT_ORGANIZATION_ID: ${{ inputs.scw_organization_id }}
       run: |
         set -e
-        # Install script writes directly to /usr/local/bin/scw
-        curl -s https://raw.githubusercontent.com/scaleway/scaleway-cli/master/scripts/get.sh | sh
+        # Install latest Scaleway CLI (authenticated API request to avoid rate limit)
+        RELEASE_JSON=$(curl -sS -H "Authorization: Bearer ${{ github.token }}" https://api.github.com/repos/scaleway/scaleway-cli/releases/latest)
+        DOWNLOAD_URL=$(echo "$RELEASE_JSON" | jq -r '.assets[] | select(.name | test("linux_amd64$")) | .browser_download_url')
+        if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" = "null" ]; then
+          echo "Could not find linux_amd64 asset in latest release"
+          echo "$RELEASE_JSON" | jq -r '.assets[].name' || true
+          exit 1
+        fi
+        curl -sSL "$DOWNLOAD_URL" -o /tmp/scw
+        chmod +x /tmp/scw
+        sudo mv /tmp/scw /usr/local/bin/scw
 
         mkdir -p ~/.config/scw
         touch ~/.config/scw/config.yaml
