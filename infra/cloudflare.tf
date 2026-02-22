@@ -154,7 +154,8 @@ resource "cloudflare_ruleset" "waf_custom" {
     {
       description = "Block Direct API Access"
       enabled     = true
-      expression  = "(${local.api_hosts_in} and not http.referer contains \"hit8.pages.dev\" and not http.referer contains \"hit8-site.pages.dev\" and not http.referer contains \"www.${var.DOMAIN_NAME}\" and not http.referer contains \"iter8.${var.DOMAIN_NAME}\")"
+      # Do not block OPTIONS (CORS preflight); preflight often has no Referer, so it would be blocked and fail CORS
+      expression  = "(${local.api_hosts_in} and http.request.method ne \"OPTIONS\" and not http.referer contains \"hit8.pages.dev\" and not http.referer contains \"hit8-site.pages.dev\" and not http.referer contains \"www.${var.DOMAIN_NAME}\" and not http.referer contains \"iter8.${var.DOMAIN_NAME}\")"
       action      = "block"
     }
   ]
