@@ -197,14 +197,12 @@ router_kwargs = {
 }
 
 # Add Redis for distributed rate limiting and caching (stg/prd)
+# Password is optional: Upstash requires one; Scaleway internal Redis is often passwordless.
 if settings.CACHE_ENABLED and settings.UPSTASH_REDIS_HOST:
-    if not settings.UPSTASH_REDIS_PWD:
-        raise ValueError("UPSTASH_REDIS_PWD is required when CACHE_ENABLED is True")
-    
     router_kwargs.update({
         "redis_host": settings.UPSTASH_REDIS_HOST,
         "redis_port": 6379,
-        "redis_password": settings.UPSTASH_REDIS_PWD,
+        "redis_password": settings.UPSTASH_REDIS_PWD or None,
         "cache_responses": True,
         "cache_kwargs": {
             "ssl": True,  # Upstash requires TLS

@@ -8,6 +8,17 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          icons: ['lucide-react'],
+          sanity: ['@sanity/client'],
+        },
+      },
+    },
+  },
   server: {
     host: '0.0.0.0',
     port: 5174, // Different port from apps/web (5173)

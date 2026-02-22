@@ -17,40 +17,42 @@ function fetchHomeFromSanity(): Promise<HomeData> {
   }`)
 }
 
-const iconMap: Record<string, { bg: ReactElement; fg: ReactElement }> = {
-  eye: { 
-    bg: <Eye className="w-24 h-24 text-white" />, 
-    fg: <ScanEye className="w-10 h-10 text-indigo-400 mb-4" /> 
+const iconMap: Record<string, { bg: () => ReactElement; fg: () => ReactElement }> = {
+  eye: {
+    bg: () => <Eye className="w-24 h-24 text-white" />,
+    fg: () => <ScanEye className="w-10 h-10 text-indigo-400 mb-4" />,
   },
-  refresh: { 
-    bg: <RefreshCw className="w-24 h-24 text-white" />, 
-    fg: <GitBranch className="w-10 h-10 text-indigo-400 mb-4" /> 
+  refresh: {
+    bg: () => <RefreshCw className="w-24 h-24 text-white" />,
+    fg: () => <GitBranch className="w-10 h-10 text-indigo-400 mb-4" />,
   },
-  users: { 
-    bg: <Users className="w-24 h-24 text-white" />, 
-    fg: <Fingerprint className="w-10 h-10 text-indigo-400 mb-4" /> 
+  users: {
+    bg: () => <Users className="w-24 h-24 text-white" />,
+    fg: () => <Fingerprint className="w-10 h-10 text-indigo-400 mb-4" />,
   },
-  target: { 
-    bg: <Target className="w-24 h-24 text-white" />, 
-    fg: <Trophy className="w-10 h-10 text-indigo-400 mb-4" /> 
+  target: {
+    bg: () => <Target className="w-24 h-24 text-white" />,
+    fg: () => <Trophy className="w-10 h-10 text-indigo-400 mb-4" />,
   },
-  database: { 
-    bg: <Database className="w-24 h-24 text-white" />, 
-    fg: <BarChart3 className="w-10 h-10 text-indigo-400 mb-4" /> 
+  database: {
+    bg: () => <Database className="w-24 h-24 text-white" />,
+    fg: () => <BarChart3 className="w-10 h-10 text-indigo-400 mb-4" />,
   },
-  box: { 
-    bg: <Box className="w-24 h-24 text-white" />, 
-    fg: <PackageCheck className="w-10 h-10 text-indigo-400 mb-4" /> 
+  box: {
+    bg: () => <Box className="w-24 h-24 text-white" />,
+    fg: () => <PackageCheck className="w-10 h-10 text-indigo-400 mb-4" />,
   },
 }
 
+const CLIENT_URL = import.meta.env.DEV ? 'http://localhost:5173' : 'https://iter8.hit8.io'
+
 export default function Home() {
-  const [data, setData] = useState<HomeData | null>(() => getCachedHomeData())
-  const [loading, setLoading] = useState(() => getCachedHomeData() == null)
+  const cached = getCachedHomeData()
+  const [data, setData] = useState<HomeData | null>(cached)
+  const [loading, setLoading] = useState(cached == null)
 
   useEffect(() => {
-    // If we already have cached data, skip fetch
-    if (getCachedHomeData()) return
+    if (cached) return
 
     fetchHomeFromSanity()
       .then((result) => {
@@ -64,7 +66,7 @@ export default function Home() {
         console.error('Error fetching Sanity data:', err)
       })
       .finally(() => setLoading(false))
-  }, [])
+  }, [cached])
 
   if (loading) return <HomeSkeleton />
   if (!data) {
@@ -85,8 +87,8 @@ export default function Home() {
       
       {/* Mystic Background */}
       <div className="fixed inset-0 pointer-events-none z-0">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-900/20 rounded-full blur-[120px]"></div>
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-900/20 rounded-full blur-[120px]"></div>
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-900/20 rounded-full blur-[80px] will-change-transform transform-gpu" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-900/20 rounded-full blur-[80px] will-change-transform transform-gpu" />
       </div>
 
       {/* Nav */}
@@ -101,7 +103,7 @@ export default function Home() {
                 <Linkedin className="w-5 h-5" />
             </a>
             <a 
-              href={import.meta.env.DEV ? "http://localhost:5173" : "https://iter8.hit8.io"} 
+              href={CLIENT_URL} 
               className="group relative px-6 py-2 rounded-full bg-white/5 border border-white/10 text-sm font-medium text-white hover:bg-white/10 transition-all flex items-center gap-2"
             >
                 <span>Client Access</span>
@@ -145,16 +147,18 @@ export default function Home() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {features?.map((feature, idx) => (
-                   <div key={feature._key || idx} className="group relative p-8 rounded-2xl bg-surface border border-white/5 hover:border-indigo-500/50 transition-all duration-500 hover:shadow-[0_0_30px_-5px_rgba(99,102,241,0.3)] overflow-hidden">
+                   <div key={feature._key || idx} className="group relative p-8 rounded-2xl bg-surface border border-white/5 hover:border-indigo-500/50 transition-[border-color,box-shadow,opacity] duration-500 hover:shadow-[0_0_30px_-5px_rgba(99,102,241,0.3)] overflow-hidden">
                     <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
-                        {iconMap[feature.icon]?.bg}
+                        {iconMap[feature.icon]?.bg()}
                     </div>
                     <div className="relative z-10 h-full flex flex-col justify-end min-h-[200px]">
-                        {iconMap[feature.icon]?.fg}
+                        {iconMap[feature.icon]?.fg()}
                         <h3 className="text-xl font-bold text-white mb-2">{feature.title}</h3>
-                        <p className="text-slate-400 text-sm leading-relaxed max-h-0 opacity-0 group-hover:max-h-40 group-hover:opacity-100 transition-all duration-500 overflow-hidden">
+                        <div className="grid transition-[grid-template-rows] duration-500 grid-rows-[0fr] group-hover:grid-rows-[1fr]">
+                          <p className="overflow-hidden text-slate-400 text-sm leading-relaxed">
                             {feature.description}
-                        </p>
+                          </p>
+                        </div>
                     </div>
                 </div>
                 ))}
@@ -173,7 +177,7 @@ export default function Home() {
                 <div className="flex flex-col items-center text-center space-y-4">
                     {/* Profile Image Container */}
                     <div className="w-32 h-32 rounded-full border-2 border-indigo-500/30 overflow-hidden bg-slate-800">
-                        <img src="/cedric.jpeg" alt="Cedric Caeymaex" className="w-full h-full object-cover" />
+                        <img src="/cedric.webp" alt="Cedric Caeymaex" className="w-full h-full object-cover" width={128} height={128} loading="lazy" />
                     </div>
                     
                     <div>
@@ -201,7 +205,7 @@ export default function Home() {
                 <div className="flex flex-col items-center text-center space-y-4">
                     {/* Profile Image Container */}
                     <div className="w-32 h-32 rounded-full border-2 border-indigo-500/30 overflow-hidden bg-slate-800">
-                        <img src="/jan.jpeg" alt="Jan Wilmaers" className="w-full h-full object-cover" />
+                        <img src="/jan.webp" alt="Jan Wilmaers" className="w-full h-full object-cover" width={128} height={128} loading="lazy" />
                     </div>
 
                     <div>
