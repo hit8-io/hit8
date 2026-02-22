@@ -7,6 +7,12 @@ locals {
   api_url_stg  = var.backend_provider == "gcp" ? "https://api-stg.${var.DOMAIN_NAME}" : "https://scw-stg.${var.DOMAIN_NAME}"
   api_hosts    = var.backend_provider == "gcp" ? ["api-prd.${var.DOMAIN_NAME}", "api-stg.${var.DOMAIN_NAME}"] : ["scw-prd.${var.DOMAIN_NAME}", "scw-stg.${var.DOMAIN_NAME}"]
   api_hosts_in = "(http.host in {\"${join("\" \"", local.api_hosts)}\"})"
+
+  # Scaleway serverless container CNAME target format: {container_id}.cnc.{region}.scw.cloud (.url is null in provider)
+  scw_api_cname_targets = {
+    "scw-prd" = "${scaleway_container_domain.prd.container_id}.cnc.${scaleway_container_domain.prd.region}.scw.cloud"
+    "scw-stg" = "${scaleway_container_domain.stg.container_id}.cnc.${scaleway_container_domain.stg.region}.scw.cloud"
+  }
 }
 
 resource "cloudflare_dns_record" "services" {
@@ -23,21 +29,17 @@ resource "cloudflare_dns_record" "services" {
   ttl     = 1
 }
 
-# Scaleway containers (scw-prd, scw-stg) - CNAME targets from Scaleway container domain setup
-# Commented out until containers are created (after images are built and pushed)
-# resource "cloudflare_dns_record" "scw_api" {
-#   for_each = {
-#     "scw-prd" = scaleway_container_domain.prd.url
-#     "scw-stg" = scaleway_container_domain.stg.url
-#   }
-#
-#   zone_id = var.CLOUDFLARE_ZONE_ID
-#   name    = each.key
-#   content = each.value
-#   type    = "CNAME"
-#   proxied = true
-#   ttl     = 1
-# }
+# Scaleway containers (scw-prd, scw-stg) - CNAME target format: {container_id}.cnc.{region}.scw.cloud
+resource "cloudflare_dns_record" "scw_api" {
+  for_each = local.scw_api_cname_targets
+
+  zone_id  = var.CLOUDFLARE_ZONE_ID
+  name     = each.key
+  content  = each.value
+  type     = "CNAME"
+  proxied  = true
+  ttl      = 1
+}
 
 resource "cloudflare_dns_record" "api_endpoints" {
   for_each = local.envs
