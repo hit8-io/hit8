@@ -230,17 +230,9 @@ class Settings(BaseSettings):
     DATABASE_SSL_ROOT_CERT: str | None = Field(
         default=None,
         exclude=True,
-        description="SSL root certificate content (not file path) - required in production"
+        description="SSL root certificate content (not file path) - optional; use when DB requires SSL (e.g. Supabase)"
     )
-    
-    @field_validator("DATABASE_SSL_ROOT_CERT")
-    @classmethod
-    def validate_ssl_cert_required_in_production(cls, v: str | None) -> str | None:
-        """Validate that SSL certificate is provided in production."""
-        if constants.ENVIRONMENT == "prd" and not v:
-            raise ValueError("DATABASE_SSL_ROOT_CERT is required in production environment")
-        return v
-    
+
     # Google Identity Platform
     GOOGLE_IDENTITY_PLATFORM_DOMAIN: str
     

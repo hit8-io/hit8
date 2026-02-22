@@ -2,6 +2,10 @@
 #                                  DNS RECORDS                                 #
 ################################################################################
 
+# api_hosts_in is derived from backend_provider: only the current provider's hostnames are included.
+# So with backend_provider = "scw", WAF and rate limit apply only to scw-prd/scw-stg; gcp-prd/gcp-stg
+# are not matched. That is why CORS worked when the frontend used GCP (gcp-prd) and broke when
+# it used Scaleway (scw-prd)—the WAF and rate limit only apply to the active provider's hosts.
 locals {
   api_url_prd  = var.backend_provider == "gcp" ? "https://gcp-prd.${var.DOMAIN_NAME}" : "https://scw-prd.${var.DOMAIN_NAME}"
   api_url_stg  = var.backend_provider == "gcp" ? "https://gcp-stg.${var.DOMAIN_NAME}" : "https://scw-stg.${var.DOMAIN_NAME}"
@@ -173,12 +177,13 @@ resource "cloudflare_ruleset" "rate_limit" {
 
   # Cloudflare only allows 1 rule in http_ratelimit phase
   # Using a single rule with 20 req/10s limit (120 req/min) for all API endpoints
+  # Exclude OPTIONS so CORS preflight is not rate-limited (429 responses have no CORS headers).
   # Note: Cloudflare free plan only supports period=10 (10 seconds)
   rules = [
     {
       description = "Rate Limit API Endpoints"
       enabled     = true
-      expression  = local.api_hosts_in
+      expression  = "(${local.api_hosts_in} and http.request.method ne \"OPTIONS\")"
       action      = "block"
 
       action_parameters = {

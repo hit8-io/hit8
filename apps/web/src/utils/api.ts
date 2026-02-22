@@ -4,11 +4,8 @@ import { logError } from './errorHandling'
 
 const API_TOKEN = import.meta.env.VITE_API_TOKEN
 
-/** API URL - scw.hit8.io uses Scaleway backend, others use VITE_API_URL */
+/** API base URL from build-time env (e.g. https://scw-prd.hit8.io). */
 export function getApiUrl(): string {
-  if (typeof window !== 'undefined' && window.location.hostname === 'scw.hit8.io') {
-    return 'https://scw-prd.hit8.io'
-  }
   return import.meta.env.VITE_API_URL || ''
 }
 
