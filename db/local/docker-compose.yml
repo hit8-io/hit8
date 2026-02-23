@@ -1,0 +1,18 @@
+name: postgres
+
+services:
+  db:
+    image: postgres:17
+    container_name: postgres
+    restart: always
+    environment:
+      POSTGRES_USER: hit8      
+      POSTGRES_PASSWORD: hit8   
+      POSTGRES_DB: hit8
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+volumes:
+  pg_data:

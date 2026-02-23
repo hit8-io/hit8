@@ -90,26 +90,33 @@ class ConstantsConfigSettingsSource(PydanticBaseSettingsSource):
 def _provider_prefix_settings() -> dict[str, Any]:
     """
     Map provider-prefixed env vars (ONGCP_* / ONSCW_*) to internal Settings names.
-    BACKEND_PROVIDER is set by Terraform to 'gcp' or 'scw'. When set, we use the
-    corresponding prefixed vars so one Doppler config can hold both backends' secrets.
+    When BACKEND_PROVIDER is 'gcp' or 'scw', use that provider's prefix. When unset
+    (e.g. local dev with Doppler), use the first prefix that has DB_CONNECTION_STRING
+    so ONSCW_DB_CONNECTION_STRING or ONGCP_DB_CONNECTION_STRING alone is enough.
     """
     provider = os.getenv("BACKEND_PROVIDER", "").strip().lower()
-    if provider not in ("gcp", "scw"):
-        return {}
-    prefix = "ONGCP_" if provider == "gcp" else "ONSCW_"
+    if provider in ("gcp", "scw"):
+        prefix = "ONGCP_" if provider == "gcp" else "ONSCW_"
+        prefixes = [prefix]
+    else:
+        # Dev/local: try both so Doppler can have only ONSCW_* or ONGCP_* set
+        prefixes = ["ONSCW_", "ONGCP_"]
     out: dict[str, Any] = {}
-    conn = os.getenv(f"{prefix}DB_CONNECTION_STRING")
-    if conn is not None:
-        out["DATABASE_CONNECTION_STRING"] = conn
-    cert = os.getenv(f"{prefix}DB_ROOT_CERT")
-    if cert is not None:
-        out["DATABASE_SSL_ROOT_CERT"] = cert or None
-    redis_host = os.getenv(f"{prefix}REDIS_HOST")
-    if redis_host is not None:
-        out["REDIS_HOST"] = redis_host or None
-    redis_pwd = os.getenv(f"{prefix}REDIS_PWD")
-    if redis_pwd is not None:
-        out["REDIS_PWD"] = redis_pwd or None
+    for prefix in prefixes:
+        conn = os.getenv(f"{prefix}DB_CONNECTION_STRING")
+        if conn is not None:
+            out["DATABASE_CONNECTION_STRING"] = conn
+        cert = os.getenv(f"{prefix}DB_ROOT_CERT")
+        if cert is not None:
+            out["DATABASE_SSL_ROOT_CERT"] = cert or None
+        redis_host = os.getenv(f"{prefix}REDIS_HOST")
+        if redis_host is not None:
+            out["REDIS_HOST"] = redis_host or None
+        redis_pwd = os.getenv(f"{prefix}REDIS_PWD")
+        if redis_pwd is not None:
+            out["REDIS_PWD"] = redis_pwd or None
+        if out:
+            break
     return out
 
 
