@@ -1,21 +1,24 @@
-#!/usr/bin/env python3
 """
 Daily Scaleway cost monitoring: fetch consumptions, aggregate by category,
 append one row to Google Sheet (Date, Billing period, Total MTD, Discount MTD, per-category).
+Optional: if GMAIL_SERVICE_ACCOUNT is set, send a summary email to jan@hit8.io (from noreply@hit8.io).
 Requires: SCW_SECRET_KEY, SCW_ORGANIZATION_ID, DRIVE_SERVICE_ACCOUNT (JSON).
 Optional: SCALEWAY_BILLING_SHEET_ID (default: 1lilB-MmxHFmnmMYT_kvZZAK48_jTJkAHkYFKLANIGRY).
 """
 from __future__ import annotations
 
+import base64
 import json
 import os
 import sys
 from datetime import datetime, timezone
+from email.mime.text import MIMEText
 from typing import Any
 
 import gspread  # type: ignore[import-untyped]
 import requests
 from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
 
 # Default sheet ID from plan
 DEFAULT_SHEET_ID = "1lilB-MmxHFmnmMYT_kvZZAK48_jTJkAHkYFKLANIGRY"
@@ -29,6 +32,25 @@ HEADER_ROW = [
     "Total MTD",
     "Discount MTD",
 ]
+
+GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send"
+
+
+def _send_gmail(sa_json: str, to: str, subject: str, body: str, send_as: str) -> None:
+    """Send one plain-text email via Gmail API (service account with domain-wide delegation)."""
+    info = json.loads(sa_json)
+    creds = Credentials.from_service_account_info(
+        info,
+        scopes=[GMAIL_SEND_SCOPE],
+        subject=send_as,
+    )
+    service = build("gmail", "v1", credentials=creds)
+    message = MIMEText(body)
+    message["to"] = to
+    message["from"] = send_as
+    message["subject"] = subject
+    raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
+    service.users().messages().send(userId="me", body={"raw": raw}).execute()
 
 
 def log(event: str, **kwargs: Any) -> None:
@@ -231,6 +253,29 @@ def main() -> None:
 
     worksheet.append_row(row_values, value_input_option="USER_ENTERED")
     log("row_appended", date=today.isoformat(), total_mtd_eur=round(total_mtd_eur, 4))
+
+    gmail_sa = os.environ.get("GMAIL_SERVICE_ACCOUNT", "").strip()
+    if gmail_sa:
+        sheet_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit"
+        body = (
+            f"Scaleway billing daily job finished successfully.\n"
+            f"Date: {today.isoformat()}\n"
+            f"Billing period: {billing_period}\n"
+            f"Total MTD (EUR): {round(total_mtd_eur, 4)}\n"
+            f"\nSheet: {sheet_url}"
+        )
+        try:
+            _send_gmail(
+                gmail_sa,
+                to="jan@hit8.io",
+                subject="[hit8] Scaleway billing daily completed",
+                body=body,
+                send_as="noreply@hit8.io",
+            )
+            log("email_sent", to="jan@hit8.io")
+        except Exception as e:
+            log("email_failed", error=str(e), error_type=type(e).__name__)
+            raise
 
 
 if __name__ == "__main__":
