@@ -1,0 +1,27 @@
+name: Scaleway billing daily
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  billing-daily:
+    name: Scaleway billing to Sheet
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.11"
+
+      - name: Run billing script
+        working-directory: infra/scripts
+        env:
+          SCW_SECRET_KEY: ${{ secrets.SCW_SECRET_KEY }}
+          SCW_ORGANIZATION_ID: ${{ secrets.SCW_ORGANIZATION_ID }}
+          DRIVE_SERVICE_ACCOUNT: ${{ secrets.DRIVE_SERVICE_ACCOUNT }}
+        run: uv sync && uv run python scaleway_billing_daily.py
