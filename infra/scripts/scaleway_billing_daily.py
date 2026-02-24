@@ -25,12 +25,13 @@ DEFAULT_SHEET_ID = "1lilB-MmxHFmnmMYT_kvZZAK48_jTJkAHkYFKLANIGRY"
 SCW_BILLING_BASE = "https://api.scaleway.com/billing/v2beta1"
 PAGE_SIZE = 100
 
-# Sheet header (order matters for appending)
+# Sheet header: date, billing period, totals & discount, then all deltas, then category MTDs
 HEADER_ROW = [
     "Date",
     "Billing period",
     "Total MTD",
     "Discount MTD",
+    "Total Δ",
 ]
 
 GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send"
@@ -149,13 +150,13 @@ def get_sheet_client(drive_sa_json: str) -> gspread.Client:
 
 
 def ensure_header(worksheet: gspread.Worksheet, category_columns: list[str]) -> None:
-    """If sheet is empty, set row 1 to header (fixed + per-category MTD and Δ columns)."""
+    """If sheet is empty, set row 1 to header: date, period, totals & discount, all deltas, rest (category MTDs)."""
     try:
         row1 = worksheet.row_values(1)
     except Exception:
         row1 = []
-    # Header: Date, Billing period, Total MTD, Discount MTD, then for each category: "Cat", "Cat Δ"
-    header = HEADER_ROW + [c for cat in category_columns for c in (cat, f"{cat} Δ")]
+    # Header: Date, Billing period, Total MTD, Discount MTD, Total Δ, then Cat Δ for each, then Cat for each
+    header = HEADER_ROW + [f"{cat} Δ" for cat in category_columns] + list(category_columns)
     if not row1 or row1[0] != "Date":
         worksheet.update("A1", [header], value_input_option="RAW")
         log("header_written", headers=header)
@@ -175,20 +176,25 @@ def read_last_data_row(worksheet: gspread.Worksheet) -> list[Any] | None:
     return last
 
 
+def _prev_total_mtd(last_row: list[Any]) -> float:
+    """Previous row Total MTD (index 2)."""
+    if len(last_row) <= 2:
+        return 0.0
+    try:
+        return float(last_row[2] or 0)
+    except (ValueError, TypeError):
+        return 0.0
+
+
 def _prev_category_mtds(
     last_row: list[Any], num_categories: int
 ) -> list[float]:
-    """Parse previous row into per-category MTD values. Handles old format (no Δ) and new format (with Δ)."""
-    # Fixed columns: 0=Date, 1=Billing period, 2=Total MTD, 3=Discount MTD
-    # New format: 4+2*i = category MTD, 4+2*i+1 = category Δ
-    # Old format: 4+i = category MTD only
+    """Parse previous row: category MTDs at indices 5+n .. 5+2n-1."""
     prev: list[float] = []
-    for i in range(num_categories):
-        if len(last_row) >= 4 + 2 * num_categories:
-            idx = 4 + 2 * i
-        elif len(last_row) >= 4 + num_categories:
-            idx = 4 + i
-        else:
+    n = num_categories
+    for i in range(n):
+        idx = 5 + n + i
+        if idx >= len(last_row):
             prev.append(0.0)
             continue
         try:
@@ -224,32 +230,39 @@ def main() -> None:
     ensure_header(worksheet, category_columns)
     last_row = read_last_data_row(worksheet)
 
-    # Per-category diff from previous day (blank on 1st of month or when no previous row)
+    # Per-category and total deltas (blank on 1st of month or when no previous row)
     is_first_of_month = today.day == 1
     if last_row is None or is_first_of_month:
         prev_mtds = [0.0] * len(category_names)
+        prev_total = 0.0
         if last_row is None:
             log("first_run", category_diffs="(blank)")
         else:
             log("first_of_month", category_diffs="(blank)")
     else:
         prev_mtds = _prev_category_mtds(last_row, len(category_names))
+        prev_total = _prev_total_mtd(last_row)
+
+    total_delta: Any = ""
+    if not (is_first_of_month or last_row is None):
+        total_delta = round(total_mtd_eur - prev_total, 4)
 
     discount_val = total_discount if total_discount is not None else ""
+    # Column order: date, billing period, totals & discount, all deltas, rest (category MTDs)
     row_values: list[Any] = [
         today.isoformat(),
         billing_period,
         round(total_mtd_eur, 4),
         discount_val,
+        total_delta,
     ]
     for i, cat in enumerate(category_names):
-        mtd = round(by_category[cat], 4)
-        row_values.append(mtd)
         if is_first_of_month or last_row is None:
-            row_values.append("")  # Δ blank
+            row_values.append("")  # category Δ blank
         else:
-            diff = round(mtd - prev_mtds[i], 4)
-            row_values.append(diff)
+            row_values.append(round(by_category[cat] - prev_mtds[i], 4))
+    for cat in category_names:
+        row_values.append(round(by_category[cat], 4))
 
     worksheet.append_row(row_values, value_input_option="USER_ENTERED")
     log("row_appended", date=today.isoformat(), total_mtd_eur=round(total_mtd_eur, 4))
@@ -257,11 +270,13 @@ def main() -> None:
     gmail_sa = os.environ.get("GMAIL_SERVICE_ACCOUNT", "").strip()
     if gmail_sa:
         sheet_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit"
+        total_delta_line = f"Total Δ (EUR): {total_delta}\n" if total_delta != "" else ""
         body = (
             f"Scaleway billing daily job finished successfully.\n"
             f"Date: {today.isoformat()}\n"
             f"Billing period: {billing_period}\n"
             f"Total MTD (EUR): {round(total_mtd_eur, 4)}\n"
+            f"{total_delta_line}"
             f"\nSheet: {sheet_url}"
         )
         try:
